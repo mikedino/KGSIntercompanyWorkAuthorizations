@@ -1,0 +1,226 @@
+What is the IWA Tool?
+
+The IWA tool serves the important role of providing an avenue for KGS employees to temporarily work on different contracts. This is typically utilized when a contract needs specific labor expertise outside of what they currently have, additional support to meet deadlines, or as a temporary home for employees who are losing coverage.
+
+For KGS specifically, this occurs on an entity-by-entity basis. These entities and their portfolios are managed by an Entity General Manager. In addition, all KGS entities fall within a specific Operating Group (OG) and Line of Business (LOB) based on the work that they support. KGS has 3 major LOBs and all of the OGs fall within them. Each LOB & OG also has their own President. While there may be some logic to where each KGS Entity falls under, it isn’t critical to the IWA process. What is critical, is that the IWAs always involve two KGS Entities and single Operating Group. The Operating Group selected will always be tied to the Contract ID selected in the IWA.
+
+From a business process perspective, the IWA tool serves three functions. First, it provides the internal approval workflow for all IWAs. This ensures that all relevant stakeholders are aware of the resources being reallocated and are included on the approval process. Secondly, KGS is required to track all shared resources across Entities by the Small Business Administration (SBA). The information tracked and stored by the IWA would be used if KGS was audited by the SBA to ensure that all KGS entities are acting as their own small businesses and not just using pools of employees as needed. Lastly, it provides all of the critical details that the financial side of KGS requires to input in the JAMIS system to ensure all resources are paid and the charges reflect accurately by contract. Throughout this process, the IWA tool tracks all changes so that the entire history of hours, dates, and values are available to anyone who might need it, audit or otherwise.
+
+JAMIS is the system KGS uses for all timekeeping, expenses, payments, etc. While the IWA tool can pull some relevant information from JAMIS, it is best to consider IWA and JAMIS as completely separate tools. At its core, the IWA provides a deliverable, a PDF, that the financial side of KGS then uses to manually enter data into JAMIS.
+
+What Data is Captured & Utilized by the IWA Tool? (Form Part 1)
+
+IWAs are agreed upon by two separate KGS Entities. Entity A provides the employee resources and receives payments accordingly. Entity B receives the additional support and services of the provided employee resources from pays Entity A. It is important to note that KGS Entities can support multiple OGs at one time. Most Entities have multiple contracts that span across multiple OGs. For all IWAs, the only OG that is relevant is the one tied to the specific Contract ID.
+
+When Entity A and Entity B have been identified, the contract where the work will be performed will be selected next. To select a contract, a selection list will be pulled from the Jamis_Data_API site collection. The ContractEndPoint SharePoint list can be utilized for this pull. The Contract ID pull should include the “Contract ID” & “Contract Title” and both should work in the search. It should be noted that the contract to be selected should only be a selection where the “Branch” in the SharePoint backend aligns with Entity B as the line items to be charged must be a contract that is being managed by Entity B (receiving services and paying Entity A for the work). However, filtering the contract options to improve performance and limit selection errors may be a v2 addition once the new IWA tool has been fully established. Note that the “Branch” item in the Jamis_Data_API collection lists only the Entity acronym. The new IWA tool needs to allow for full name selection but still utilize information based only on the acronym. Contracts should be searchable by “Contract ID” & “Contract Title”. Important note: once an IWA has formally been submitted, the Contract can never change.
+
+After the correct contract has been selected, the Invoice/Task Order selection will be required. KGS uses “Contract ID” to designate contracts internally. This is a 6-digit code that can be used as an identifier for the Invoice/Task Order selection: all invoices/task orders under a certain contract will start with that same 6-digit identifier. When selecting the Invoice/Task Order, there should be an active filter in the selection that only allows options with the corresponding “Contract ID” as the first 6 digits. Invoice/Task Order selection should not be available until the Contract has been selected. Contracts should be searchable by “Invoice ID” & “Invoice Title” from the InvoiceEndPoint SharePoint List.
+
+Start and end dates are provided across the entire IWA. Specific dates for each employee that will eventually be added in the Resources section are not required at this time. It is important to note that IWAs often require modifications. Most typically, this will be seen as extending the end date of the IWA along with the requested working hours for the employees.
+
+The next dataset required is the Project Manager. If a Project Manager is already listed in the Jamis_Data_API site collection, it falls in the ContractEndPoint list under “Manager 1 Name” and “Manager 1 Email”. This user should auto populate from the Gal when once the Contract has been selected. The project manager will remain a people picker even if auto populated to allow for changes or incorrect JAMIS data. The approval workflow, which will be detailed later in this document, requires the Project Manger review as the first step. The new IWA tool should perform a check against the submitter and selected Project Manager. If the submitter is that Project Manager, their approval will be automated. If not, it will go to the PM for review.
+
+IWA submissions only support two contract types: T&M (Time & Material) & FFP (Firm Fixed Price). The Jamis_Data_API site collection may reference many other contract types, but those are to be ignored at this time. The Contract Type selection for IWA’s should remain restricted to the choice of T&M or FFP. See resourcing section for more. Jeanette has specifically requested that T&M be selected by default.
+
+All KGS Entities have a General Manager. As mentioned above, the Jamis_Data_API site collection stores the three-letter acronym of the Entities in some of its lists, but pulling GM’s from those lists may not be reliable. In conjunction with all other solutions being created, it is recommended that the list of Entities, and their GMs, be managed in the Admin portal of the IWA app and auto populate based on the Entity selections at the start of the form. It is important that the app can still complete checks against “Branch” in the Jamis_Data_API and populate relevant contract data accordingly.
+
+All other fields required to be entered prior to the resourcing are straightforward and can be found in the “IWA Form Breakdown” requirement document. Operating Groups (OG) can be auto populated by cross-referencing contract information from the Jamis_Data_API, but similar to the KGS Entities and their GMs, IWA should utilize the Admin section of the app to manage Operating Groups and their Presidents. Checks can be put in place to cross-reference against the Jamis_Data_API lists and all selections be adjustable even after being populated.
+
+For all data that is pulled automatically, the users must be able to remove whatever has been automatically populated and make changes if required.
+
+How is IWA Resourcing Managed? (Form Part 2)
+
+Regardless of whether or not the Contract Type selected is T&M or FFP, all employees that will be supporting Entity B must be listed on the IWA. This is information is critical to ensure all employees are paid through JAMIS regardless of IWA details. The IWA should allow for a large amount of employees to be added, possibly up to 50, and have specific information tied to them for that IWA. All employees must have the state they work in available as a selection for tax reasons.
+
+All IWA hours/charges/lump sums must be tied to a unique Job ID as this is the identifier used to push charges through the JAMIS system. This will be utilized by a pull from the “Direct Job ID” column in the JobEndPoint SharePoint list in the Jamis_Data_API site collection. It is important to note that “Direct Job ID” is a JAMIS term that general users may not be extremely familiar with so this field should be titled “Job” on the form. The only Direct Job ID’s that should be available for selection at this stage of the process must start with the same 6 digits as the “Contract ID” in Form Part 1.
+
+The old system has no way to provide the CFO with information other than the Direct Job ID that will be charged. Another critical component to ensure employees are charged at the correct bill rate is to ensure that a Contract Line Item Number (CLIN) and Labor Category (LCAT) is used. At this time, there is no reliable way to pull the CLINs/LCATs from JAMIS. For the IWA form itself, this selection should be viewable to users as “Labor Category” to align with JAMIS Timesheets. For now, this should be a free text form that has a pretty tight character limit (maybe 15-30?).
+
+Travel costs and Other Direct Costs (ODCs) must also be available to add in the resourcing section, regardless of the choice of T&M or FFP. Travel/ODC charges are not charged on a per employee basis, and should be handled as their own items in the form. These charges should be handled as lump sums regardless of contact type selection. Note that a contract could have multiple Travel/ODC job ID’s, so the form should be able to allow for multiple lump sum charges to be added.
+
+For both T&M and FFP form selections, please reference the excel file “IWA Form Breakdown”. The form should allow for the entry of multiple employees. No max has been set, but there have been IWAs in the past that have had upwards of 30 to 40 employees. Each needs to be able to have all relevant metadata fields tied to them individually. Travel/ODCs will be lump sums regardless of contract type and also must allow for multiple to be added and be tied to a specific Job ID. In short these are the key aspects of resourcing that need to be managed:
+
+•
+T&M
+o
+Employee hours are all tracked individually and tied to a particular Job ID/CLIN and Labor Category
+o
+HR inserts the salary after initial PM approval and calculations are automatically made.
+o
+When/if mods happen, new employees can be added, additional hours can be added, dates changed, all calculations still operate the same.
+•
+FFP
+o
+The key differentiator for FFP is “lump sum” charges by Job ID/Lab Category where the stakeholders need to know the periods & duration of the lump sum charges.
+o
+HR does not need to be involved as the lump sum entries are provided by submitter.
+o
+When/if mods happen, new employees can be added, additional lump sum totals can be added by CLIN, dates changed, all calculations still operate the same.
+
+
+What Happens When a New IWA is Formally Created?
+
+Once all the information listed above has been submitted, the IWA is formally created. Each IWA should automatically create its own title based on some of the data in the submission. The formula for the title creation is as follows: IWA-EntityBAcronym-EntityAAcronym-Year-XXXXX
+
+The individual number at the end of that formula should start at 00001 and reset every year. So, if Entity B was KMS and Entity A was KITS, and it was the first submission of 2027, the title of that IWA would be: IWA-KMS-KITS-2027-00001. Once the IWA title has been assigned and stored in the system, the workflow is kicked off. Please reference “IWA Workflow 3.0” for details.
+
+IMPORTANT NOTE. The IWA and At-Risk tool need to handle runs & mods differently. The At-Risk tool doesn’t track individual mod numbers. It has the run system, notes the changes, but the total duration and value of the At-Risk is whatever the most recent approved values and dates are. For IWA, the CFO will need to know the exact changes between APPROVED runs as formalized mods in order to accurately track changes that the CFO manually submits to JAMIS. This is also important because a PDF must be produced for each mod highlighting the changes from the previous mod. Change history information would be helpful in app (similar to At-Risk) as well as the PDF. Dino, for your design, I’m not sure if it makes more sense to change the run system for IWA to basically force a restart of the existing run until it gets approved to that the mods align with the run. So approved run 1 would be the initial IWA, run 2 approved would be Mod 1, run 3 approved would be Mod 2, etc. Not sure how best to implement this, but food for thought.
+
+Outside of approval and rejections, the only other action that takes place during the workflow is that HR is required to populate employee salaries for T&M submissions. Any information regarding individual salaries via T&M needs to be protected and only visible to HR & up. PMs can see salary information for their contracts only. Submitters who do not have a formal role in the app should never see any salary information.
+
+Roles in the IWA Tool & What They Can Do:
+All users of this app need to be able to add a backup (at least one person) for when they are out of office, need support, etc. The backup can complete all the same actions and will receive the same notifications.
+•
+Submitter
+o
+The user who creates and submits a new IWA.
+o
+What the Submitters can/can’t do:
+▪
+Submitters can be anyone with a KGS email. This means it doesn’t necessarily need to be a formal ‘role’ within the app.
+▪
+Submitters can create and submit new IWAs.
+▪
+Submitters can modify only their own IWAs.
+▪
+Submitters can cancel their IWAs up until they receive approval.
+▪
+Submitters cannot see employee financial data unless they are also the PM.
+•
+Project Manager
+o
+The Project Manager for the Contract being utilized by the IWA (Entity B’s Contract). The PM can also be the submitter. PM, when not the submitter, is required to review & approve IWAs tied to their contracts.
+o
+What the PM can do:
+▪
+PMs can submit their own IWAs and skip the PM approval step in the workflow
+▪
+PMs can approve IWAs where they are listed as “Project Manager” when an IWA is in their court.
+▪
+PMs can reject IWAs where they are listed as “Project Manager” when IWA is in their court and kick it back to the submitter.
+▪
+PMs can modify any IWAs where they are listed as “Project Manager”. Changes must be tracked but workflow does not need to restart.
+▪
+PMs can cancel any IWAs where they are listed as “Project Manager” up until they receive approval.
+▪
+PMs can see employee financial data after HR has populated it for IWAs under their contracts.
+•
+Human Resources
+o
+Primarily VP of HR, Barbara Mack. She will have a backup in the app. HR is required to populate resource salaries, review IWAs, and approve.
+o
+What HR can do:
+▪
+HR can see and populate employee financial data.
+▪
+HR can see and modify IWAs. Changes must be tracked but workflow restart not forced.
+▪
+HR can approve IWAs when IWA is in their court.
+▪
+HR can reject IWAs when IWA is in their court and kick it back to the submitter.
+
+Roles in the IWA Tool & What They Can Do:
+All users of this app need to be able to add a backup (at least one person) for when they are out of office, need support, etc. The backup can complete all the same actions and will receive the same notifications.
+•
+Submitter
+o
+The user who creates and submits a new IWA.
+o
+What the Submitters can/can’t do:
+▪
+Submitters can be anyone with a KGS email. This means it doesn’t necessarily need to be a formal ‘role’ within the app.
+▪
+Submitters can create and submit new IWAs.
+▪
+Submitters can modify only their own IWAs.
+▪
+Submitters can cancel their IWAs up until they receive approval.
+▪
+Submitters cannot see employee financial data unless they are also the PM.
+•
+Project Manager
+o
+The Project Manager for the Contract being utilized by the IWA (Entity B’s Contract). The PM can also be the submitter. PM, when not the submitter, is required to review & approve IWAs tied to their contracts.
+o
+What the PM can do:
+▪
+PMs can submit their own IWAs and skip the PM approval step in the workflow
+▪
+PMs can approve IWAs where they are listed as “Project Manager” when an IWA is in their court.
+▪
+PMs can reject IWAs where they are listed as “Project Manager” when IWA is in their court and kick it back to the submitter.
+▪
+PMs can modify any IWAs where they are listed as “Project Manager”. Changes must be tracked but workflow does not need to restart.
+▪
+PMs can cancel any IWAs where they are listed as “Project Manager” up until they receive approval.
+▪
+PMs can see employee financial data after HR has populated it for IWAs under their contracts.
+•
+Human Resources
+o
+Primarily VP of HR, Barbara Mack. She will have a backup in the app. HR is required to populate resource salaries, review IWAs, and approve.
+o
+What HR can do:
+▪
+HR can see and populate employee financial data.
+▪
+HR can see and modify IWAs. Changes must be tracked but workflow restart not forced.
+▪
+HR can approve IWAs when IWA is in their court.
+▪
+HR can reject IWAs when IWA is in their court and kick it back to the submitter.
+
+OG President
+o
+President of the Operating Group. OGP is required to review & approve IWAs tied to their Operating Group.
+o
+What OGP can do:
+▪
+OGP can see employee financial data.
+▪
+OGP can modify IWAs. Changes must be tracked but workflow restart not forced.
+▪
+OGP can approve IWAs when IWA is in their court.
+▪
+OGP can reject IWAs when IWA is in their court and kick it back to the submitter.
+•
+CFO
+o
+Chief Financial Officer, Jeanette Morris. She will have a backup in the app. CFO has final approval and manually enters app PDF export into JAMIS.
+o
+What CFO can do:
+▪
+CFO can view all IWAs and all data.
+▪
+CFO can modify IWAs. Changes must be tracked but workflow restart not needed.
+▪
+CFO can approve IWAs when IWA is in their court.
+▪
+CFO can reject IWAs when IWA is in their court and kick it back to the submitter.
+▪
+CFO can export IWA PDF at any time, even if financial data hasn’t been entered.
+•
+PCA
+o
+Project Controls Analyst. This role may not be required, and could be covered by OGP backup, but it is worth noting. All OGP’s have their own PCA who handles a lot of their paperwork. They’ve been active in previous IWAs. No action on this role for now, but want to note it.
+•
+Entity General Manager
+o
+General Manager of a KGS Entity.
+o
+What KGS Entity GM can do:
+▪
+View all IWAs where their entity is listed as Entity A or Entity B
+•
+Senior Operating Group President
+o
+This role is not formally active yet. Senior OGPs should be able to see anything the OGPs under them can see. They should receive all notifications their OGPs receive.
+•
+Admin
+o
+To be populated. They can do everything
+
+PDF
+Whenever an IWA reached approved status upon the CFO’s approval, a PDF needs to be generated. This PDF is what the CFO uses to manually enter all relevant IWA information into Jamis to ensure all employees are paid appropriately. Please reference “IWA PDF Example” for the existing PDF formatting. The goal of this PDF is to display all relevant information from the form and display it effectively and efficiently for translating to JAMIS. The current PDF does not utilize space well and creates large documents even if it is only a few employees. All mods and changes should be tracked on the PDF and evolve as the IWA evolves. Employee name, hours, and dollar value totals, by Job ID & Lab Cat, is essential for translation to JAMIS on T&M submissions. Employee names by Job ID & Lab Cat, along with their lump sums, is essential for translation to JAMIS on FFP submissions. At this stage, we have the freedom to design the PDF however we see fit.
+
+

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "iwa-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/iwa/IwaWebPart.js",
+          "manifest": "./src/webparts/iwa/IwaWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "IwaWebPartStrings": "lib/webparts/iwa/loc/{locale}.js",
+    "ControlStrings": "node_modules/@pnp/spfx-controls-react/lib/loc/{locale}.js"
+  }
+}

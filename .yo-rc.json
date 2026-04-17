@@ -1,0 +1,18 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.19.0",
+    "sdksVersions": {},
+    "version": "1.21.1",
+    "libraryName": "intercompany-work-authorization",
+    "libraryId": "f95badf4-450f-4932-96b3-8e674e7ce352",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "Intercompany Work Authorization",
+    "solutionShortDescription": "Intercompany Work Authorization description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
