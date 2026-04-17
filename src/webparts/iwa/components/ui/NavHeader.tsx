@@ -5,12 +5,10 @@ import {
     Box,
     Button,
     IconButton,
-    InputAdornment,
     Menu,
     MenuItem,
     Popover,
     Stack,
-    TextField,
     Toolbar,
     Typography
 } from "@mui/material";
@@ -21,14 +19,14 @@ import WorkIcon from "@mui/icons-material/Work";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
-import SearchIcon from "@mui/icons-material/Search";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import PeopleIcon from "@mui/icons-material/People";
 import PeopleOutlineIcon from "@mui/icons-material/PeopleOutline";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import { NavLink } from "react-router-dom";
+import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
+import { NavLink, useHistory } from "react-router-dom";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -37,7 +35,7 @@ import { useIwa } from "../data/iwaContext";
 import { AppUserService } from "../users/userService";
 import { DataSource } from "../data/ds";
 import { IPeoplePicker } from "../data/props";
-import { formatError } from "../common/utils";
+import { formatError, persistThemeMode } from "../common/utils";
 import { MuiPeoplePicker } from "./CustomPeoplePicker";
 import AlertDialog from "./Alert";
 
@@ -55,6 +53,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     setUseDarkTheme
 }): JSX.Element => {
     const theme = useTheme();
+    const history = useHistory();
     const isSmall = useMediaQuery(theme.breakpoints.down("md"));
     const userGuideUrl = DataSource.UserGuide;
     const {
@@ -74,7 +73,6 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     const [backupAnchorEl, setBackupAnchorEl] = React.useState<HTMLElement | undefined>(undefined);
     const [menuAnchorEl, setMenuAnchorEl] = React.useState<HTMLElement | undefined>(undefined);
     const [backupSaving, setBackupSaving] = React.useState<boolean>(false);
-    const [searchText, setSearchText] = React.useState<string>("");
 
     const peoplePickerContext = React.useMemo(() => ({
         absoluteUrl: context.pageContext.web.absoluteUrl,
@@ -98,8 +96,11 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     }, []);
 
     const navButtonSx = React.useMemo(() => ({
+        fontSize: 14,
+        lineHeight: 1.2,
         "&.active": {
-            color: theme.palette.warning.main
+            color: theme.palette.warning.main,
+            borderColor: theme.palette.warning.main
         },
         "&:hover": {
             color: theme.palette.warning.main,
@@ -107,9 +108,11 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
         }
     }), [theme.palette.warning.main]);
 
-    const navIconColor = theme.palette.mode === "light"
-        ? "#00b7ff"
-        : theme.palette.action.active;
+    const headerBgColor = "#091e31";
+    const headerBorderColor = "rgba(200, 220, 255, 0.18)";
+    const headerTextColor = "#f9f9f9";
+    const headerSecondaryColor = "rgba(255,255,255,0.65)";
+    const headerAccentColor = theme.palette.secondary.main;
 
     const userPhotoUrl = React.useMemo((): string | undefined => {
         const email = currentUser?.user?.EMail || context.pageContext.user.email;
@@ -124,7 +127,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     const handleToggleTheme = React.useCallback(async (): Promise<void> => {
         const next = !useDarkTheme;
         setUseDarkTheme(next);
-        sessionStorage.setItem("iwa_theme", next ? "dark" : "light");
+        persistThemeMode(next ? "dark" : "light");
 
         try {
             await AppUserService.updateMyModePreference(next ? "dark" : "light");
@@ -189,6 +192,10 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
         }
     }, [backups, currentUser?.Id, handleBackupClose, refreshCurrentUser, setDialogProps]);
 
+    const handleNewAuthorization = React.useCallback((): void => {
+        history.push("/authorizations/new");
+    }, [history]);
+
     return (
         <AppBar
             position="static"
@@ -196,7 +203,9 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
             sx={{
                 borderRadius: 0,
                 border: "1px solid",
-                borderColor: "divider"
+                borderColor: headerBorderColor,
+                backgroundColor: headerBgColor,
+                color: headerTextColor
             }}
         >
             <Toolbar
@@ -209,14 +218,18 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     alignItems: "center"
                 }}
             >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, flex: 1, overflow: "hidden" }}>
                     <HandshakeIcon sx={{ fontSize: 38, color: "inherit" }} />
-                    <Typography variant={isSmall ? "h6" : "h5"} sx={{ fontWeight: 600 }} noWrap>
+                    <Typography
+                        variant={isSmall ? "h5" : "h4"}
+                        sx={{ fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
+                        noWrap
+                    >
                         {appTitle}
                     </Typography>
                 </Box>
 
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0, flexShrink: 0, ml: 1 }}>
                     <Avatar
                         src={userPhotoUrl}
                         alt={context.pageContext.user.displayName}
@@ -225,16 +238,27 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     >
                         <PersonOutlineIcon fontSize="small" />
                     </Avatar>
-                    {!isSmall && (
-                        <Stack spacing={0} sx={{ minWidth: 0, alignItems: "flex-end" }}>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
-                                {context.pageContext.user.displayName}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" noWrap>
-                                {currentUser?.role === "admin" ? "Administrator" : "User"}
-                            </Typography>
-                        </Stack>
-                    )}
+                    <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", minWidth: 0 }}>
+                        {!isSmall && (
+                            <Stack spacing={0} sx={{ minWidth: 0, maxWidth: 220, alignItems: "flex-end" }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                                    {context.pageContext.user.displayName}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: headerSecondaryColor }} noWrap>
+                                    {currentUser?.role === "admin" ? "Administrator" : "User"}
+                                </Typography>
+                            </Stack>
+                        )}
+                        <IconButton
+                            onClick={handleMenuOpen}
+                            size="medium"
+                            aria-label="Header Actions"
+                            title="Header Actions"
+                            sx={{ color: headerAccentColor }}
+                        >
+                            <MoreVertIcon />
+                        </IconButton>
+                    </Stack>
                 </Stack>
             </Toolbar>
 
@@ -260,7 +284,10 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                         alignItems: "center",
                         justifyContent: "flex-start",
                         flexWrap: "wrap",
-                        width: { xs: "100%", md: "auto" }
+                        width: { xs: "100%", md: "auto" },
+                        "& .MuiButton-root": {
+                            color: headerTextColor
+                        }
                     }}
                 >
                     <Button title="My Work" startIcon={<WorkIcon />} color="inherit" component={NavLink} to="/my-work" sx={navButtonSx}>
@@ -287,34 +314,10 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                         justifyContent: "flex-end",
                         width: { xs: "100%", md: "auto" },
                         "& .MuiIconButton-root": {
-                            color: navIconColor
+                            color: headerAccentColor
                         }
                     }}
                 >
-                    <TextField
-                        size="small"
-                        placeholder="Search IWA authorizations"
-                        value={searchText}
-                        onChange={(event: React.ChangeEvent<HTMLInputElement>): void => setSearchText(event.target.value)}
-                        sx={{
-                            minWidth: { xs: 0, sm: 260, md: 320 },
-                            maxWidth: { xs: "100%", md: 360 },
-                            flexGrow: { xs: 1, md: 0 },
-                            "& .MuiOutlinedInput-root": {
-                                backgroundColor: theme.palette.background.paper
-                            }
-                        }}
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon fontSize="small" />
-                                    </InputAdornment>
-                                )
-                            }
-                        }}
-                    />
-
                     <IconButton
                         onClick={handleRefresh}
                         disabled={isRefreshing}
@@ -324,15 +327,21 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     >
                         <RefreshIcon sx={{ animation: isRefreshing ? "spin 1s linear infinite" : undefined }} />
                     </IconButton>
-
-                    <IconButton
-                        onClick={handleMenuOpen}
-                        size="medium"
-                        aria-label="Header Actions"
-                        title="Header Actions"
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        startIcon={<AddOutlinedIcon />}
+                        onClick={handleNewAuthorization}
+                        sx={{
+                            fontSize: 14,
+                            whiteSpace: "nowrap",
+                            // "&:hover": {
+                            //     backgroundColor: theme.palette.secondary.main
+                            // }
+                        }}
                     >
-                        <MoreVertIcon />
-                    </IconButton>
+                        New Authorization
+                    </Button>
                 </Stack>
             </Toolbar>
 

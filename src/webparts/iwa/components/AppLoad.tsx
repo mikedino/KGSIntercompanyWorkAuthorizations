@@ -1,10 +1,12 @@
 import * as React from "react";
-import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box } from "@mui/material";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
+import { persistThemeMode } from "./common/utils";
 import { IwaProvider, useIwa } from "./data/iwaContext";
 import { AppAlertHost } from "./ui/AppAlertHost";
 import { AppBackdropHost } from "./ui/AppBackdrop";
-import { AppFrame } from "./AppFrame";
+import { AppFrame } from "./layout/AppFrame";
+import { BrandedLoadingState } from "./ui/BrandedLoadingState";
 
 export interface IAppLoadProps {
     context: WebPartContext;
@@ -24,7 +26,7 @@ const ThemeSync: React.FC<{ setUseDarkTheme: (value: boolean) => void; }> = ({ s
 
         const isDark = appUser.modePreference === "dark";
         setUseDarkTheme(isDark);
-        sessionStorage.setItem("iwa_theme", isDark ? "dark" : "light");
+        persistThemeMode(isDark ? "dark" : "light");
         return undefined;
     }, [appUser, isBootLoading, setUseDarkTheme]);
 
@@ -50,16 +52,7 @@ const AppLoadState: React.FC<Pick<IAppLoadProps, "context" | "appTitle" | "setUs
     }
 
     if (isBootLoading) {
-        return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
-                <Stack spacing={3} alignItems="center">
-                    <CircularProgress size={80} thickness={4} enableTrackSlot color="info" />
-                    <Typography variant="h5" fontWeight={500}>
-                        Loading IWA Application...
-                    </Typography>
-                </Stack>
-            </Box>
-        );
+        return <BrandedLoadingState message="Loading IWA Application..." useDarkTheme={useDarkTheme} />;
     }
 
     return (

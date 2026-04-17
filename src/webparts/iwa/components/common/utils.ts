@@ -6,6 +6,56 @@ import isYesterday from "dayjs/plugin/isYesterday";
 dayjs.extend(isToday);
 dayjs.extend(isYesterday);
 
+export type ThemeModePreference = "light" | "dark";
+
+const themeStorageKey = "iwa_theme";
+
+/**
+ * Read the saved theme preference without throwing when browser storage is
+ * blocked. Local storage wins so the boot screen paints in the correct mode.
+ */
+export const getStoredThemeMode = (): ThemeModePreference | undefined => {
+    try {
+        const localTheme = localStorage.getItem(themeStorageKey);
+
+        if (localTheme === "dark" || localTheme === "light") {
+            return localTheme;
+        }
+    } catch {
+        // Ignore storage access issues and fall back to the next source.
+    }
+
+    try {
+        const sessionTheme = sessionStorage.getItem(themeStorageKey);
+
+        if (sessionTheme === "dark" || sessionTheme === "light") {
+            return sessionTheme;
+        }
+    } catch {
+        // Ignore storage access issues and keep the default app theme.
+    }
+
+    return undefined;
+};
+
+/**
+ * Persist the chosen theme in both storage locations so the current app flow
+ * stays backward compatible while boot-time theme detection remains instant.
+ */
+export const persistThemeMode = (mode: ThemeModePreference): void => {
+    try {
+        localStorage.setItem(themeStorageKey, mode);
+    } catch {
+        // Ignore storage access issues so theme changes still apply in memory.
+    }
+
+    try {
+        sessionStorage.setItem(themeStorageKey, mode);
+    } catch {
+        // Ignore storage access issues so theme changes still apply in memory.
+    }
+};
+
 // format a number into a $0.00 USD display string
 export const formatCurrency = (value: number | undefined): string => {
     if (value === null || value === undefined) return "-"

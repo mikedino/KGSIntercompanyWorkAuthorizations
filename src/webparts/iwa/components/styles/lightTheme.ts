@@ -30,7 +30,7 @@ export const lightTheme = createTheme({
       default: '#fafafa',
     },
     text: {
-      primary: '#0a2240',
+      primary: '#323130',
       secondary: "#005C6C"
     }
   }

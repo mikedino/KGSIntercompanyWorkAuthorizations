@@ -2,6 +2,7 @@ import * as React from "react";
 import { Box, CssBaseline, ThemeProvider } from "@mui/material";
 import type { IIwaAppProps } from "./data/props";
 import Strings from "./common/strings";
+import { getStoredThemeMode } from "./common/utils";
 import { ShellUiProvider, useShellUi } from "./ui/ShellUiContext";
 import { darkTheme } from "./styles/darkTheme";
 import { lightTheme } from "./styles/lightTheme";
@@ -20,7 +21,7 @@ import { AppBoot } from "./AppBoot";
 const AppShell: React.FC<IIwaAppProps> = ({ context }): React.ReactElement => {
     const { showAlert } = useShellUi();
     const [useDarkTheme, setUseDarkTheme] = React.useState<boolean>(() => {
-        const cached = sessionStorage.getItem("iwa_theme");
+        const cached = getStoredThemeMode();
         if (cached === "dark") return true;
         if (cached === "light") return false;
         return false;
@@ -29,7 +30,7 @@ const AppShell: React.FC<IIwaAppProps> = ({ context }): React.ReactElement => {
     return (
         <ThemeProvider theme={useDarkTheme ? darkTheme : lightTheme}>
             <CssBaseline />
-            <Box sx={{ minHeight: "100vh", bgcolor: "background.default", color: "text.primary" }}>
+            <Box sx={{ minHeight: "60vh", bgcolor: "background.default", color: "text.primary" }}>
                 <AppBoot
                     context={context}
                     appTitle={Strings.ProjectName}

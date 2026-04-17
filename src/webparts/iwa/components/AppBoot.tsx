@@ -1,11 +1,12 @@
 import * as React from "react";
-import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box } from "@mui/material";
 import { ContextInfo } from "gd-sprest";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { Configuration } from "./data/cfg";
 import { InstallationRequired } from "dattatable";
 import { AppLoad } from "./AppLoad";
-import { formatError } from "./common/utils";
+import { formatError, getStoredThemeMode } from "./common/utils";
+import { BrandedLoadingState } from "./ui/BrandedLoadingState";
 
 type InstallState = "checking" | "ready" | "blocked" | "error";
 
@@ -25,6 +26,16 @@ export const AppBoot: React.FC<IAppBootProps> = ({
     onError
 }): JSX.Element => {
     const [installState, setInstallState] = React.useState<InstallState>("checking");
+
+    React.useEffect((): void => {
+        // Use any locally cached preference before the config-check state
+        // renders so the page does not visibly flash between themes.
+        const storedTheme = getStoredThemeMode();
+
+        if (storedTheme) {
+            setUseDarkTheme(storedTheme === "dark");
+        }
+    }, [setUseDarkTheme]);
 
     React.useEffect((): void => {
         const checkInstall = async (): Promise<void> => {
@@ -71,16 +82,7 @@ export const AppBoot: React.FC<IAppBootProps> = ({
     }
 
     if (installState === "checking") {
-        return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
-                <Stack spacing={3} alignItems="center">
-                    <CircularProgress size={80} thickness={4} enableTrackSlot color="info" />
-                    <Typography variant="h5" fontWeight={500}>
-                        Verifying App Configuration...
-                    </Typography>
-                </Stack>
-            </Box>
-        );
+        return <BrandedLoadingState message="Verifying App Configuration..." useDarkTheme={useDarkTheme} />;
     }
 
     if (installState === "blocked") {

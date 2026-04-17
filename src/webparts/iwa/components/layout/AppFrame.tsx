@@ -1,13 +1,16 @@
 import * as React from "react";
 import { Box } from "@mui/material";
 import { Redirect, Route, Switch } from "react-router-dom";
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { NavHeader } from "./ui/NavHeader";
-import { MyWorkPage } from "./authorizations/MyWorkPage";
-import { AllAuthorizationsPage } from "./authorizations/AllAuthorizationsPage";
-import { DashboardPage } from "./authorizations/DashboardPage";
-import AdminPage from "./admin/AdminPage";
-import { NotFoundPage } from "./ui/NotFoundPage";
+import { NavHeader } from "../ui/NavHeader";
+import { MyWorkPage } from "./MyWorkPage";
+import { AllAuthorizationsPage } from "./AllAuthorizationsPage";
+import { DashboardPage } from "./DashboardPage";
+import AdminPage from "../admin/AdminPage";
+import { NotFoundPage } from "../ui/NotFoundPage";
+import { IwaForm } from "../authorizations/iwaForm";
 
 export interface IAppFrameProps {
     context: WebPartContext;
@@ -39,6 +42,11 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                         </Route>
                         <Route path="/my-work" component={MyWorkPage} />
                         <Route path="/all-authorizations" component={AllAuthorizationsPage} />
+                        <Route path="/authorizations/new" render={() => (
+                            <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                <IwaForm context={context} mode="new" />
+                            </LocalizationProvider>
+                        )} />
                         <Route path="/dashboard" component={DashboardPage} />
                         <Route path="/admin" render={() => <AdminPage context={context} />} />
                         <Route component={NotFoundPage} />

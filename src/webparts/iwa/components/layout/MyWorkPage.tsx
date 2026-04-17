@@ -4,6 +4,7 @@ import {
     Chip,
     CircularProgress,
     Divider,
+    IconButton,
     Paper,
     Stack,
     Tab,
@@ -15,11 +16,13 @@ import {
     TableHead,
     TableRow,
     TextField,
+    Tooltip,
     Typography
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import AssignmentTurnedInOutlinedIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
 import ContentPasteGoOutlinedIcon from "@mui/icons-material/ContentPasteGoOutlined";
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
@@ -52,23 +55,70 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
     helperText,
     icon
 }): JSX.Element => {
+    const theme = useTheme();
+    const isCompact = useMediaQuery(theme.breakpoints.down("lg"));
+    const hideHelperText = useMediaQuery(theme.breakpoints.down("md"));
+
     return (
-        <Paper sx={{ p: 2.5, borderRadius: 3, height: "100%" }}>
-            <Stack spacing={1.5}>
+        <Paper
+            sx={{
+                p: { xs: 1.25, sm: 1.5, md: 1.75 },
+                borderRadius: 3,
+                height: "100%"
+            }}
+        >
+            <Stack spacing={isCompact ? 1 : 1.5}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography variant="subtitle2" color="text.secondary">
+                    <Typography
+                        variant="subtitle2"
+                        color="text.secondary"
+                        sx={{ lineHeight: 1.2, pr: 0.75 }}
+                    >
                         {title}
                     </Typography>
-                    <Box sx={{ color: "info.main", display: "flex", alignItems: "center" }}>
-                        {icon}
-                    </Box>
+                    <Stack direction="row" spacing={0.25} alignItems="center">
+                        {hideHelperText && (
+                            <Tooltip title={helperText} arrow placement="top">
+                                <IconButton
+                                    size="small"
+                                    sx={{
+                                        color: "text.secondary",
+                                        p: 0.25
+                                    }}
+                                >
+                                    <InfoOutlinedIcon fontSize="inherit" />
+                                </IconButton>
+                            </Tooltip>
+                        )}
+                        <Box
+                            sx={{
+                                color: "info.main",
+                                display: "flex",
+                                alignItems: "center",
+                                "& svg": {
+                                    fontSize: isCompact ? 20 : 24
+                                }
+                            }}
+                        >
+                            {icon}
+                        </Box>
+                    </Stack>
                 </Stack>
-                <Typography variant="h4" fontWeight={700}>
+                <Typography variant={isCompact ? "h5" : "h4"} fontWeight={700} lineHeight={1}>
                     {value}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                    {helperText}
-                </Typography>
+                {!hideHelperText && (
+                    <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                            lineHeight: 1.3,
+                            minHeight: isCompact ? 34 : 40
+                        }}
+                    >
+                        {helperText}
+                    </Typography>
+                )}
             </Stack>
         </Paper>
     );
@@ -202,11 +252,10 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             <Box
                 sx={{
                     display: "grid",
-                    gap: 2,
+                    gap: { xs: 1, sm: 1.25, md: 1.5, lg: 2 },
                     gridTemplateColumns: {
-                        xs: "1fr",
-                        sm: "repeat(2, minmax(0, 1fr))",
-                        xl: "repeat(4, minmax(0, 1fr))"
+                        xs: "repeat(2, minmax(0, 1fr))",
+                        sm: "repeat(4, minmax(0, 1fr))"
                     }
                 }}
             >
@@ -238,15 +287,6 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
                 <Stack spacing={2}>
-                    <Box>
-                        <Typography variant="h6" fontWeight={600}>
-                            Pre-Set Views
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Start with the same kind of guided views used in ATR, then narrow further with search.
-                        </Typography>
-                    </Box>
-
                     <Tabs
                         value={selectedView}
                         onChange={(_event: React.SyntheticEvent, value: MyWorkPresetView): void => setSelectedView(value)}
@@ -255,11 +295,24 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                         allowScrollButtonsMobile
                         sx={{
                             minHeight: 0,
+                            // Scrollable tabs keep disabled scroll buttons in the layout,
+                            // which looks like left padding before the first tab. Collapse
+                            // those placeholders so the tab list aligns flush with the paper.
+                            "& .MuiTabs-scrollButtons.Mui-disabled": {
+                                width: 0,
+                                opacity: 0,
+                                overflow: "hidden"
+                            },
+                            "& .MuiTabs-scroller": {
+                                marginLeft: "0 !important"
+                            },
                             "& .MuiTab-root": {
                                 minHeight: 40,
+                                minWidth: 0,
                                 textTransform: "none",
                                 fontWeight: 600,
-                                alignItems: "flex-start"
+                                alignItems: "flex-start",
+                                px: 1.5
                             }
                         }}
                     >
@@ -302,9 +355,6 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                 {filteredRows.length} item{filteredRows.length === 1 ? "" : "s"} shown
                             </Typography>
                         </Box>
-                        <Typography variant="caption" color="text.secondary">
-                            Resources are intentionally excluded from this page.
-                        </Typography>
                     </Stack>
 
                     {(isBootLoading || isMyActionsLoading) && (

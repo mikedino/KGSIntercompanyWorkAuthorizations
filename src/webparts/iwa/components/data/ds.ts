@@ -381,9 +381,10 @@ export class DataSource {
                         "lob/Title", "president/Id", "president/Title",
                         "president/EMail", "CM/Id", "CM/Title",
                         "CM/EMail", "SCM/Id", "SCM/Title",
-                        "SCM/EMail"
+                        "SCM/EMail", "ogType", "parentOg/Id",
+                        "parentOg/Title", "isActive", "isSelectable"
                     ],
-                    Expand: ["lob", "president", "CM", "SCM"],
+                    Expand: ["lob", "president", "CM", "SCM", "parentOg"],
                     Top: 5000
                 })
                 .execute(

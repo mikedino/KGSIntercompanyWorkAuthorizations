@@ -259,7 +259,7 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                                         size={{ xs: 12, sm: "grow" }}
                                         sx={{ minWidth: 0 }}
                                     >
-                                        <Typography fontWeight={700} noWrap>
+                                        <Typography fontWeight={600} noWrap>
                                             {name}
                                         </Typography>
 

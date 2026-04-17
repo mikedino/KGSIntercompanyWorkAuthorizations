@@ -24,7 +24,7 @@
     "@microsoft/sp-webpart-base": "1.21.1",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
-    "@mui/x-date-pickers": "^9.0.0",
+    "@mui/x-date-pickers": "8.27.2",
     "@pnp/spfx-controls-react": "3.23.0",
     "dattatable": "^2.11.65",
     "dayjs": "^1.11.20",

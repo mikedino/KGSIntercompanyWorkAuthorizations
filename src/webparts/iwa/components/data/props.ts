@@ -240,10 +240,10 @@ export interface IAuthorizationItem extends ISystemFields {
   pm?: IPeoplePicker;
   backupRequestor?: IPeoplePicker;
 
-  donorEntity: string;
+  donorEntity: string; //Entity A
   donorEntityAbbr?: string;
   donorGm?: IPeoplePicker;
-  receivingEntity: string;
+  receivingEntity: string; //Entity B
   receivingEntityAbbr?: string;
   receivingGm?: IPeoplePicker;
   og?: string;
