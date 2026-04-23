@@ -38,6 +38,7 @@ import { IPeoplePicker } from "../data/props";
 import { formatError, persistThemeMode } from "../common/utils";
 import { MuiPeoplePicker } from "./CustomPeoplePicker";
 import AlertDialog from "./Alert";
+import { useShellUi } from "./ShellUiContext";
 
 export interface INavHeaderProps {
     context: WebPartContext;
@@ -54,6 +55,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
 }): JSX.Element => {
     const theme = useTheme();
     const history = useHistory();
+    const { showBusy, hideBusy } = useShellUi();
     const isSmall = useMediaQuery(theme.breakpoints.down("md"));
     const userGuideUrl = DataSource.UserGuide;
     const {
@@ -113,6 +115,11 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     const headerTextColor = "#f9f9f9";
     const headerSecondaryColor = "rgba(255,255,255,0.65)";
     const headerAccentColor = theme.palette.secondary.main;
+    const currentRoleLabel = currentUser?.role === "admin"
+        ? "Administrator"
+        : currentUser?.role === "hr"
+            ? "HR"
+            : "User";
 
     const userPhotoUrl = React.useMemo((): string | undefined => {
         const email = currentUser?.user?.EMail || context.pageContext.user.email;
@@ -137,11 +144,17 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     }, [setDialogProps, setUseDarkTheme, useDarkTheme]);
 
     const handleRefresh = React.useCallback(async (): Promise<void> => {
-        clearAuthorizationDetailCache();
-        clearDashboardActionsCache();
-        clearMyActionsCache();
-        await refresh(true);
-    }, [clearAuthorizationDetailCache, clearDashboardActionsCache, clearMyActionsCache, refresh]);
+        showBusy("Refreshing application data...");
+
+        try {
+            clearAuthorizationDetailCache();
+            clearDashboardActionsCache();
+            clearMyActionsCache();
+            await refresh(true);
+        } finally {
+            hideBusy();
+        }
+    }, [clearAuthorizationDetailCache, clearDashboardActionsCache, clearMyActionsCache, hideBusy, refresh, showBusy]);
 
     const handleBackupOpen = React.useCallback((event: React.MouseEvent<HTMLElement>): void => {
         setBackupAnchorEl(event.currentTarget);
@@ -198,14 +211,17 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
 
     return (
         <AppBar
-            position="static"
+            position="sticky"
             elevation={1}
             sx={{
+                top: 0,
+                zIndex: theme.zIndex.drawer + 1,
                 borderRadius: 0,
                 border: "1px solid",
                 borderColor: headerBorderColor,
                 backgroundColor: headerBgColor,
-                color: headerTextColor
+                color: headerTextColor,
+                width: "100%"
             }}
         >
             <Toolbar
@@ -245,7 +261,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                                     {context.pageContext.user.displayName}
                                 </Typography>
                                 <Typography variant="caption" sx={{ color: headerSecondaryColor }} noWrap>
-                                    {currentUser?.role === "admin" ? "Administrator" : "User"}
+                                    {currentRoleLabel}
                                 </Typography>
                             </Stack>
                         )}

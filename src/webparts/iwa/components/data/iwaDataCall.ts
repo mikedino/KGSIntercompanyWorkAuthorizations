@@ -12,6 +12,7 @@ export type RefreshMode = "boot" | "refresh";
 
 export interface IIwaDataState {
     authorizations: IAuthorizationItem[];
+    draftAuthorizations: IAuthorizationItem[];
     runByAuthorizationId: Map<number, IWorkflowRunItem>;
     isBootLoading: boolean;
     isRefreshing: boolean;
@@ -26,6 +27,7 @@ export const useIwaData = (
     enabled = true
 ): IIwaDataState => {
     const [authorizations, setAuthorizations] = useState<IAuthorizationItem[]>([]);
+    const [draftAuthorizations, setDraftAuthorizations] = useState<IAuthorizationItem[]>([]);
     const [runByAuthorizationId, setRunByAuthorizationId] = useState<Map<number, IWorkflowRunItem>>(new Map());
 
     const [isBootLoading, setIsBootLoading] = useState<boolean>(enabled);
@@ -96,6 +98,18 @@ export const useIwaData = (
                 console.error("Error loading authorizations", error);
                 setFatalError(message);
                 onError?.("Data Load Error", message);
+                return false;
+            }
+
+            // STEP 3B: Draft authorizations for resume flow
+            try {
+                const nextDrafts = await DataSource.getDraftAuthorizationsByAuthor();
+                setDraftAuthorizations([...(nextDrafts ?? [])]);
+            } catch (error) {
+                const message = `Error loading draft authorizations: ${formatError(error)}`;
+                console.error("Error loading draft authorizations", error);
+                setFatalError(message);
+                onError?.("Draft Load Error", message);
                 return false;
             }
 
@@ -172,6 +186,7 @@ export const useIwaData = (
 
     return {
         authorizations,
+        draftAuthorizations,
         runByAuthorizationId,
         isBootLoading,
         isRefreshing,

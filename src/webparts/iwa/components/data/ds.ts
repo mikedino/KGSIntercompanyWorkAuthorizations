@@ -187,6 +187,14 @@ export class DataSource {
         return this._config.find((config) => config.IsFor === "CFO")?.User;
     }
 
+    static get States(): string[] {
+        return this._config
+            .filter((config) => config.IsFor === "State")
+            .map((config) => config.Title?.trim() ?? "")
+            .filter((title) => !!title)
+            .sort((left, right) => left.localeCompare(right));
+    }
+
     static getConfig(): Promise<IConfigItem[]> {
         return new Promise<IConfigItem[]>((resolve, reject) => {
             this._config = [];
@@ -200,8 +208,8 @@ export class DataSource {
                         "User/Id", "User/Title", "User/EMail"
                     ],
                     Expand: ["User"],
-                    Filter: `IsFor eq 'HR' or IsFor eq 'CFO' or IsFor eq 'UserGuide'`,
-                    Top: 50
+                    Filter: `IsFor eq 'HR' or IsFor eq 'CFO' or IsFor eq 'UserGuide' or IsFor eq 'State'`,
+                    Top: 5000
                 })
                 .execute(
                     (items) => {
@@ -262,7 +270,34 @@ export class DataSource {
                         this._authorizations = (items?.results ?? []) as unknown as IAuthorizationItem[];
                         resolve(this._authorizations);
                     },
-                    (error) => reject(new Error(`Error fetching Authorizations: ${formatError(error)}`))
+                (error) => reject(new Error(`Error fetching Authorizations: ${formatError(error)}`))
+                );
+        });
+    }
+
+    static getDraftAuthorizationsByAuthor(): Promise<IAuthorizationItem[]> {
+        return new Promise<IAuthorizationItem[]>((resolve, reject) => {
+            const currentUserId = ContextInfo.userId;
+
+            if (!currentUserId) {
+                resolve([]);
+                return;
+            }
+
+            Web(Strings.Sites.main.url)
+                .Lists(Strings.Sites.main.lists.Authorizations)
+                .Items()
+                .query({
+                    GetAllItems: true,
+                    OrderBy: ["Modified desc"],
+                    Select: this.authorizationSelectQuery,
+                    Expand: this.authorizationExpandQuery,
+                    Filter: `authorizationStatus eq 'draft' and Author/Id eq ${currentUserId}`,
+                    Top: 5000
+                })
+                .execute(
+                    (items) => resolve((items?.results ?? []) as unknown as IAuthorizationItem[]),
+                    (error) => reject(new Error(`Error fetching Draft Authorizations: ${formatError(error)}`))
                 );
         });
     }
@@ -273,7 +308,7 @@ export class DataSource {
 
     public static runSelectQuery: string[] = [
         "Id", "Title", "runNumber",
-        "runType", "runStatus", "outcome",
+        "runType", "runStatus", "hasDecision", "outcome",
         "currentStepKey", "pendingRole", "stepAssignedDate",
         "completedOn", "skipPmStep", "approvedSnapshotJson",
         "Created", "Modified", "authorization/Id",

@@ -7,7 +7,7 @@ export class WorkflowService {
 
     private static readonly runSelectQuery: string[] = [
         "Id", "Title", "runNumber",
-        "runType", "runStatus", "outcome",
+        "runType", "runStatus", "hasDecision", "outcome",
         "currentStepKey", "pendingRole", "stepAssignedDate",
         "completedOn", "skipPmStep", "approvedSnapshotJson",
         "Created", "Modified", "authorization/Id",

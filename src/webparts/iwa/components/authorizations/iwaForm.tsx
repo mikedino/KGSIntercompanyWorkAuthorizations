@@ -1,28 +1,22 @@
 import * as React from "react";
 import {
-    Alert, Autocomplete, Box, Button, Chip, Divider, Grid, List, ListItem,
-    ListItemText, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
+    Autocomplete, Box, Breadcrumbs, Button, Chip, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
 } from "@mui/material";
-import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
-import AttachFileOutlinedIcon from "@mui/icons-material/AttachFileOutlined";
-import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
-import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
-import TravelExploreOutlinedIcon from "@mui/icons-material/TravelExploreOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
 import ArrowForwardOutlinedIcon from "@mui/icons-material/ArrowForwardOutlined";
+import NavigateNextOutlinedIcon from "@mui/icons-material/NavigateNextOutlined";
 import dayjs, { Dayjs } from "dayjs";
 import { IPersonaProps } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { useHistory } from "react-router-dom";
+import { Link as RouterLink, useHistory, useLocation } from "react-router-dom";
 import { Web } from "gd-sprest";
 import AlertDialog from "../ui/Alert";
 import { PageHeader } from "../ui/PageHeader";
 import { MuiPeoplePicker } from "../ui/CustomPeoplePicker";
 import { CompactDateField } from "../ui/CompactDateField";
+import { useShellUi } from "../ui/ShellUiContext";
 import { DataSource } from "../data/ds";
 import { useIwa } from "../data/iwaContext";
 import {
@@ -32,12 +26,27 @@ import {
     IContractItem,
     IEntityItem,
     IInvoiceItem,
+    IJobItem,
     IOgItem,
     IPeoplePicker
 } from "../data/props";
 import Strings from "../common/strings";
 import { formatError } from "../common/utils";
 import { AuthorizationService } from "./iwaService";
+import { ApproverResolver } from "../workflow/defaultApprovers";
+import { WorkflowRunService } from "../workflow/runService";
+import { WorkflowActionService } from "../workflow/actionService";
+import { IwaReviewSection } from "./IwaReviewSection";
+import { IwaAttachmentsPanel } from "./IwaAttachmentsPanel";
+import {
+    IFfpLaborConfig,
+    IEditableResourceRow,
+    IEditableTravelRow,
+    IwaWorkPackageStep
+} from "./IwaWorkPackageStep";
+import { ResourceService } from "../resources/resourceService";
+import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
+import { TravelOdcService } from "../travelodc/travelOdcService";
 
 interface IIwaFormProps {
     context: WebPartContext;
@@ -45,14 +54,37 @@ interface IIwaFormProps {
     item?: IAuthorizationItem;
 }
 
-interface IAttachmentItem {
-    FileName: string;
-    ServerRelativeUrl?: string;
+interface IAuthorizationFormLocationState {
+    returnTo?: string;
 }
 
-type IwaFormStep = 0 | 1 | 2;
+type IwaFormStep = 0 | 1 | 2 | 3;
 
-const stepLabels: string[] = ["Basic Information", "Details", "Review & Submit"];
+const stepLabels: string[] = ["Basic Information", "Resources & Travel", "Details & Attachments", "Review & Submit"];
+
+const createLocalRowId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const createEmptyResourceRow = (): IEditableResourceRow => ({
+    id: createLocalRowId(),
+    state: "",
+    comments: "",
+    jobId: "",
+    laborCategory: "",
+    standardHours: "",
+    overtimeHours: "",
+    annualSalary: "",
+    standardRate: "",
+    overtimeRate: ""
+});
+
+const createEmptyTravelRow = (): IEditableTravelRow => ({
+    id: createLocalRowId(),
+    lineType: "travel",
+    jobId: "",
+    description: "",
+    amount: "",
+    comments: ""
+});
 
 const contractTypeOptions: Array<{ value: ContractType; label: string; helperText: string; }> = [
     {
@@ -117,7 +149,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     item
 }): JSX.Element => {
     const history = useHistory();
+    const location = useLocation<IAuthorizationFormLocationState | undefined>();
     const { refresh } = useIwa();
+    const { showBusy, hideBusy, showSuccess, hideSuccess } = useShellUi();
+    const successTimeoutRef = React.useRef<number | undefined>(undefined);
+    const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/all";
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -125,8 +161,18 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [isInvoicesLoading, setIsInvoicesLoading] = React.useState<boolean>(false);
     const [isSaving, setIsSaving] = React.useState<boolean>(false);
     const [draftId, setDraftId] = React.useState<number | undefined>(item?.Id);
-    const [attachments, setAttachments] = React.useState<IAttachmentItem[]>([]);
+    const [attachments, setAttachments] = React.useState<Array<{ FileName: string; ServerRelativeUrl?: string; }>>([]);
     const [contractOgWarning, setContractOgWarning] = React.useState<string>("");
+    const [invoiceOptions, setInvoiceOptions] = React.useState<IInvoiceItem[]>(() => [...DataSource.Invoices]);
+    const [jobOptions, setJobOptions] = React.useState<IJobItem[]>(() => [...DataSource.Jobs]);
+    const [resourceRows, setResourceRows] = React.useState<IEditableResourceRow[]>([createEmptyResourceRow()]);
+    const [travelRows, setTravelRows] = React.useState<IEditableTravelRow[]>([]);
+    const [ffpLaborConfig, setFfpLaborConfig] = React.useState<IFfpLaborConfig>({
+        jobId: "",
+        laborCategory: "",
+        comments: ""
+    });
+    const stateOptions = React.useMemo<string[]>(() => [...DataSource.States], []);
 
     const [dialogOpen, setDialogOpen] = React.useState<boolean>(false);
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
@@ -140,6 +186,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
     const [periodStart, setPeriodStart] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodStart));
     const [periodEnd, setPeriodEnd] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodEnd));
+    const isExistingSubmittedEdit = mode === "edit" && form.authorizationStatus !== "draft";
+
+    React.useEffect(() => {
+        return () => {
+            if (successTimeoutRef.current) {
+                window.clearTimeout(successTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const peoplePickerContext = React.useMemo(() => ({
         absoluteUrl: context.pageContext.web.absoluteUrl,
@@ -161,9 +216,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         return [...DataSource.Contracts].sort((left, right) => left.field_20.localeCompare(right.field_20));
     }, []);
 
-    const invoiceOptions = React.useMemo<IInvoiceItem[]>(() => {
-        return [...DataSource.Invoices].sort((left, right) => left.field_42.localeCompare(right.field_42));
-    }, []);
+    const sortedInvoiceOptions = React.useMemo<IInvoiceItem[]>(() => {
+        return [...invoiceOptions].sort((left, right) => left.field_42.localeCompare(right.field_42));
+    }, [invoiceOptions]);
 
     const selectedDonorEntity = React.useMemo<IEntityItem | null>(() => {
         return entityOptions.find((entity: IEntityItem) => entity.Title === form.donorEntity) ?? null;
@@ -178,8 +233,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [contractOptions, form.contractId]);
 
     const selectedInvoice = React.useMemo<IInvoiceItem | null>(() => {
-        return invoiceOptions.find((invoice: IInvoiceItem) => invoice.InvoiceID1 === form.invoice) ?? null;
-    }, [form.invoice, invoiceOptions]);
+        return sortedInvoiceOptions.find((invoice: IInvoiceItem) => invoice.InvoiceID1 === form.invoice) ?? null;
+    }, [form.invoice, sortedInvoiceOptions]);
 
     const selectedOg = React.useMemo<IOgItem | null>(() => {
         return ogOptions.find((og: IOgItem) => og.Title === form.og) ?? null;
@@ -200,9 +255,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setDialogOpen(false);
 
         if (navigateAfterDialog) {
-            history.push("/my-work");
+            history.push(returnTo);
         }
-    }, [history, navigateAfterDialog]);
+    }, [history, navigateAfterDialog, returnTo]);
 
     const updateField = React.useCallback(<K extends keyof IAuthorizationItem>(key: K, value: IAuthorizationItem[K]): void => {
         setForm((prev: IAuthorizationItem) => ({
@@ -235,9 +290,73 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             .Items()
             .getById(authorizationId)
             .AttachmentFiles()
-            .executeAndWait() as { results?: IAttachmentItem[]; };
+            .executeAndWait() as { results?: Array<{ FileName: string; ServerRelativeUrl?: string; }>; };
 
-        setAttachments((files?.results ?? []) as IAttachmentItem[]);
+        setAttachments((files?.results ?? []) as Array<{ FileName: string; ServerRelativeUrl?: string; }>);
+    }, []);
+
+    const loadWorkPackageDraft = React.useCallback(async (authorizationId: number): Promise<void> => {
+        const [resources, laborLines, travelOdcs] = await Promise.all([
+            ResourceService.getByAuthorization(authorizationId),
+            LaborLineItemService.getByAuthorization(authorizationId),
+            TravelOdcService.getByAuthorization(authorizationId)
+        ]);
+
+        const sortedResources = [...(resources ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const sortedLaborLines = [...(laborLines ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const sortedTravelOdcs = [...(travelOdcs ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+
+        const tmLaborByResourceId = new Map<number, typeof sortedLaborLines[number]>();
+
+        sortedLaborLines.forEach((line) => {
+            if (line.pricingType !== "tm") {
+                return;
+            }
+
+            const resourceId = line.resources?.results?.[0]?.Id;
+
+            if (resourceId) {
+                tmLaborByResourceId.set(resourceId, line);
+            }
+        });
+
+        const nextResources: IEditableResourceRow[] = sortedResources.map((resource) => {
+            const tmLabor = tmLaborByResourceId.get(resource.Id);
+
+            return {
+                id: String(resource.Id),
+                employee: resource.employee,
+                state: resource.state ?? "",
+                comments: resource.comments ?? "",
+                jobId: tmLabor?.jobId ?? "",
+                laborCategory: tmLabor?.laborCategory ?? "",
+                standardHours: tmLabor?.standardHours !== undefined && tmLabor?.standardHours !== null ? String(tmLabor.standardHours) : "",
+                overtimeHours: tmLabor?.overtimeHours !== undefined && tmLabor?.overtimeHours !== null ? String(tmLabor.overtimeHours) : "",
+                annualSalary: tmLabor?.annualSalary !== undefined && tmLabor?.annualSalary !== null ? String(tmLabor.annualSalary) : "",
+                standardRate: tmLabor?.standardRate !== undefined && tmLabor?.standardRate !== null ? String(tmLabor.standardRate) : "",
+                overtimeRate: tmLabor?.overtimeRate !== undefined && tmLabor?.overtimeRate !== null ? String(tmLabor.overtimeRate) : ""
+            };
+        });
+
+        setResourceRows(nextResources.length > 0 ? nextResources : [createEmptyResourceRow()]);
+
+        const ffpLabor = sortedLaborLines.find((line) => line.pricingType === "ffp");
+        setFfpLaborConfig({
+            jobId: ffpLabor?.jobId ?? "",
+            laborCategory: ffpLabor?.laborCategory ?? "",
+            comments: ffpLabor?.comments ?? ""
+        });
+
+        const nextTravelRows: IEditableTravelRow[] = sortedTravelOdcs.map((travel) => ({
+            id: String(travel.Id),
+            lineType: travel.lineType,
+            jobId: travel.jobId ?? "",
+            description: travel.description ?? "",
+            amount: String(travel.amount ?? ""),
+            comments: travel.comments ?? ""
+        }));
+
+        setTravelRows(nextTravelRows);
     }, []);
 
     const resolveProjectManager = React.useCallback(async (contract: IContractItem | null): Promise<IPeoplePicker | undefined> => {
@@ -321,7 +440,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             try {
-                await loadAttachments(item.Id);
+                await Promise.all([
+                    loadAttachments(item.Id),
+                    loadWorkPackageDraft(item.Id)
+                ]);
             } catch (error) {
                 showDialog("Attachment Load Error", formatError(error));
             } finally {
@@ -337,7 +459,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             showDialog("Attachment Load Error", formatError(error));
             setIsBootstrapping(false);
         });
-    }, [item?.Id, loadAttachments, mode, showDialog]);
+    }, [item?.Id, loadAttachments, loadWorkPackageDraft, mode, showDialog]);
 
     // Keep entity abbreviations and GMs aligned with the selected entities so
     // downstream numbering/workflow logic can trust the header values.
@@ -356,7 +478,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     React.useEffect((): void => {
         const syncContract = async (): Promise<void> => {
             if (!selectedContract) {
-                setAttachments((prev: IAttachmentItem[]) => prev);
+                setAttachments((prev) => prev);
+                setInvoiceOptions([]);
+                setJobOptions([]);
                 updateField("contractName", "");
                 updateField("invoice", "");
                 setContractOgWarning("");
@@ -373,8 +497,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             setIsInvoicesLoading(true);
 
             try {
-                await DataSource.getInvoicesByContract(selectedContract.field_19);
+                const [invoices, jobs] = await Promise.all([
+                    DataSource.getInvoicesByContract(selectedContract.field_19),
+                    DataSource.getJobsByContract(selectedContract.field_19)
+                ]);
+                setInvoiceOptions([...(invoices ?? [])]);
+                setJobOptions([...(jobs ?? [])]);
             } catch (error) {
+                setInvoiceOptions([]);
+                setJobOptions([]);
                 showDialog("Invoice Load Error", formatError(error));
             } finally {
                 setIsInvoicesLoading(false);
@@ -399,6 +530,95 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const missingInvoiceHint = !!form.contractId && !selectedInvoice;
     const periodEndBeforeStart = !!periodStart && !!periodEnd && periodEnd.isBefore(periodStart, "day");
 
+    const addResourceRow = React.useCallback((row?: IEditableResourceRow): void => {
+        setResourceRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyResourceRow()]);
+    }, []);
+
+    const removeResourceRow = React.useCallback((id: string): void => {
+        setResourceRows((prev) => {
+            const next = prev.filter((row) => row.id !== id);
+            return next.length > 0 ? next : [createEmptyResourceRow()];
+        });
+    }, []);
+
+    const updateResourceRow = React.useCallback((id: string, patch: Partial<IEditableResourceRow>): void => {
+        setResourceRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
+    }, []);
+
+    const addTravelRow = React.useCallback((row?: IEditableTravelRow): void => {
+        setTravelRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyTravelRow()]);
+    }, []);
+
+    const removeTravelRow = React.useCallback((id: string): void => {
+        setTravelRows((prev) => prev.filter((row) => row.id !== id));
+    }, []);
+
+    const updateTravelRow = React.useCallback((id: string, patch: Partial<IEditableTravelRow>): void => {
+        setTravelRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
+    }, []);
+
+    const updateFfpLabor = React.useCallback((patch: Partial<IFfpLaborConfig>): void => {
+        setFfpLaborConfig((prev) => ({ ...prev, ...patch }));
+    }, []);
+
+    const resourceStepIsValid = React.useMemo((): boolean => {
+        if (resourceRows.length === 0) {
+            return false;
+        }
+
+        const hasAtLeastOneAssignedResource = resourceRows.some((row) => !!row.employee?.Id);
+
+        if (!hasAtLeastOneAssignedResource) {
+            return false;
+        }
+
+        const resourcesValid = resourceRows.every((row) => {
+            if (!row.employee?.Id) {
+                return false;
+            }
+
+            if (!row.state.trim()) {
+                return false;
+            }
+
+            if (form.contractType === "tm") {
+                const standardHours = row.standardHours.trim();
+                const overtimeHours = row.overtimeHours.trim();
+                const hasHours = standardHours || overtimeHours;
+
+                return !!row.jobId.trim() &&
+                    !!row.laborCategory.trim() &&
+                    !!hasHours &&
+                    (!standardHours || !Number.isNaN(Number(standardHours))) &&
+                    (!overtimeHours || !Number.isNaN(Number(overtimeHours)));
+            }
+
+            return true;
+        });
+
+        if (!resourcesValid) {
+            return false;
+        }
+
+        if (form.contractType === "ffp" && (!ffpLaborConfig.jobId.trim() || !ffpLaborConfig.laborCategory.trim())) {
+            return false;
+        }
+
+        const travelValid = travelRows.every((row) => {
+            if (!row.jobId.trim()) {
+                return false;
+            }
+
+            if (!row.amount.trim()) {
+                return false;
+            }
+
+            return !Number.isNaN(Number(row.amount));
+        });
+
+        return travelValid;
+    }, [ffpLaborConfig.jobId, ffpLaborConfig.laborCategory, form.contractType, resourceRows, travelRows]);
+
     const validateStep = React.useCallback((step: IwaFormStep): boolean => {
         if (step === 0) {
             return Boolean(
@@ -418,11 +638,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         if (step === 1) {
+            return resourceStepIsValid;
+        }
+
+        if (step === 2) {
             return Boolean((form.scopeOfWork ?? "").trim() && (form.justification ?? "").trim());
         }
 
         return true;
-    }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart]);
+    }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart, resourceStepIsValid]);
 
     const handleStepButtonClick = React.useCallback((targetStep: number): void => {
         if (targetStep > activeStep && !validateStep(activeStep)) {
@@ -441,7 +665,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             return;
         }
 
-        setActiveStep((prev: IwaFormStep) => Math.min(prev + 1, 2) as IwaFormStep);
+        setActiveStep((prev: IwaFormStep) => Math.min(prev + 1, 3) as IwaFormStep);
     }, [activeStep, showDialog, validateStep]);
 
     const handlePrevious = React.useCallback((): void => {
@@ -495,6 +719,71 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
     }, [draftId, loadAttachments, showDialog]);
 
+    const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<void> => {
+        const activeResources = resourceRows
+            .filter((row) => row.employee?.Id)
+            .map((row, index) => ({
+                title: `Resource-${index + 1}-${row.employee?.Title ?? "Employee"}`,
+                lineNumber: index + 1,
+                displayOrder: index + 1,
+                employeeId: row.employee!.Id,
+                state: row.state.trim(),
+                comments: row.comments.trim()
+            }));
+
+        const createdResources = await ResourceService.replaceForAuthorization(authorizationId, activeResources);
+        const createdByLineNumber = new Map<number, number>();
+        createdResources.forEach((resource) => {
+            if (resource.lineNumber) {
+                createdByLineNumber.set(resource.lineNumber, resource.Id);
+            }
+        });
+
+        const laborRows = form.contractType === "tm"
+            ? resourceRows
+                .filter((row) => row.employee?.Id)
+                .map((row, index) => ({
+                    title: `Labor-${index + 1}-${row.employee?.Title ?? "Employee"}`,
+                    lineNumber: index + 1,
+                    displayOrder: index + 1,
+                    pricingType: "tm" as const,
+                    jobId: row.jobId.trim(),
+                    laborCategory: row.laborCategory.trim(),
+                    resourceIds: [createdByLineNumber.get(index + 1)].filter((value): value is number => typeof value === "number"),
+                    comments: row.comments.trim(),
+                    annualSalary: Number(row.annualSalary || 0),
+                    standardRate: Number(row.standardRate || 0),
+                    overtimeRate: Number(row.overtimeRate || 0),
+                    standardHours: Number(row.standardHours || 0),
+                    overtimeHours: Number(row.overtimeHours || 0)
+                }))
+            : [{
+                title: "Labor-1-FFP",
+                lineNumber: 1,
+                displayOrder: 1,
+                pricingType: "ffp" as const,
+                jobId: ffpLaborConfig.jobId.trim(),
+                laborCategory: ffpLaborConfig.laborCategory.trim(),
+                resourceIds: createdResources.map((resource) => resource.Id),
+                comments: ffpLaborConfig.comments.trim()
+            }];
+
+        await LaborLineItemService.replaceForAuthorization(authorizationId, laborRows);
+
+        const activeTravelRows = travelRows.map((row, index) => ({
+            title: `${row.lineType.toUpperCase()}-${index + 1}`,
+            lineNumber: index + 1,
+            displayOrder: index + 1,
+            lineType: row.lineType,
+            jobId: row.jobId.trim(),
+            description: row.description.trim(),
+            amount: Number(row.amount || 0),
+            comments: row.comments.trim()
+        }));
+
+        await TravelOdcService.replaceForAuthorization(authorizationId, activeTravelRows);
+    }, [ffpLaborConfig.comments, ffpLaborConfig.jobId, ffpLaborConfig.laborCategory, form.contractType, resourceRows, travelRows]);
+
     const persistAuthorization = React.useCallback(async (status: AuthorizationStatus): Promise<void> => {
         const authorizationId = draftId ?? form.Id;
 
@@ -505,6 +794,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         setIsSaving(true);
         setSubmitted(true);
+        showBusy(status === "draft" ? "Saving authorization draft..." : "Submitting authorization...");
 
         const nextForm: IAuthorizationItem = {
             ...form,
@@ -515,26 +805,78 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         };
 
         try {
-            const saved = mode === "new" && status !== "draft"
-                ? await AuthorizationService.submitNew(nextForm, status)
-                : await AuthorizationService.edit(nextForm, status);
+            let saved: IAuthorizationItem;
+            const isFirstSubmit = status !== "draft" && (
+                !form.currentWorkflowRun?.Id ||
+                String(form.authorizationStatus ?? "draft").toLowerCase() === "draft" ||
+                !form.Title ||
+                form.Title.trim().toLowerCase() === "draft"
+            );
+
+            if (isFirstSubmit) {
+                const approvers = await ApproverResolver.resolve(nextForm);
+
+                saved = await AuthorizationService.submitNew(nextForm, status);
+
+                const firstRun = await WorkflowRunService.createFirstRun(saved, approvers);
+                await AuthorizationService.updateRunId(saved.Id, firstRun.Id);
+                await WorkflowActionService.createSubmitted(saved, firstRun);
+
+                saved = {
+                    ...saved,
+                    currentWorkflowRun: {
+                        Id: firstRun.Id,
+                        Title: firstRun.Title
+                    }
+                };
+            } else {
+                saved = await AuthorizationService.edit(nextForm, status);
+            }
+
+            await syncWorkPackageData(saved.Id);
 
             setForm(saved);
             setDraftId(saved.Id);
             await refresh(true);
 
             if (status === "draft") {
-                showDialog("Draft Saved", "The authorization header draft was saved. You can come back and continue building out resources, labor, and travel later.");
+                showSuccess("Draft saved successfully.");
+                if (successTimeoutRef.current) {
+                    window.clearTimeout(successTimeoutRef.current);
+                }
+                successTimeoutRef.current = window.setTimeout(() => {
+                    hideSuccess();
+                }, 1500);
                 return;
             }
 
-            showDialog("Authorization Submitted", `Authorization ${saved.Title} was submitted successfully.`, true);
+            if (isExistingSubmittedEdit && !isFirstSubmit) {
+                showSuccess("Authorization changes saved successfully.");
+                if (successTimeoutRef.current) {
+                    window.clearTimeout(successTimeoutRef.current);
+                }
+                successTimeoutRef.current = window.setTimeout(() => {
+                    hideSuccess();
+                    history.push(returnTo);
+                }, 1500);
+                return;
+            }
+
+            showSuccess(`Authorization ${saved.Title} was submitted successfully.`);
+            if (successTimeoutRef.current) {
+                window.clearTimeout(successTimeoutRef.current);
+            }
+            successTimeoutRef.current = window.setTimeout(() => {
+                hideSuccess();
+                history.push(returnTo);
+            }, 1500);
         } catch (error) {
+            hideBusy();
             showDialog("Authorization Save Error", formatError(error));
         } finally {
             setIsSaving(false);
         }
-    }, [draftId, form, mode, periodEnd, periodStart, refresh, showDialog]);
+    }, [draftId, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, periodEnd, periodStart, refresh, returnTo, showBusy, showDialog, showSuccess, syncWorkPackageData]);
 
     const handleCancel = React.useCallback(async (): Promise<void> => {
         if (mode === "new" && draftId) {
@@ -546,47 +888,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
         }
 
-        history.push("/my-work");
-    }, [draftId, history, mode, showDialog]);
-
-    const renderSummaryCard = (title: string, helperText: string, icon: React.ReactNode, statusText: string): JSX.Element => {
-        return (
-            <Paper sx={{ p: 2.25, height: "100%" }}>
-                <Stack spacing={1.25}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <Box sx={{ color: "info.main", display: "flex", alignItems: "center" }}>
-                            {icon}
-                        </Box>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                            {title}
-                        </Typography>
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary">
-                        {helperText}
-                    </Typography>
-                    <Chip label={statusText} size="small" color="info" variant="outlined" sx={{ alignSelf: "flex-start" }} />
-                </Stack>
-            </Paper>
-        );
-    };
+        history.push(returnTo);
+    }, [draftId, history, mode, returnTo, showDialog]);
 
     const stepOneHasError = submitted && !validateStep(0);
     const stepTwoHasError = submitted && !validateStep(1);
 
     const basicInfoSection = (
-        <Stack spacing={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={1}>
-                    <Typography variant="h6" fontWeight={700}>
-                        Basic Information
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Start with the contract framing. The contract type and selected contract drive the downstream resource and labor experience.
-                    </Typography>
-                </Stack>
-            </Paper>
-
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
+        <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
                 <Grid container spacing={2.5}>
                     <Grid size={{ xs: 12, md: 6 }}>
                         <Autocomplete
@@ -641,7 +950,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             <Typography variant="body2" color="text.secondary">
                                 Choose the billing model first so the related line editors can enforce the right rules later.
                             </Typography>
-                            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+                            <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
                                 {contractTypeOptions.map((option) => {
                                     const isSelected = form.contractType === option.value;
 
@@ -652,6 +961,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                             sx={{
                                                 p: 2,
                                                 flex: 1,
+                                                minWidth: { lg: 260 },
                                                 cursor: "pointer",
                                                 borderColor: isSelected ? "info.main" : undefined,
                                                 backgroundColor: isSelected ? "action.hover" : "background.paper"
@@ -676,11 +986,27 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={contractOptions}
                             value={selectedContract}
+                            autoHighlight
                             onChange={(_, value: IContractItem | null) => {
                                 updateField("contractId", value?.field_19 ?? "");
                                 updateField("contractName", value?.field_20 ?? "");
                             }}
-                            getOptionLabel={(option: IContractItem) => `${option.field_19} | ${option.field_20}`}
+                            getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
+                            filterOptions={(options, state) => {
+                                const search = state.inputValue.trim().toLowerCase();
+
+                                if (!search) {
+                                    return options.slice(0, 20);
+                                }
+
+                                return options.filter((option: IContractItem) => {
+                                    return (
+                                        (option.field_20 ?? "").toLowerCase().includes(search) ||
+                                        (option.field_19 ?? "").toLowerCase().includes(search) ||
+                                        (option.field_35 ?? "").toLowerCase().includes(search)
+                                    );
+                                }).slice(0, 20);
+                            }}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
@@ -690,17 +1016,46 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     helperText={stepOneHasError && !form.contractId ? "Contract is required." : "Select the JAMIS contract that anchors this authorization."}
                                 />
                             )}
+                            renderOption={(props, option: IContractItem) => (
+                                <li {...props} key={option.field_19}>
+                                    <Stack spacing={0.15}>
+                                        <Typography variant="body1" fontWeight={600}>
+                                            {option.field_20}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {option.field_35 || "No customer contract code"}
+                                        </Typography>
+                                    </Stack>
+                                </li>
+                            )}
                         />
                     </Grid>
                     <Grid size={{ xs: 12, md: 6 }}>
                         <Autocomplete
-                            options={invoiceOptions}
+                            options={sortedInvoiceOptions}
                             value={selectedInvoice}
                             loading={isInvoicesLoading}
+                            autoHighlight
                             onChange={(_, value: IInvoiceItem | null) => {
                                 updateField("invoice", value?.InvoiceID1 ?? "");
                             }}
-                            getOptionLabel={(option: IInvoiceItem) => `${option.field_14} | ${option.field_42}`}
+                            getOptionLabel={(option: IInvoiceItem) => option.InvoiceID1 ?? ""}
+                            filterOptions={(options, state) => {
+                                const search = state.inputValue.trim().toLowerCase();
+
+                                if (!search) {
+                                    return options.slice(0, 50);
+                                }
+
+                                return options.filter((option: IInvoiceItem) => {
+                                    return (
+                                        (option.InvoiceID1 ?? "").toLowerCase().includes(search) ||
+                                        (option.field_14 ?? "").toLowerCase().includes(search) ||
+                                        (option.field_42 ?? "").toLowerCase().includes(search) ||
+                                        (option.field_28 ?? "").toLowerCase().includes(search)
+                                    );
+                                }).slice(0, 50);
+                            }}
                             renderInput={(params) => (
                                 <TextField
                                     {...params}
@@ -713,6 +1068,18 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                                 : "Optional, but helpful when the work is tied to a specific invoice or task order."
                                     }
                                 />
+                            )}
+                            renderOption={(props, option: IInvoiceItem) => (
+                                <li {...props} key={option.InvoiceID1}>
+                                    <Stack spacing={0.15}>
+                                        <Typography variant="body1" fontWeight={600}>
+                                            {option.InvoiceID1}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {option.field_42 || option.field_28 || "Invoice"}
+                                        </Typography>
+                                    </Stack>
+                                </li>
                             )}
                         />
                     </Grid>
@@ -800,24 +1167,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         />
                     </Grid>
                 </Grid>
-            </Paper>
-        </Stack>
+        </Paper>
     );
 
     const detailsSection = (
         <Stack spacing={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={1}>
-                    <Typography variant="h6" fontWeight={700}>
-                        Authorization Details
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Capture the narrative that reviewers will need, then use the draft workspace below for attachments and the related editors that plug into this header.
-                    </Typography>
-                </Stack>
-            </Paper>
-
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
+            <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
                 <Grid container spacing={2.5}>
                     <Grid size={{ xs: 12 }}>
                         <TextField
@@ -825,7 +1180,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             fullWidth
                             required
                             multiline
-                            minRows={4}
+                            minRows={3}
                             value={form.scopeOfWork ?? ""}
                             onChange={(event) => updateField("scopeOfWork", event.target.value)}
                             error={stepTwoHasError && !(form.scopeOfWork ?? "").trim()}
@@ -838,7 +1193,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             fullWidth
                             required
                             multiline
-                            minRows={4}
+                            minRows={3}
                             value={form.justification ?? ""}
                             onChange={(event) => updateField("justification", event.target.value)}
                             error={stepTwoHasError && !(form.justification ?? "").trim()}
@@ -858,218 +1213,101 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     </Grid>
                 </Grid>
             </Paper>
-
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={2.5}>
-                    <Stack spacing={0.75}>
-                        <Typography variant="h6" fontWeight={700}>
-                            Draft Workspace
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            The draft header is created immediately so related records can attach to a real authorization Id from the start.
-                        </Typography>
-                        {!!draftId && (
-                            <Alert severity="info" variant="outlined">
-                                Draft Authorization Id: <strong>{draftId}</strong>
-                            </Alert>
-                        )}
-                    </Stack>
-
-                    <Grid container spacing={2}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            {renderSummaryCard(
-                                "Attachments",
-                                "Files can already be added to the draft header and will travel with the authorization into workflow.",
-                                <AttachFileOutlinedIcon />,
-                                `${attachments.length} file${attachments.length === 1 ? "" : "s"}`
-                            )}
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            {renderSummaryCard(
-                                "Resources",
-                                `Resource assignment will plug into this same draft Id next. Contract type is currently set to ${selectedContractType.label}.`,
-                                <GroupOutlinedIcon />,
-                                "Next Surface"
-                            )}
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            {renderSummaryCard(
-                                "Labor Lines",
-                                "Labor charge lines will follow this header once the resource/labor editor is wired in.",
-                                <ReceiptLongOutlinedIcon />,
-                                "Next Surface"
-                            )}
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            {renderSummaryCard(
-                                "Travel / ODC",
-                                "Travel and ODC line items will attach to this header the same way as labor lines.",
-                                <TravelExploreOutlinedIcon />,
-                                "Next Surface"
-                            )}
-                        </Grid>
-                    </Grid>
-
-                    <Divider />
-
-                    <Stack spacing={1.5}>
-                        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1.5}>
-                            <Stack spacing={0.25}>
-                                <Typography variant="subtitle1" fontWeight={700}>
-                                    Attachment Files
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    This is live against the saved draft record, so uploads are available before final submit.
-                                </Typography>
-                            </Stack>
-                            <Button
-                                component="label"
-                                variant="outlined"
-                                startIcon={<AddOutlinedIcon />}
-                                disabled={!draftId}
-                            >
-                                Add Attachment
-                                <input hidden type="file" onChange={(event) => {
-                                    handleUploadAttachment(event).catch((error) => showDialog("Attachment Upload Error", formatError(error)));
-                                }} />
-                            </Button>
-                        </Stack>
-
-                        {attachments.length === 0 ? (
-                            <Paper sx={{ p: 3, borderStyle: "dashed", textAlign: "center" }}>
-                                <Stack spacing={0.75} alignItems="center">
-                                    <DescriptionOutlinedIcon color="disabled" />
-                                    <Typography variant="body1" fontWeight={600}>
-                                        No attachments yet
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Upload supporting backup now, or come back once the resource and pricing lines are ready.
-                                    </Typography>
-                                </Stack>
-                            </Paper>
-                        ) : (
-                            <List dense disablePadding>
-                                {attachments.map((attachment: IAttachmentItem) => (
-                                    <ListItem
-                                        key={attachment.FileName}
-                                        divider
-                                        secondaryAction={(
-                                            <Button
-                                                color="error"
-                                                size="small"
-                                                startIcon={<DeleteOutlineOutlinedIcon />}
-                                                onClick={() => {
-                                                    handleRemoveAttachment(attachment.FileName).catch((error) => showDialog("Attachment Remove Error", formatError(error)));
-                                                }}
-                                            >
-                                                Remove
-                                            </Button>
-                                        )}
-                                    >
-                                        <ListItemText
-                                            primary={attachment.FileName}
-                                            secondary={attachment.ServerRelativeUrl ?? "Attached to current draft"}
-                                        />
-                                    </ListItem>
-                                ))}
-                            </List>
-                        )}
-                    </Stack>
-                </Stack>
-            </Paper>
         </Stack>
+    );
+
+    const workPackageSection = (
+        <IwaWorkPackageStep
+            contractType={form.contractType}
+            jobs={jobOptions}
+            states={stateOptions}
+            peoplePickerContext={peoplePickerContext}
+            resourceRows={resourceRows}
+            travelRows={travelRows}
+            ffpLaborConfig={ffpLaborConfig}
+            submitted={submitted}
+            onAddResource={addResourceRow}
+            onRemoveResource={removeResourceRow}
+            onUpdateResource={updateResourceRow}
+            onAddTravel={addTravelRow}
+            onRemoveTravel={removeTravelRow}
+            onUpdateTravel={updateTravelRow}
+            onUpdateFfpLaborConfig={updateFfpLabor}
+        />
     );
 
     const reviewSection = (
-        <Stack spacing={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={1}>
-                    <Typography variant="h6" fontWeight={700}>
-                        Review & Submit
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        This is the final pass before the authorization gets its official IWA number and moves into workflow.
-                    </Typography>
-                </Stack>
-            </Paper>
-
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Grid container spacing={2.5}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Donor / Receiver</Typography>
-                        <Typography variant="body2" color="text.secondary">{`${form.donorEntity || "—"} -> ${form.receivingEntity || "—"}`}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Contract Framing</Typography>
-                        <Typography variant="body2" color="text.secondary">{form.contractId || "—"} | {form.contractName || "—"}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Contract Type</Typography>
-                        <Typography variant="body2" color="text.secondary">{selectedContractType.label}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Invoice / Task Order</Typography>
-                        <Typography variant="body2" color="text.secondary">{selectedInvoice ? `${selectedInvoice.field_14} | ${selectedInvoice.field_42}` : "Not specified"}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Workflow Routing</Typography>
-                        <Typography variant="body2" color="text.secondary">{form.pm?.Title || "—"} | {form.og || "—"} | {form.lob || "—"}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Period</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            {periodStart?.format("M/D/YYYY") || "—"} - {periodEnd?.format("M/D/YYYY") || "—"}
-                        </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Divider sx={{ my: 0.5 }} />
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Scope of Work</Typography>
-                        <Typography variant="body2" color="text.secondary">{(form.scopeOfWork ?? "").trim() || "—"}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Justification</Typography>
-                        <Typography variant="body2" color="text.secondary">{(form.justification ?? "").trim() || "—"}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Notes</Typography>
-                        <Typography variant="body2" color="text.secondary">{(form.notes ?? "").trim() || "No notes entered."}</Typography>
-                    </Grid>
-                    <Grid size={{ xs: 12 }}>
-                        <Typography variant="subtitle2" fontWeight={700}>Attachments</Typography>
-                        <Typography variant="body2" color="text.secondary">{attachments.length} file(s) currently attached to the draft header.</Typography>
-                    </Grid>
-                </Grid>
-            </Paper>
-        </Stack>
+        <Box sx={{ maxWidth: 1200, mx: "auto", width: "100%" }}>
+            <IwaReviewSection
+                attachmentsCount={attachments.length}
+                ffpLaborConfig={ffpLaborConfig}
+                form={form}
+                jobs={jobOptions}
+                periodEnd={periodEnd}
+                periodStart={periodStart}
+                resourceRows={resourceRows.filter((row) => !!row.employee?.Id)}
+                selectedContractType={selectedContractType}
+                selectedInvoice={selectedInvoice ?? undefined}
+                travelRows={travelRows}
+            />
+        </Box>
     );
 
     return (
-        <Stack spacing={3}>
-            <PageHeader
-                title={mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
-                subtitle="Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."
-            />
+        <Box sx={{ width: "100%", maxWidth: 1200, mx: "auto" }}>
+            <Stack spacing={3} sx={{ width: "100%" }}>
+                <Stack spacing={1.25} sx={{ px: { xs: 0.25, md: 0.5 }, width: "100%" }}>
+                <Breadcrumbs separator={<NavigateNextOutlinedIcon fontSize="small" />} aria-label="breadcrumb">
+                    <Link component={RouterLink} color="inherit" to="/my-work" underline="hover">
+                        My Work
+                    </Link>
+                    <Typography color="text.primary">
+                        {mode === "new" ? "New Authorization" : "Edit Authorization"}
+                    </Typography>
+                    <Typography color="text.primary">
+                        {stepLabels[activeStep]}
+                    </Typography>
+                </Breadcrumbs>
 
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-                <Stack spacing={2}>
-                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
-                        <Stack spacing={0.5}>
-                            <Typography variant="h6" fontWeight={700}>
-                                Authorization Wizard
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                Compact by design, with validation on step advance so we can keep the form shorter than a long scroll page.
-                            </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                            <Chip label={`Status: ${form.authorizationStatus}`} size="small" variant="outlined" />
-                            {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />}
-                        </Stack>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
+                    <PageHeader
+                        title={mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
+                        subtitle="Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."
+                    />
+
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                        <Chip label={`STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} size="small" variant="outlined" />
+                        {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />}
                     </Stack>
+                </Stack>
+                </Stack>
 
-                    <Stepper nonLinear activeStep={activeStep} alternativeLabel>
+                <Paper sx={{ p: { xs: 2, md: 3 }, width: "100%" }}>
+                <Stack spacing={2}>
+                    <Stepper
+                        nonLinear
+                        activeStep={activeStep}
+                        alternativeLabel
+                        sx={{
+                            "& .MuiStepIcon-root": {
+                                fontSize: { xs: "2rem", md: "2.4rem" }
+                            },
+                            "& .MuiStepIcon-text": {
+                                fontSize: { xs: "0.9rem", md: "1rem" },
+                                fontWeight: 700
+                            },
+                            "& .MuiStepLabel-label": {
+                                fontSize: { xs: "0.95rem", md: "1rem" }
+                            },
+                            "& .MuiStepLabel-label.Mui-active": {
+                                color: "secondary.main",
+                                fontWeight: 700
+                            },
+                            "& .MuiStepIcon-root.Mui-active": {
+                                color: "secondary.main"
+                            }
+                        }}
+                    >
                         {stepLabels.map((label: string, index: number) => (
                             <Step key={label}>
                                 <StepButton color="inherit" onClick={() => handleStepButtonClick(index)}>
@@ -1079,10 +1317,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         ))}
                     </Stepper>
                 </Stack>
-            </Paper>
+                </Paper>
 
-            {isBootstrapping ? (
-                <Paper sx={{ p: 4, textAlign: "center" }}>
+                {isBootstrapping ? (
+                    <Paper sx={{ p: 4, textAlign: "center", width: "100%" }}>
                     <Stack spacing={1}>
                         <Typography variant="h6" fontWeight={700}>
                             Creating Draft Authorization
@@ -1091,55 +1329,66 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             Setting up the header record now so attachments and related rows have somewhere to live.
                         </Typography>
                     </Stack>
-                </Paper>
-            ) : (
-                <>
-                    {activeStep === 0 && basicInfoSection}
-                    {activeStep === 1 && detailsSection}
-                    {activeStep === 2 && reviewSection}
+                    </Paper>
+                ) : (
+                    <>
+                        {activeStep === 0 && basicInfoSection}
+                        {activeStep === 1 && workPackageSection}
+                        {activeStep === 2 && detailsSection}
+                        {activeStep === 3 && reviewSection}
 
-                    <Paper sx={{ p: { xs: 2, md: 2.5 } }}>
-                        <Stack
-                            direction={{ xs: "column", md: "row" }}
-                            justifyContent="space-between"
-                            alignItems={{ xs: "stretch", md: "center" }}
-                            spacing={1.5}
-                        >
-                            <Stack direction="row" spacing={1}>
-                                <Button
-                                    variant="text"
-                                    color="inherit"
-                                    onClick={() => {
-                                        handleCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
+                        {activeStep === 2 && (
+                            <Box sx={{ width: "100%" }}>
+                            <IwaAttachmentsPanel
+                                attachments={attachments}
+                                onRemoveAttachment={handleRemoveAttachment}
+                                onUploadAttachment={handleUploadAttachment}
+                            />
+                            </Box>
+                        )}
+
+                        <Paper sx={{ p: { xs: 2, md: 2.5 }, width: "100%" }}>
+                            <Stack
+                                direction="row"
+                                flexWrap="wrap"
+                                justifyContent="space-between"
+                                alignItems="center"
+                                spacing={1.5}
+                            >
+                                <Stack direction="row" spacing={1}>
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<ArrowBackOutlinedIcon />}
+                                        disabled={activeStep === 0 || isSaving}
+                                        onClick={handlePrevious}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <Button
+                                        variant="text"
+                                        color="inherit"
+                                        onClick={() => {
+                                            handleCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
                                     }}
                                 >
                                     Cancel
                                 </Button>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<SaveOutlinedIcon />}
-                                    disabled={isSaving}
-                                    onClick={() => {
-                                        persistAuthorization("draft").catch((error) => showDialog("Save Error", formatError(error)));
-                                    }}
-                                >
-                                    Save Draft
-                                </Button>
-                            </Stack>
+                                </Stack>
 
-                            <Stack direction="row" spacing={1} justifyContent={{ xs: "space-between", md: "flex-end" }}>
-                                <Button
-                                    variant="outlined"
-                                    startIcon={<ArrowBackOutlinedIcon />}
-                                    disabled={activeStep === 0 || isSaving}
-                                    onClick={handlePrevious}
-                                >
-                                    Previous
-                                </Button>
-
-                                {activeStep < 2 ? (
+                                <Stack direction="row" spacing={1} justifyContent="flex-end">
                                     <Button
-                                        variant="contained"
+                                        variant="outlined"
+                                        startIcon={<SaveOutlinedIcon />}
+                                        disabled={isSaving}
+                                        onClick={() => {
+                                            persistAuthorization(isExistingSubmittedEdit ? (form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
+                                        }}
+                                    >
+                                        {isExistingSubmittedEdit ? "Save Changes" : "Save Draft"}
+                                    </Button>
+                                    {activeStep < 3 ? (
+                                        <Button
+                                            variant="contained"
                                         endIcon={<ArrowForwardOutlinedIcon />}
                                         disabled={isSaving}
                                         onClick={handleNext}
@@ -1153,7 +1402,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         startIcon={<SendOutlinedIcon />}
                                         disabled={isSaving}
                                         onClick={() => {
-                                            if (!validateStep(0) || !validateStep(1)) {
+                                            if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
                                                 setSubmitted(true);
                                                 showDialog("Missing Required Information", "Complete the required fields on the earlier steps before submitting.");
                                                 return;
@@ -1162,21 +1411,22 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                             persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
                                         }}
                                     >
-                                        Submit Authorization
+                                        {isExistingSubmittedEdit ? "Save Updates" : "Submit Authorization"}
                                     </Button>
                                 )}
                             </Stack>
                         </Stack>
-                    </Paper>
-                </>
-            )}
+                        </Paper>
+                    </>
+                )}
 
-            <AlertDialog
-                open={dialogOpen}
-                title={dialogTitle}
-                message={dialogMessage}
-                onClose={handleCloseDialog}
-            />
-        </Stack>
+                <AlertDialog
+                    open={dialogOpen}
+                    title={dialogTitle}
+                    message={dialogMessage}
+                    onClose={handleCloseDialog}
+                />
+            </Stack>
+        </Box>
     );
 };

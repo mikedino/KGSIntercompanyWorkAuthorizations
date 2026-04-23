@@ -23,8 +23,14 @@ export const lightTheme = createTheme({
     success: {
       main: '#28A70C',
     },
+    accent: {
+      main: '#ff6900',
+      light: '#ff8a33',
+      dark: '#b84d00',
+      contrastText: '#ffffff'
+    },
     action: {
-      active: '#0288d1',
+      active: '#00B7FF',
     },
     background: {
       default: '#fafafa',

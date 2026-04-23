@@ -29,12 +29,14 @@ export interface IMyWorkRow {
     backupForNames: string[];
     actedOnByMe: boolean;
     myActionCount: number;
+    isDraft: boolean;
     relationshipBadges: string[];
     searchIndex: string;
 }
 
 export interface IMyWorkSummary {
     rows: IMyWorkRow[];
+    draftCount: number;
     needsMyActionCount: number;
     backupCoverageCount: number;
     createdByMeCount: number;
@@ -155,6 +157,21 @@ const buildActionMap = (myActions: IWorkflowActionItem[]): Map<number, IWorkflow
     return map;
 };
 
+const isMeaningfulMyAction = (
+    action: IWorkflowActionItem,
+    createdByMe: boolean
+): boolean => {
+    if (action.actionType === "approved" || action.actionType === "rejected" || action.actionType === "returned" || action.actionType === "restarted" || action.actionType === "canceled") {
+        return true;
+    }
+
+    if (!createdByMe && action.actionType === "submitted") {
+        return true;
+    }
+
+    return false;
+};
+
 const buildSearchIndex = (row: IMyWorkRow): string => {
     const bits: string[] = [
         row.authorization.Title,
@@ -177,6 +194,7 @@ const buildSearchIndex = (row: IMyWorkRow): string => {
 
 export const buildMyWorkSummary = (
     authorizations: IAuthorizationItem[],
+    draftAuthorizations: IAuthorizationItem[],
     runByAuthorizationId: Map<number, IWorkflowRunItem>,
     myActions: IWorkflowActionItem[],
     appUsers: IAppUserItem[],
@@ -185,20 +203,23 @@ export const buildMyWorkSummary = (
     const backupCoverageMap = buildBackupCoverageMap(appUsers, currentUserId);
     const myActionsByAuthorizationId = buildActionMap(myActions);
 
-    const rows = authorizations
+    const activeRows = authorizations
         .map((authorization: IAuthorizationItem): IMyWorkRow => {
             const currentRun = runByAuthorizationId.get(authorization.Id);
             const authorizationActions = myActionsByAuthorizationId.get(authorization.Id) ?? [];
-            const latestMyAction = authorizationActions[0];
             const pendingApproverId = currentRun?.pendingApprover?.Id;
             const backupForName = typeof pendingApproverId === "number"
                 ? backupCoverageMap.get(pendingApproverId)
                 : undefined;
 
             const createdByMe = authorization.Author?.Id === currentUserId;
+            const meaningfulActions = authorizationActions.filter((action: IWorkflowActionItem): boolean => {
+                return isMeaningfulMyAction(action, createdByMe);
+            });
+            const latestMyAction = meaningfulActions[0];
             const needsMyAction = currentRun?.runStatus === "active" && pendingApproverId === currentUserId;
             const backupForNames = backupForName ? [backupForName] : [];
-            const actedOnByMe = authorizationActions.length > 0;
+            const actedOnByMe = meaningfulActions.length > 0;
 
             // Relationship badges drive the visual "why is this on my page?" cues.
             const relationshipBadges: string[] = [];
@@ -227,7 +248,8 @@ export const buildMyWorkSummary = (
                 needsMyAction,
                 backupForNames,
                 actedOnByMe,
-                myActionCount: authorizationActions.length,
+                myActionCount: meaningfulActions.length,
+                isDraft: false,
                 relationshipBadges,
                 searchIndex: ""
             };
@@ -265,8 +287,32 @@ export const buildMyWorkSummary = (
             return rightRecent - leftRecent;
         });
 
+    const draftRows = draftAuthorizations
+        .map((authorization: IAuthorizationItem): IMyWorkRow => {
+            const row: IMyWorkRow = {
+                authorization,
+                currentRun: undefined,
+                latestMyAction: undefined,
+                createdByMe: true,
+                needsMyAction: false,
+                backupForNames: [],
+                actedOnByMe: false,
+                myActionCount: 0,
+                isDraft: true,
+                relationshipBadges: ["Draft I Started"],
+                searchIndex: ""
+            };
+
+            row.searchIndex = buildSearchIndex(row);
+            return row;
+        })
+        .sort((left, right) => new Date(right.authorization.Modified ?? right.authorization.Created ?? 0).getTime() - new Date(left.authorization.Modified ?? left.authorization.Created ?? 0).getTime());
+
+    const rows = [...draftRows, ...activeRows];
+
     return {
         rows,
+        draftCount: draftRows.length,
         needsMyActionCount: rows.filter((row: IMyWorkRow): boolean => row.needsMyAction).length,
         backupCoverageCount: rows.filter((row: IMyWorkRow): boolean => row.backupForNames.length > 0).length,
         createdByMeCount: rows.filter((row: IMyWorkRow): boolean => row.createdByMe).length,

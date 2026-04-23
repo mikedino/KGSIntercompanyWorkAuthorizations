@@ -19,10 +19,17 @@ export const darkTheme = createTheme({
       main: "#F4B740",
     },
     info: {
-      main: "#0078D4",
+      //main: "#0078D4",
+      main: "#ec66ff"
     },
     success: {
       main: "#28A70C",
+    },
+    accent: {
+      main: "#ff6900",
+      light: "#ff9b4d",
+      dark: "#ff6900",
+      contrastText: "#fff5ee"
     },
     background: {
       default: "#031222",
@@ -30,13 +37,12 @@ export const darkTheme = createTheme({
     },
     text: {
       primary: "#f9f9f9",
-      secondary: "rgba(255,255,255,0.65)",
+      secondary: "#8bbcdc",
       disabled: "#ffffff85",
     },
-    divider: "rgba(200, 220, 255, 0.18)",
+    divider: "rgba(219, 220, 255, 0.3)",
     action: {
       active: "#00B7FF",
-      //active: "rgba(255,255,255,0.72)",
       hover: "rgba(255,255,255,0.08)",
       selected: "rgba(255,255,255,0.14)",
       disabled: "rgba(255,255,255,0.3)",

@@ -16,8 +16,6 @@ export interface MuiPeoplePickerProps {
   sx?: SxProps<Theme>;
   showtooltip?: boolean;
   tooltipMessage?: string;
-
-  // ✅ new
   error?: boolean;
   helperText?: string;
 }
@@ -42,8 +40,10 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
   const borderColor = error
     ? theme.palette.error.main
     : focused
-      ? theme.palette.primary.main
+      ? theme.palette.info.main
       : theme.palette.secondary.light;
+
+  const borderThickness = focused || error ? '2px' : '1px';
 
   return (
     <FormControl
@@ -60,7 +60,7 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
           top: 0,
           transform: "translate(14px, -9px) scale(0.75)",
           transformOrigin: "top left",
-          color: theme.palette.text.secondary,
+          color: focused ? theme.palette.info.main : theme.palette.text.secondary,
           fontWeight: 400,
           fontSize: theme.typography.body1.fontSize,
           backgroundColor: theme.palette.background.paper,
@@ -82,9 +82,8 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
         onFocusCapture={() => setFocused(true)}
         onBlurCapture={() => setFocused(false)}
         style={{
-          border: `1px solid ${borderColor}`,
-          borderRadius: theme.shape.borderRadius,
-          //padding: "8px 14px 6px 10px",
+          border: `${borderThickness} solid ${borderColor}`,
+          borderRadius: theme.shape.borderRadius,          
           padding: "5px 10px",
           minHeight: minInputHeight,
           boxSizing: "border-box",
@@ -108,13 +107,20 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
               width: "100%",
               minWidth: 0,
               selectors: {
-                ".ms-BasePicker-text": { border: "none", minHeight: "unset" },
+                ".ms-BasePicker-text": {
+                  border: "none",
+                  minHeight: "unset",
+                  background: "transparent"
+                },
                 ".ms-PickerPersona-container": {
                   background: theme.palette.background.paper,
                   color: theme.palette.text.primary
                 },
                 ".ms-Persona-primaryText": { color: theme.palette.text.primary },
-                ".ms-BasePicker-input": { color: theme.palette.text.primary },
+                ".ms-BasePicker-input": { 
+                  color: theme.palette.text.primary,
+                  border: "0 !important"
+                },
                 "input::placeholder": {
                   color: theme.palette.text.secondary,
                   opacity: 1

@@ -37,6 +37,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { formatCurrency, formatDate, formatSinceDate } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
 import { workflowRoleLabels } from "../data/props";
+import { useHistory, useParams } from "react-router-dom";
 import {
     AllAuthorizationsPresetView,
     AllAuthorizationsSortField,
@@ -82,9 +83,15 @@ const presetViews: Array<{ value: AllAuthorizationsPresetView; label: string; }>
     { value: "withMods", label: "With Mods" }
 ];
 
+const defaultPresetView: AllAuthorizationsPresetView = "all";
+
+const isPresetView = (value: string | undefined): value is AllAuthorizationsPresetView => {
+    return presetViews.some((view) => view.value === value);
+};
+
 const columnConfigs: IColumnConfig[] = [
     { key: "title", label: "Authorization", sortField: "title", minWidth: 280, defaultWidth: 320 },
-    { key: "authorizationStatus", label: "Authorization Status", sortField: "authorizationStatus", minWidth: 170, defaultWidth: 190 },
+    { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 120, defaultWidth: 140 },
     { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 150, defaultWidth: 170 },
     { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 180, defaultWidth: 190 },
     { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 150, defaultWidth: 160 },
@@ -124,14 +131,28 @@ const getPresetSummary = (presetView: AllAuthorizationsPresetView): string => {
     }
 };
 
+const canEditAuthorization = (row: IAllAuthorizationsRow | undefined): boolean => {
+    if (!row) {
+        return false;
+    }
+
+    if (row.authorization.authorizationStatus === "draft") {
+        return true;
+    }
+
+    return row.currentRun?.runStatus === "active" && !row.currentRun?.hasDecision;
+};
+
 export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
+    const history = useHistory();
+    const { view } = useParams<{ view?: string; }>();
     const {
         authorizations,
+        draftAuthorizations,
         isBootLoading,
         runByAuthorizationId
     } = useIwa();
 
-    const [selectedView, setSelectedView] = React.useState<AllAuthorizationsPresetView>("active");
     const [filters, setFilters] = React.useState<IAllAuthorizationsFilters>(defaultFilters);
     const [sortField, setSortField] = React.useState<AllAuthorizationsSortField>("modified");
     const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
@@ -143,6 +164,17 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [showDialog, setShowDialog] = React.useState<boolean>(false);
+    const selectedView = isPresetView(view) ? view : defaultPresetView;
+
+    React.useEffect((): void => {
+        if (!isPresetView(view)) {
+            history.replace(`/all-authorizations/${defaultPresetView}`);
+        }
+    }, [history, view]);
+
+    React.useEffect((): void => {
+        sessionStorage.setItem("iwa:lastReturnLocation", `/all-authorizations/${selectedView}`);
+    }, [selectedView]);
 
     const resizeStateRef = React.useRef<{
         columnKey: ColumnKey;
@@ -151,8 +183,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     } | null>(null);
 
     const allRows = React.useMemo((): IAllAuthorizationsRow[] => {
-        return buildAllAuthorizationRows(authorizations, runByAuthorizationId);
-    }, [authorizations, runByAuthorizationId]);
+        return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId);
+    }, [authorizations, draftAuthorizations, runByAuthorizationId]);
 
     const entityOptions = React.useMemo((): string[] => {
         return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [
@@ -255,8 +287,12 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
     const handleResetFilters = React.useCallback((): void => {
         setFilters({ ...defaultFilters });
-        setSelectedView("active");
-    }, []);
+        history.push(`/all-authorizations/${defaultPresetView}`);
+    }, [history]);
+
+    const handleChangeView = React.useCallback((_event: React.SyntheticEvent, value: AllAuthorizationsPresetView): void => {
+        history.push(`/all-authorizations/${value}`);
+    }, [history]);
 
     const handleExport = React.useCallback((): void => {
         exportAllAuthorizationRows(sortedRows, "iwa-authorizations.csv");
@@ -277,12 +313,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     }, [menuRowId, sortedRows]);
 
     const handleRowDoubleClick = React.useCallback((row: IAllAuthorizationsRow): void => {
-        // View routing is intentionally deferred until the detail route is built.
-        showFeatureDialog(
-            "Authorization Details",
-            `Open authorization ${row.authorization.Title}. The detail route is the next page to wire up, so this entry point is staged and ready.`
-        );
-    }, [showFeatureDialog]);
+        history.push(`/authorizations/view/${row.authorization.Id}`);
+    }, [history]);
 
     const startColumnResize = React.useCallback((
         event: React.MouseEvent<HTMLSpanElement>,
@@ -397,36 +429,47 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                             ))}
                         </TextField>
 
-                        <TextField
-                            select
-                            label="LOB"
-                            value={filters.lob}
-                            onChange={(event: React.ChangeEvent<HTMLInputElement>): void => handleFilterChange("lob", event.target.value)}
+                        <Box
                             sx={{
-                                minWidth: 150,
-                                maxWidth: 300,
-                                width: "100%"
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0, 1fr) auto",
+                                gap: 1,
+                                alignItems: "center",
+                                minWidth: 0
                             }}
                         >
-                            <MenuItem value="">All LOBs</MenuItem>
-                            {lobOptions.map((option: string) => (
-                                <MenuItem key={option} value={option}>
-                                    {option}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-
-                        <Tooltip title="Reset filters">
-                            <IconButton
-                                onClick={handleResetFilters}
+                            <TextField
+                                select
+                                label="LOB"
+                                value={filters.lob}
+                                onChange={(event: React.ChangeEvent<HTMLInputElement>): void => handleFilterChange("lob", event.target.value)}
                                 sx={{
-                                    justifySelf: "flex-end",
-                                    alignSelf: "center"
+                                    minWidth: 150,
+                                    maxWidth: 300,
+                                    width: "100%"
                                 }}
                             >
-                                <FilterAltOffOutlinedIcon />
-                            </IconButton>
-                        </Tooltip>
+                                <MenuItem value="">All LOBs</MenuItem>
+                                {lobOptions.map((option: string) => (
+                                    <MenuItem key={option} value={option}>
+                                        {option}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
+
+                            <Tooltip title="Reset filters">
+                                <IconButton
+                                    onClick={handleResetFilters}
+                                    sx={{
+                                        justifySelf: "end",
+                                        alignSelf: "center",
+                                        flexShrink: 0
+                                    }}
+                                >
+                                    <FilterAltOffOutlinedIcon />
+                                </IconButton>
+                            </Tooltip>
+                        </Box>
                     </Box>
                 </Stack>
             </Paper>
@@ -434,7 +477,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
                 <Tabs
                     value={selectedView}
-                    onChange={(_event: React.SyntheticEvent, value: AllAuthorizationsPresetView): void => setSelectedView(value)}
+                    onChange={handleChangeView}
                     variant="scrollable"
                     scrollButtons="auto"
                     allowScrollButtonsMobile
@@ -601,9 +644,6 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                         <Typography variant="caption" color="text.secondary">
                                                             {row.authorization.donorEntity} {"->"} {row.authorization.receivingEntity}
                                                         </Typography>
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            {row.authorization.og || "No OG"} • {row.authorization.lob || "No LOB"}
-                                                        </Typography>
                                                     </Stack>
                                                 </TableCell>
 
@@ -740,14 +780,21 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
+                        if (canEditAuthorization(selectedMenuRow)) {
+                            history.push(`/authorizations/edit/${selectedMenuRow!.authorization.Id}`, {
+                                returnTo: `/all-authorizations/${selectedView}`
+                            });
+                            return;
+                        }
+
                         showFeatureDialog(
                             "Edit Authorization",
-                            `Edit ${selectedMenuRow?.authorization.Title ?? "this authorization"}. The edit experience has not been connected yet.`
+                            `${selectedMenuRow?.authorization.Title ?? "This authorization"} can only be edited before the first workflow decision is recorded.`
                         );
                     }}
                 >
                     <EditOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
-                    Edit
+                    {selectedMenuRow?.authorization.authorizationStatus === "draft" ? "Resume Draft" : "Edit Authorization"}
                 </MenuItem>
 
                 <MenuItem

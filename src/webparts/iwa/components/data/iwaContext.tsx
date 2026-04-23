@@ -21,6 +21,7 @@ import { WorkflowService } from "../workflow/workflowService";
 
 export interface IIwaContext {
   authorizations: IAuthorizationItem[];
+  draftAuthorizations: IAuthorizationItem[];
   runByAuthorizationId: Map<number, IWorkflowRunItem>;
 
   appUser?: IAppUserItem;
@@ -74,6 +75,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
 }): React.ReactElement => {
   const {
     authorizations,
+    draftAuthorizations,
     runByAuthorizationId,
     appUser,
     isBootLoading,
@@ -475,6 +477,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
   const value = React.useMemo<IIwaContext>(() => {
     return {
       authorizations,
+      draftAuthorizations,
       runByAuthorizationId,
 
       appUser: currentUser,
@@ -515,6 +518,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
   }, [
     actionsByAuthorizationId,
     authorizations,
+    draftAuthorizations,
     appUserByUserId,
     appUsers,
     clearAuthorizationDetailCache,

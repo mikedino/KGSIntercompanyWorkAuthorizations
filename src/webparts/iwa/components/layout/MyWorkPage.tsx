@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
     Box,
+    Button,
     Chip,
     CircularProgress,
     Divider,
@@ -30,6 +31,7 @@ import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import { useIwa } from "../data/iwaContext";
 import { formatDate, formatSinceDate } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
+import { useHistory, useParams } from "react-router-dom";
 import {
     authorizationStatusLabels,
     buildMyWorkSummary,
@@ -133,7 +135,13 @@ const presetViews: Array<{ value: MyWorkPresetView; label: string; }> = [
     { value: "closed", label: "Recently Closed" }
 ];
 
-const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; }> = ({ row }): JSX.Element => {
+const defaultPresetView: MyWorkPresetView = "all";
+
+const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
+    return presetViews.some((view) => view.value === value);
+};
+
+const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; onResumeDraft: (id: number) => void; }> = ({ row, onResumeDraft }): JSX.Element => {
     const currentStatusLabel = `Authorization ${authorizationStatusLabels[row.authorization.authorizationStatus]}`;
 
     return (
@@ -186,6 +194,16 @@ const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; }> = ({ row }): JSX.Element 
                         <strong>Entities:</strong> {row.authorization.donorEntity} {"->"} {row.authorization.receivingEntity}
                     </Typography>
                 </Stack>
+
+                {row.isDraft && (
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        onClick={() => onResumeDraft(row.authorization.Id)}
+                    >
+                        Resume Draft
+                    </Button>
+                )}
             </Stack>
         </Paper>
     );
@@ -193,9 +211,12 @@ const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; }> = ({ row }): JSX.Element 
 
 export const MyWorkPage: React.FC = (): JSX.Element => {
     const theme = useTheme();
+    const history = useHistory();
+    const { view } = useParams<{ view?: string; }>();
     const isSmall = useMediaQuery(theme.breakpoints.down("md"));
     const {
         authorizations,
+        draftAuthorizations,
         appUsers,
         currentUser,
         isBootLoading,
@@ -206,8 +227,18 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         runByAuthorizationId
     } = useIwa();
 
-    const [selectedView, setSelectedView] = React.useState<MyWorkPresetView>("needsAction");
     const [searchText, setSearchText] = React.useState<string>("");
+    const selectedView = isPresetView(view) ? view : defaultPresetView;
+
+    React.useEffect((): void => {
+        if (!isPresetView(view)) {
+            history.replace(`/my-work/${defaultPresetView}`);
+        }
+    }, [history, view]);
+
+    React.useEffect((): void => {
+        sessionStorage.setItem("iwa:lastReturnLocation", `/my-work/${selectedView}`);
+    }, [selectedView]);
 
     // My Work needs both the user's prior actions and the backup user graph.
     React.useEffect((): void => {
@@ -229,12 +260,27 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
     const myWorkSummary = React.useMemo(() => {
         return buildMyWorkSummary(
             authorizations,
+            draftAuthorizations,
             runByAuthorizationId,
             myActions,
             appUsers,
             currentUser?.user?.Id
         );
-    }, [authorizations, appUsers, currentUser?.user?.Id, myActions, runByAuthorizationId]);
+    }, [authorizations, draftAuthorizations, appUsers, currentUser?.user?.Id, myActions, runByAuthorizationId]);
+
+    const handleResumeDraft = React.useCallback((authorizationId: number): void => {
+        history.push(`/authorizations/edit/${authorizationId}`, {
+            returnTo: `/my-work/${selectedView}`
+        });
+    }, [history, selectedView]);
+
+    const handleViewAuthorization = React.useCallback((authorizationId: number): void => {
+        history.push(`/authorizations/view/${authorizationId}`);
+    }, [history]);
+
+    const handleChangeView = React.useCallback((_event: React.SyntheticEvent, value: MyWorkPresetView): void => {
+        history.push(`/my-work/${value}`);
+    }, [history]);
 
     const filteredRows = React.useMemo((): IMyWorkRow[] => {
         return filterMyWorkRows(myWorkSummary.rows, selectedView, searchText);
@@ -274,7 +320,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                 <MyWorkSummaryCard
                     title="Created By Me"
                     value={myWorkSummary.createdByMeCount}
-                    helperText="Authorizations where you are the requestor/author."
+                    helperText="Authorizations and drafts where you are the requestor/author."
                     icon={<EditNoteOutlinedIcon />}
                 />
                 <MyWorkSummaryCard
@@ -289,7 +335,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                 <Stack spacing={2}>
                     <Tabs
                         value={selectedView}
-                        onChange={(_event: React.SyntheticEvent, value: MyWorkPresetView): void => setSelectedView(value)}
+                        onChange={handleChangeView}
                         variant="scrollable"
                         scrollButtons="auto"
                         allowScrollButtonsMobile
@@ -382,7 +428,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                             {isSmall ? (
                                 <Stack spacing={1.5}>
                                     {filteredRows.map((row: IMyWorkRow): JSX.Element => (
-                                        <MyWorkMobileCard key={row.authorization.Id} row={row} />
+                                        <MyWorkMobileCard key={row.authorization.Id} row={row} onResumeDraft={handleResumeDraft} />
                                     ))}
                                 </Stack>
                             ) : (
@@ -397,11 +443,17 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                 <TableCell>Pending With</TableCell>
                                                 <TableCell>My Last Action</TableCell>
                                                 <TableCell>Key Dates</TableCell>
+                                                <TableCell>Action</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
                                             {filteredRows.map((row: IMyWorkRow): JSX.Element => (
-                                                <TableRow key={row.authorization.Id} hover>
+                                                <TableRow
+                                                    key={row.authorization.Id}
+                                                    hover
+                                                    onDoubleClick={() => handleViewAuthorization(row.authorization.Id)}
+                                                    sx={{ cursor: "pointer" }}
+                                                >
                                                     <TableCell sx={{ minWidth: 260, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography fontWeight={600}>
@@ -450,29 +502,29 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 {getRunScopeLabel(row.currentRun)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {row.currentRun?.runStatus === "active" ? "Active workflow" : "No active workflow"}
+                                                                {row.isDraft ? "Draft not yet submitted" : row.currentRun?.runStatus === "active" ? "Active workflow" : "No active workflow"}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ minWidth: 180, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="body2">
-                                                                {row.currentRun?.pendingApprover?.Title ?? "No current approver"}
+                                                                {row.isDraft ? "Waiting for you" : row.currentRun?.pendingApprover?.Title ?? "No current approver"}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {getPendingLabel(row.currentRun)}
+                                                                {row.isDraft ? "Resume draft" : getPendingLabel(row.currentRun)}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ minWidth: 190, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="body2">
-                                                                {getLatestActionSummary(row.latestMyAction)}
+                                                                {row.isDraft ? "Not submitted yet" : getLatestActionSummary(row.latestMyAction)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {row.latestMyAction?.actionDate
+                                                                {!row.isDraft && row.latestMyAction?.actionDate
                                                                     ? `${formatSinceDate(row.latestMyAction.actionDate)} (${row.myActionCount} total)`
-                                                                    : "No workflow actions by you"}
+                                                                    : row.isDraft ? "No workflow actions yet" : "No workflow actions by you"}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
@@ -488,6 +540,22 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 Assigned: {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate) : "—"}
                                                             </Typography>
                                                         </Stack>
+                                                    </TableCell>
+                                                    <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
+                                                        {row.isDraft ? (
+                                                            <Button
+                                                                variant="contained"
+                                                                color="secondary"
+                                                                size="small"
+                                                                onClick={() => handleResumeDraft(row.authorization.Id)}
+                                                            >
+                                                                Resume Draft
+                                                            </Button>
+                                                        ) : (
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                —
+                                                            </Typography>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             ))}

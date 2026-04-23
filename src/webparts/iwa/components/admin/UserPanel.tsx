@@ -13,7 +13,31 @@ import { IPersonaProps } from "@fluentui/react";
 import { MuiPeoplePicker } from "../ui/CustomPeoplePicker";
 import { IPeoplePickerContext } from "@pnp/spfx-controls-react/lib/PeoplePicker";
 
-type RoleFilter = "all" | "admin" | "user";
+type RoleFilter = "all" | "admin" | "hr" | "user";
+
+const getRoleLabel = (role: IAppUserItem["role"]): string => {
+    switch (role) {
+        case "admin":
+            return "Admin";
+        case "hr":
+            return "HR";
+        case "user":
+        default:
+            return "User";
+    }
+};
+
+const getRoleChipColor = (role: IAppUserItem["role"]): "default" | "warning" | "secondary" => {
+    switch (role) {
+        case "admin":
+            return "warning";
+        case "hr":
+            return "secondary";
+        case "user":
+        default:
+            return "default";
+    }
+};
 
 interface UsersAdminPanelProps {
     users: IAppUserItem[];
@@ -221,6 +245,13 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                             variant={roleFilter === "user" ? "filled" : "outlined"}
                             onClick={() => setRoleFilter("user")}
                         />
+                        <Chip
+                            label="HR"
+                            clickable
+                            color={roleFilter === "hr" ? "info" : "default"}
+                            variant={roleFilter === "hr" ? "filled" : "outlined"}
+                            onClick={() => setRoleFilter("hr")}
+                        />
                     </Stack>
                 </Grid>
 
@@ -292,9 +323,9 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                                         >
                                             <Chip
                                                 size="small"
-                                                label={role === "admin" ? "Admin" : "User"}
+                                                label={getRoleLabel(role)}
                                                 variant="outlined"
-                                                color={role === "admin" ? "warning" : "default"}
+                                                color={getRoleChipColor(role)}
                                             />
 
                                             <Chip
@@ -354,12 +385,12 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                             size="small"
                         >
                             <MenuItem value="user">User</MenuItem>
-                            <MenuItem value="cm">CM</MenuItem>
+                            <MenuItem value="hr">HR</MenuItem>
                             <MenuItem value="admin">Admin</MenuItem>
                         </TextField>
 
                         <Typography variant="caption" color="text.secondary">
-                            Admins automatically have CM privileges.
+                            Use HR for approver administration without granting full admin access.
                         </Typography>
                     </Stack>
                 </DialogContent>
@@ -405,7 +436,7 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                             size="small"
                         >
                             <MenuItem value="user">User</MenuItem>
-                            <MenuItem value="cm">CM</MenuItem>
+                            <MenuItem value="hr">HR</MenuItem>
                             <MenuItem value="admin">Admin</MenuItem>
                         </TextField>
 

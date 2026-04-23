@@ -893,6 +893,12 @@ export const Configuration = Helper.SPConfig({
           indexed: true
         } as Helper.IFieldInfoChoice,
         {
+          name: "hasDecision",
+          title: "Has Decision?",
+          type: Helper.SPCfgFieldType.Boolean,
+          defaultValue: "0"
+        } as Helper.IFieldInfoChoice,
+        {
           name: "outcome",
           title: "Outcome",
           type: Helper.SPCfgFieldType.Choice,

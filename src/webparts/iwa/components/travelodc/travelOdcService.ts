@@ -1,7 +1,7 @@
 import { Web } from "gd-sprest";
 import { ITravelOdcItem } from "../data/props";
 import Strings from "../common/strings";
-import { formatError } from "../common/utils";
+import { encodeListName, formatError } from "../common/utils";
 
 export class TravelOdcService {
 
@@ -14,6 +14,45 @@ export class TravelOdcService {
     ];
 
     private static readonly expandQuery: string[] = ["authorization", "mod"];
+
+    static async replaceForAuthorization(
+        authorizationId: number,
+        rows: Array<{
+            title: string;
+            lineNumber: number;
+            displayOrder: number;
+            lineType: "travel" | "odc" | "other";
+            jobId: string;
+            description?: string;
+            amount: number;
+            comments?: string;
+        }>
+    ): Promise<ITravelOdcItem[]> {
+        const existing = await this.getByAuthorization(authorizationId);
+
+        for (const item of existing) {
+            await Web().Lists(Strings.Sites.main.lists.TravelODC).Items(item.Id).recycle().executeAndWait();
+        }
+
+        for (const row of rows) {
+            await Web().Lists(Strings.Sites.main.lists.TravelODC).Items().add({
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.TravelODC)}ListItem` },
+                Title: row.title,
+                authorizationId,
+                lineScope: "base",
+                lineNumber: row.lineNumber,
+                displayOrder: row.displayOrder,
+                isActive: true,
+                lineType: row.lineType,
+                jobId: row.jobId,
+                description: row.description ?? "",
+                amount: row.amount,
+                comments: row.comments ?? ""
+            }).executeAndWait();
+        }
+
+        return this.getByAuthorization(authorizationId);
+    }
 
     static getByAuthorization(authorizationId: number): Promise<ITravelOdcItem[]> {
         return new Promise<ITravelOdcItem[]>((resolve, reject) => {

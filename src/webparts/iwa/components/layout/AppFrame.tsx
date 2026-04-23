@@ -11,6 +11,8 @@ import { DashboardPage } from "./DashboardPage";
 import AdminPage from "../admin/AdminPage";
 import { NotFoundPage } from "../ui/NotFoundPage";
 import { IwaForm } from "../authorizations/iwaForm";
+import { IwaDetailPage } from "../authorizations/IwaDetailPage";
+import { useIwa } from "../data/iwaContext";
 
 export interface IAppFrameProps {
     context: WebPartContext;
@@ -25,6 +27,11 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
     useDarkTheme,
     setUseDarkTheme
 }): JSX.Element => {
+    const { authorizations, draftAuthorizations } = useIwa();
+    const allEditableAuthorizations = React.useMemo(() => {
+        return [...draftAuthorizations, ...authorizations];
+    }, [authorizations, draftAuthorizations]);
+
     return (
         <>
             <NavHeader
@@ -34,19 +41,47 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                 setUseDarkTheme={setUseDarkTheme}
             />
 
-            <Box sx={{ width: "100%", px: { xs: 2, md: 3 }, py: 3 }}>
+            <Box
+                sx={{
+                    width: "100%",
+                    px: { xs: 2, md: 3 },
+                    pt: 3,
+                    pb: 3
+                }}
+            >
                 <Box sx={{ mx: "auto", maxWidth: "1600px" }}>
                     <Switch>
                         <Route exact path="/">
-                            <Redirect to="/my-work" />
+                            <Redirect to="/my-work/all" />
                         </Route>
-                        <Route path="/my-work" component={MyWorkPage} />
-                        <Route path="/all-authorizations" component={AllAuthorizationsPage} />
+                        <Route exact path="/my-work">
+                            <Redirect to="/my-work/all" />
+                        </Route>
+                        <Route path="/my-work/:view" component={MyWorkPage} />
+                        <Route exact path="/all-authorizations">
+                            <Redirect to="/all-authorizations/all" />
+                        </Route>
+                        <Route path="/all-authorizations/:view" component={AllAuthorizationsPage} />
                         <Route path="/authorizations/new" render={() => (
                             <LocalizationProvider dateAdapter={AdapterDayjs}>
                                 <IwaForm context={context} mode="new" />
                             </LocalizationProvider>
                         )} />
+                        <Route path="/authorizations/edit/:id" render={(routeProps) => {
+                            const id = routeProps.match.params.id;
+                            const item = allEditableAuthorizations.find((authorization) => authorization.Id.toString() === id);
+
+                            if (!item) {
+                                return <NotFoundPage />;
+                            }
+
+                            return (
+                                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                    <IwaForm context={context} mode="edit" item={item} />
+                                </LocalizationProvider>
+                            );
+                        }} />
+                        <Route path="/authorizations/view/:id" component={IwaDetailPage} />
                         <Route path="/dashboard" component={DashboardPage} />
                         <Route path="/admin" render={() => <AdminPage context={context} />} />
                         <Route component={NotFoundPage} />

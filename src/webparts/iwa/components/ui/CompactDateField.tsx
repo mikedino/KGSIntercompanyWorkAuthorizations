@@ -1,7 +1,7 @@
 import * as React from "react";
 import { DatePicker } from "@mui/x-date-pickers";
 import { Dayjs } from "dayjs";
-import { fontSizeDefault, minInputHeight } from "../styles/theme.base";
+import { minInputHeight, fontSizeDefault } from "../styles/theme.base";
 
 export const CompactDateField = ({
     label,
@@ -32,17 +32,46 @@ export const CompactDateField = ({
                     helperText,
                     size: "small",
                     sx: {
-                        "& .MuiPickersOutlinedInput-root": {
+                        maxWidth,
+                        "& .MuiPickersOutlinedInput-root": (theme) => ({
                             minHeight: minInputHeight,
+                            fontSize: fontSizeDefault,
+                            "& .MuiPickersOutlinedInput-notchedOutline": {
+                                borderColor: theme.palette.secondary.light,
+                            },
+                            "&:hover .MuiPickersOutlinedInput-notchedOutline": {
+                                borderColor: theme.palette.action.hover,
+                            },
+                            "&.Mui-focused .MuiPickersOutlinedInput-notchedOutline": {
+                                borderColor: `${theme.palette.info.main} !important`,
+                                borderWidth: 2,
+                            },
+                            "&.Mui-focused:not(.Mui-error) .MuiPickersOutlinedInput-notchedOutline": {
+                                borderColor: theme.palette.info.main,
+                                borderWidth: 2,
+                            }
+                        }),
+                        "& .MuiInputBase-input": (theme) => ({
                             fontSize: fontSizeDefault
-                        },
-                        "& .MuiInputBase-input": {
+                        }),
+                        "& .MuiInputLabel-root": (theme) => ({
                             fontSize: fontSizeDefault
-                        },
-                        "& .MuiInputLabel-root": {
-                            fontSize: fontSizeDefault
-                        },
-                        maxWidth
+                        }),
+                        "& .MuiInputAdornment-root .MuiIconButton-root": (theme) => ({
+                            color: theme.palette.action.active,
+                        }),
+                        "& .MuiInputAdornment-root .MuiIconButton-root:hover": (theme) => ({
+                            color: theme.palette.action.active,
+                        }),
+                        "& .MuiInputAdornment-root .MuiSvgIcon-root": (theme) => ({
+                            color: theme.palette.action.active,
+                        }),
+                        "& .MuiPickersOutlinedInput-root.Mui-focused .MuiInputAdornment-root .MuiIconButton-root": (theme) => ({
+                            color: theme.palette.info.main,
+                        }),
+                        "& .MuiPickersOutlinedInput-root.Mui-focused .MuiInputAdornment-root .MuiSvgIcon-root": (theme) => ({
+                            color: theme.palette.info.main,
+                        }),
                     }
                 }
             }}

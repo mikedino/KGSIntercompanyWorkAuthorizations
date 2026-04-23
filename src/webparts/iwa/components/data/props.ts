@@ -26,7 +26,7 @@ export interface IPeoplePicker extends IPersonaProps {
    ========================= */
 
 export type ThemeMode = "dark" | "light";
-export type AppUserRole = "user" | "admin";
+export type AppUserRole = "user" | "admin" | "hr";
 export type LineScope = "base" | "mod";
 export type TravelLineType = "travel" | "odc" | "other";
 export type ContractType = "tm" | "ffp";
@@ -392,6 +392,7 @@ export interface IWorkflowRunItem extends ISystemFields {
   runNumber: number;
   runType: RunType;
   runStatus: WorkflowRunStatus;
+  hasDecision?: boolean;
   outcome?: WorkflowOutcome;
   
   currentStepKey: WorkflowStepKey;

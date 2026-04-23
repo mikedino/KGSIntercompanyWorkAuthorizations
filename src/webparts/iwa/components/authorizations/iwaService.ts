@@ -212,7 +212,7 @@ export class AuthorizationService {
 
       await Web().Lists(Strings.Sites.main.lists.Authorizations).Items(itemId).update({
         __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
-        currentRunId
+        currentWorkflowRunId: currentRunId
       }).executeAndWait();
 
     } catch (error) {

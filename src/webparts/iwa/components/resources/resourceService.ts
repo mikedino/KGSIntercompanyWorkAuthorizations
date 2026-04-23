@@ -1,7 +1,7 @@
 import { Web } from "gd-sprest";
 import { IResourceItem } from "../data/props";
 import Strings from "../common/strings";
-import { formatError } from "../common/utils";
+import { encodeListName, formatError } from "../common/utils";
 
 export class ResourceService {
 
@@ -14,6 +14,41 @@ export class ResourceService {
     ];
 
     private static readonly expandQuery: string[] = ["authorization", "mod", "employee"];
+
+    static async replaceForAuthorization(
+        authorizationId: number,
+        rows: Array<{
+            title: string;
+            lineNumber: number;
+            displayOrder: number;
+            employeeId: number;
+            state: string;
+            comments?: string;
+        }>
+    ): Promise<IResourceItem[]> {
+        const existing = await this.getByAuthorization(authorizationId);
+
+        for (const item of existing) {
+            await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();
+        }
+
+        for (const row of rows) {
+            await Web().Lists(Strings.Sites.main.lists.Resources).Items().add({
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Resources)}ListItem` },
+                Title: row.title,
+                authorizationId,
+                lineScope: "base",
+                lineNumber: row.lineNumber,
+                displayOrder: row.displayOrder,
+                isActive: true,
+                employeeId: row.employeeId,
+                state: row.state,
+                comments: row.comments ?? ""
+            }).executeAndWait();
+        }
+
+        return this.getByAuthorization(authorizationId);
+    }
 
     static getByAuthorization(authorizationId: number): Promise<IResourceItem[]> {
         return new Promise<IResourceItem[]>((resolve, reject) => {
