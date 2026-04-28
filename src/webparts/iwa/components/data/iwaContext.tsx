@@ -178,8 +178,8 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
   }, [isMyActionsLoading]);
 
   const isAuthorizationDetailLoading = useCallback((authorizationId: number): boolean => {
-    return authorizationDetailLoadingRef.current.get(authorizationId) ?? false;
-  }, []);
+    return authorizationDetailLoading.get(authorizationId) ?? false;
+  }, [authorizationDetailLoading]);
 
   const refreshCurrentUser = useCallback(async (): Promise<void> => {
     const nextUser = await DataSource.getOrCreateCurrentUser();
@@ -252,6 +252,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
       setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
         const next = new Map(prev);
         next.delete(authorizationId);
+        authorizationDetailLoadingRef.current = next;
         return next;
       });
 
@@ -264,6 +265,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     setResourcesByAuthorizationId(new Map());
     setLaborLinesByAuthorizationId(new Map());
     setTravelOdcsByAuthorizationId(new Map());
+    authorizationDetailLoadingRef.current = new Map();
     setAuthorizationDetailLoading(new Map());
 
     return true;
@@ -289,13 +291,23 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
       return true;
     }
 
-    if (authorizationDetailLoadingRef.current.get(authorizationId)) {
+    if (!force && authorizationDetailLoadingRef.current.get(authorizationId)) {
       return false;
+    }
+
+    if (force && authorizationDetailLoadingRef.current.get(authorizationId)) {
+      setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
+        const next = new Map(prev);
+        next.set(authorizationId, false);
+        authorizationDetailLoadingRef.current = next;
+        return next;
+      });
     }
 
     setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
       const next = new Map(prev);
       next.set(authorizationId, true);
+      authorizationDetailLoadingRef.current = next;
       return next;
     });
 
@@ -388,6 +400,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
       setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
         const next = new Map(prev);
         next.set(authorizationId, false);
+        authorizationDetailLoadingRef.current = next;
         return next;
       });
     }

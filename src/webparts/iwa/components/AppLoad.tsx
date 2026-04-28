@@ -5,6 +5,7 @@ import { persistThemeMode } from "./common/utils";
 import { IwaProvider, useIwa } from "./data/iwaContext";
 import { AppAlertHost } from "./ui/AppAlertHost";
 import { AppBackdropHost } from "./ui/AppBackdrop";
+import { AppSnackbarHost } from "./ui/AppSnackbarHost";
 import { AppFrame } from "./layout/AppFrame";
 import { BrandedLoadingState } from "./ui/BrandedLoadingState";
 
@@ -79,6 +80,7 @@ export const AppLoad: React.FC<IAppLoadProps> = ({
         <IwaProvider enabled onError={onError}>
             <AppAlertHost />
             <AppBackdropHost />
+            <AppSnackbarHost />
             <AppLoadState
                 context={context}
                 appTitle={appTitle}

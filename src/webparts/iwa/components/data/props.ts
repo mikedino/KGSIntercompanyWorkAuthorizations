@@ -77,6 +77,7 @@ export type WorkflowStepKey =
 
 export type WorkflowActionType =
   | "submitted"
+  | "modified"
   | "approved"
   | "rejected"
   | "returned"
@@ -401,6 +402,8 @@ export interface IWorkflowRunItem extends ISystemFields {
   stepAssignedDate?: string;
   completedOn?: string;
   skipPmStep?: boolean;
+  restartReason?: string;
+  restartComment?: string;
 
   hr?: IPeoplePicker;
   ogPresident?: IPeoplePicker;
@@ -427,6 +430,8 @@ export interface IWorkflowActionItem extends ISystemFields {
   toStepKey?: WorkflowStepKey;
   wasSkipped?: boolean;
   skipReason?: string;
+  changeSummary?: string;
+  changePayloadJson?: string;
 }
 
 /* =========================

@@ -1,15 +1,20 @@
 import * as React from "react";
 import {
     Box,
+    BottomNavigation,
+    BottomNavigationAction,
     Button,
     Chip,
     CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
     IconButton,
     Menu,
     MenuItem,
     Paper,
     Stack,
-    Tab,
     Table,
     TableBody,
     TableCell,
@@ -18,11 +23,11 @@ import {
     TablePagination,
     TableRow,
     TableSortLabel,
-    Tabs,
     TextField,
     Tooltip,
     Typography
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import FilterAltOffOutlinedIcon from "@mui/icons-material/FilterAltOffOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
@@ -30,14 +35,17 @@ import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
+import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import SearchIcon from "@mui/icons-material/Search";
 import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import AlertDialog from "../ui/Alert";
 import { PageHeader } from "../ui/PageHeader";
-import { formatCurrency, formatDate, formatSinceDate } from "../common/utils";
+import { formatCurrency, formatDate, formatError, formatRelationship, formatSinceDate } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
 import { workflowRoleLabels } from "../data/props";
 import { useHistory, useParams } from "react-router-dom";
+import { AuthorizationService } from "../authorizations/iwaService";
+import { useShellUi } from "../ui/ShellUiContext";
 import {
     AllAuthorizationsPresetView,
     AllAuthorizationsSortField,
@@ -150,8 +158,11 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         authorizations,
         draftAuthorizations,
         isBootLoading,
-        runByAuthorizationId
+        runByAuthorizationId,
+        clearAuthorizationDetailCache,
+        refresh
     } = useIwa();
+    const { showBusy, hideBusy, showSuccess } = useShellUi();
 
     const [filters, setFilters] = React.useState<IAllAuthorizationsFilters>(defaultFilters);
     const [sortField, setSortField] = React.useState<AllAuthorizationsSortField>("modified");
@@ -164,6 +175,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [showDialog, setShowDialog] = React.useState<boolean>(false);
+    const [discardDraftRow, setDiscardDraftRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -311,6 +323,27 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const selectedMenuRow = React.useMemo((): IAllAuthorizationsRow | undefined => {
         return sortedRows.find((row: IAllAuthorizationsRow): boolean => row.authorization.Id === menuRowId);
     }, [menuRowId, sortedRows]);
+
+    const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
+        if (!discardDraftRow) {
+            return;
+        }
+
+        const authorizationId = discardDraftRow.authorization.Id;
+        setDiscardDraftRow(undefined);
+
+        try {
+            showBusy("Discarding draft...");
+            await AuthorizationService.delete(authorizationId);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSuccess("Draft discarded.");
+        } catch (error) {
+            hideBusy();
+            showFeatureDialog("Discard Draft Error", formatError(error));
+        }
+    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showFeatureDialog, showSuccess]);
 
     const handleRowDoubleClick = React.useCallback((row: IAllAuthorizationsRow): void => {
         history.push(`/authorizations/view/${row.authorization.Id}`);
@@ -474,36 +507,61 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 </Stack>
             </Paper>
 
-            <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
-                <Tabs
+            <Paper sx={{ px: 1, borderRadius: 3 }}>
+                <BottomNavigation
+                    showLabels
                     value={selectedView}
                     onChange={handleChangeView}
-                    variant="scrollable"
-                    scrollButtons="auto"
-                    allowScrollButtonsMobile
-                    sx={{
-                        minHeight: 0,
-                        "& .MuiTabs-scrollButtons.Mui-disabled": {
-                            width: 0,
-                            opacity: 0,
-                            overflow: "hidden"
+                    sx={(theme) => ({
+                        gap: 0.75,
+                        px: 1,
+                        py: 1,
+                        height: "auto",
+                        justifyContent: "flex-start",
+                        alignItems: "stretch",
+                        flexWrap: "wrap",
+                        backgroundColor: "transparent",
+                        "& .MuiBottomNavigationAction-root": {
+                            flex: "0 0 auto",
+                            minWidth: "auto",
+                            width: "auto",
+                            maxWidth: 220,
+                            px: 2,
+                            py: 1.25,
+                            borderRadius: 2,
+                            border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+                            color: theme.palette.text.secondary,
+                            transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
+                            "& .MuiBottomNavigationAction-label": {
+                                fontSize: "0.82rem",
+                                fontWeight: 500,
+                                backgroundColor: "transparent",
+                                opacity: 1
+                            },
+                            "& .MuiBottomNavigationAction-label.Mui-selected": {
+                                fontSize: "0.82rem",
+                                fontWeight: 600,
+                                backgroundColor: "transparent"
+                            }
                         },
-                        "& .MuiTabs-scroller": {
-                            marginLeft: "0 !important"
-                        },
-                        "& .MuiTab-root": {
-                            minHeight: 40,
-                            minWidth: 0,
-                            textTransform: "none",
-                            fontWeight: 600,
-                            px: 1.5
+                        "& .MuiBottomNavigationAction-root.Mui-selected": {
+                            color: theme.palette.text.primary,
+                            borderColor: theme.palette.mode === "dark"
+                                ? theme.palette.primary.main
+                                : theme.palette.primary.light ?? theme.palette.primary.main,
+                            backgroundColor: theme.palette.mode === "dark"
+                                ? "rgba(0,183,255,0.18)"
+                                : "rgba(10,49,77,0.1)",
+                            boxShadow: theme.palette.mode === "dark"
+                                ? "inset 0 0 0 1px rgba(255,255,255,0.04)"
+                                : "inset 0 0 0 1px rgba(255,255,255,0.35)"
                         }
-                    }}
+                    })}
                 >
                     {presetViews.map((view) => (
-                        <Tab key={view.value} value={view.value} label={view.label} />
+                        <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
                     ))}
-                </Tabs>
+                </BottomNavigation>
             </Paper>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
@@ -639,10 +697,10 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                             {row.authorization.contractName || "No contract title"}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
-                                                            {row.authorization.contractId || "No contract id"} • {row.authorization.invoice || "No invoice"}
-                                                        </Typography>
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            {row.authorization.donorEntity} {"->"} {row.authorization.receivingEntity}
+                                                            {formatRelationship(
+                                                                row.authorization.donorEntityAbbr || row.authorization.donorEntity,
+                                                                row.authorization.receivingEntityAbbr || row.authorization.receivingEntity
+                                                            )}
                                                         </Typography>
                                                     </Stack>
                                                 </TableCell>
@@ -683,7 +741,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                 <TableCell sx={{ width: columnWidths.assignedDate, verticalAlign: "top" }}>
                                                     <Stack spacing={0.5}>
                                                         <Typography variant="body2">
-                                                            {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate) : "—"}
+                                                            {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate, true) : "—"}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
                                                             {row.currentRun?.stepAssignedDate ? formatSinceDate(row.currentRun.stepAssignedDate) : ""}
@@ -815,6 +873,18 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     View PDF
                 </MenuItem>
 
+                {selectedMenuRow?.authorization.authorizationStatus === "draft" && (
+                    <MenuItem
+                        onClick={() => {
+                            closeRowMenu();
+                            setDiscardDraftRow(selectedMenuRow);
+                        }}
+                    >
+                        <DeleteOutlineOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
+                        Discard Draft
+                    </MenuItem>
+                )}
+
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
@@ -828,6 +898,21 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     View Workflow
                 </MenuItem>
             </Menu>
+
+            <Dialog open={!!discardDraftRow} onClose={() => setDiscardDraftRow(undefined)} fullWidth maxWidth="sm">
+                <DialogTitle>Discard Draft?</DialogTitle>
+                <DialogContent>
+                    <Typography color="text.secondary">
+                        This will permanently discard {discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
+                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
+                        Discard Draft
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             <AlertDialog open={showDialog} title={dialogTitle} message={dialogMessage} onClose={hideDialog} />
         </Stack>

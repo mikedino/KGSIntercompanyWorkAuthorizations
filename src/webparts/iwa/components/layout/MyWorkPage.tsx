@@ -1,15 +1,19 @@
 import * as React from "react";
 import {
     Box,
+    BottomNavigation,
+    BottomNavigationAction,
     Button,
     Chip,
     CircularProgress,
     Divider,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
     IconButton,
     Paper,
     Stack,
-    Tab,
-    Tabs,
     Table,
     TableBody,
     TableCell,
@@ -21,17 +25,20 @@ import {
     Typography
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import { useTheme } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import AssignmentTurnedInOutlinedIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
 import ContentPasteGoOutlinedIcon from "@mui/icons-material/ContentPasteGoOutlined";
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
+import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import { useIwa } from "../data/iwaContext";
-import { formatDate, formatSinceDate } from "../common/utils";
+import { formatDate, formatError, formatRelationship, formatSinceDate } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
 import { useHistory, useParams } from "react-router-dom";
+import { AuthorizationService } from "../authorizations/iwaService";
+import { useShellUi } from "../ui/ShellUiContext";
 import {
     authorizationStatusLabels,
     buildMyWorkSummary,
@@ -141,7 +148,11 @@ const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
     return presetViews.some((view) => view.value === value);
 };
 
-const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; onResumeDraft: (id: number) => void; }> = ({ row, onResumeDraft }): JSX.Element => {
+const MyWorkMobileCard: React.FC<{
+    row: IMyWorkRow;
+    onResumeDraft: (id: number) => void;
+    onDiscardDraft: (row: IMyWorkRow) => void;
+}> = ({ row, onResumeDraft, onDiscardDraft }): JSX.Element => {
     const currentStatusLabel = `Authorization ${authorizationStatusLabels[row.authorization.authorizationStatus]}`;
 
     return (
@@ -191,18 +202,30 @@ const MyWorkMobileCard: React.FC<{ row: IMyWorkRow; onResumeDraft: (id: number) 
                         <strong>Dates:</strong> Created {formatSinceDate(row.authorization.Created)}, Updated {formatSinceDate(row.authorization.Modified)}
                     </Typography>
                     <Typography variant="body2">
-                        <strong>Entities:</strong> {row.authorization.donorEntity} {"->"} {row.authorization.receivingEntity}
+                        <strong>Entities:</strong> {formatRelationship(
+                            row.authorization.donorEntityAbbr || row.authorization.donorEntity,
+                            row.authorization.receivingEntityAbbr || row.authorization.receivingEntity
+                        )}
                     </Typography>
                 </Stack>
 
                 {row.isDraft && (
-                    <Button
-                        variant="contained"
-                        color="secondary"
-                        onClick={() => onResumeDraft(row.authorization.Id)}
-                    >
-                        Resume Draft
-                    </Button>
+                    <Stack spacing={1}>
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            onClick={() => onResumeDraft(row.authorization.Id)}
+                        >
+                            Resume Draft
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            onClick={() => onDiscardDraft(row)}
+                        >
+                            Discard Draft
+                        </Button>
+                    </Stack>
                 )}
             </Stack>
         </Paper>
@@ -224,10 +247,14 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         loadMyActions,
         myActions,
         refreshAppUsers,
-        runByAuthorizationId
+        runByAuthorizationId,
+        clearAuthorizationDetailCache,
+        refresh
     } = useIwa();
+    const { showBusy, hideBusy, showSuccess, showSnackbar } = useShellUi();
 
     const [searchText, setSearchText] = React.useState<string>("");
+    const [discardDraftRow, setDiscardDraftRow] = React.useState<IMyWorkRow | undefined>(undefined);
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -273,6 +300,27 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             returnTo: `/my-work/${selectedView}`
         });
     }, [history, selectedView]);
+
+    const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
+        if (!discardDraftRow) {
+            return;
+        }
+
+        const authorizationId = discardDraftRow.authorization.Id;
+        setDiscardDraftRow(undefined);
+
+        try {
+            showBusy("Discarding draft...");
+            await AuthorizationService.delete(authorizationId);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSuccess("Draft discarded.");
+        } catch (error) {
+            hideBusy();
+            showSnackbar(formatError(error), "error");
+        }
+    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showSnackbar, showSuccess]);
 
     const handleViewAuthorization = React.useCallback((authorizationId: number): void => {
         history.push(`/authorizations/view/${authorizationId}`);
@@ -332,57 +380,78 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             </Box>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
-                <Stack spacing={2}>
-                    <Tabs
-                        value={selectedView}
-                        onChange={handleChangeView}
-                        variant="scrollable"
-                        scrollButtons="auto"
-                        allowScrollButtonsMobile
-                        sx={{
-                            minHeight: 0,
-                            // Scrollable tabs keep disabled scroll buttons in the layout,
-                            // which looks like left padding before the first tab. Collapse
-                            // those placeholders so the tab list aligns flush with the paper.
-                            "& .MuiTabs-scrollButtons.Mui-disabled": {
-                                width: 0,
-                                opacity: 0,
-                                overflow: "hidden"
-                            },
-                            "& .MuiTabs-scroller": {
-                                marginLeft: "0 !important"
-                            },
-                            "& .MuiTab-root": {
-                                minHeight: 40,
-                                minWidth: 0,
-                                textTransform: "none",
-                                fontWeight: 600,
-                                alignItems: "flex-start",
-                                px: 1.5
-                            }
-                        }}
-                    >
-                        {presetViews.map((view) => (
-                            <Tab key={view.value} value={view.value} label={view.label} />
-                        ))}
-                    </Tabs>
+                <TextField
+                    placeholder="Search title, contract, entities, approver, or relationship..."
+                    value={searchText}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>): void => setSearchText(event.target.value)}
+                    fullWidth
+                    slotProps={{
+                        input: {
+                            startAdornment: (
+                                <Box sx={{ display: "flex", alignItems: "center", mr: 1, color: "text.secondary" }}>
+                                    <SearchIcon fontSize="small" />
+                                </Box>
+                            )
+                        }
+                    }}
+                />
+            </Paper>
 
-                    <TextField
-                        placeholder="Search title, contract, entities, approver, or relationship..."
-                        value={searchText}
-                        onChange={(event: React.ChangeEvent<HTMLInputElement>): void => setSearchText(event.target.value)}
-                        fullWidth
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <Box sx={{ display: "flex", alignItems: "center", mr: 1, color: "text.secondary" }}>
-                                        <SearchIcon fontSize="small" />
-                                    </Box>
-                                )
+            <Paper sx={{ px: 1, borderRadius: 3 }}>
+                <BottomNavigation
+                    showLabels
+                    value={selectedView}
+                    onChange={handleChangeView}
+                    sx={(theme) => ({
+                        gap: 0.75,
+                        px: 1,
+                        py: 1,
+                        height: "auto",
+                        justifyContent: "flex-start",
+                        alignItems: "stretch",
+                        flexWrap: "wrap",
+                        backgroundColor: "transparent",
+                        "& .MuiBottomNavigationAction-root": {
+                            flex: "0 0 auto",
+                            minWidth: "auto",
+                            width: "auto",
+                            maxWidth: 220,
+                            px: 2,
+                            py: 1.25,
+                            borderRadius: 2,
+                            border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+                            color: theme.palette.text.secondary,
+                            transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
+                            "& .MuiBottomNavigationAction-label": {
+                                fontSize: "0.82rem",
+                                fontWeight: 500,
+                                backgroundColor: "transparent",
+                                opacity: 1
+                            },
+                            "& .MuiBottomNavigationAction-label.Mui-selected": {
+                                fontSize: "0.82rem",
+                                fontWeight: 600,
+                                backgroundColor: "transparent"
                             }
-                        }}
-                    />
-                </Stack>
+                        },
+                        "& .MuiBottomNavigationAction-root.Mui-selected": {
+                            color: theme.palette.text.primary,
+                            borderColor: theme.palette.mode === "dark"
+                                ? theme.palette.primary.main
+                                : theme.palette.primary.light ?? theme.palette.primary.main,
+                            backgroundColor: theme.palette.mode === "dark"
+                                ? "rgba(0,183,255,0.18)"
+                                : "rgba(10,49,77,0.1)",
+                            boxShadow: theme.palette.mode === "dark"
+                                ? "inset 0 0 0 1px rgba(255,255,255,0.04)"
+                                : "inset 0 0 0 1px rgba(255,255,255,0.35)"
+                        }
+                    })}
+                >
+                    {presetViews.map((view) => (
+                        <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
+                    ))}
+                </BottomNavigation>
             </Paper>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
@@ -428,7 +497,12 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                             {isSmall ? (
                                 <Stack spacing={1.5}>
                                     {filteredRows.map((row: IMyWorkRow): JSX.Element => (
-                                        <MyWorkMobileCard key={row.authorization.Id} row={row} onResumeDraft={handleResumeDraft} />
+                                        <MyWorkMobileCard
+                                            key={row.authorization.Id}
+                                            row={row}
+                                            onResumeDraft={handleResumeDraft}
+                                            onDiscardDraft={setDiscardDraftRow}
+                                        />
                                     ))}
                                 </Stack>
                             ) : (
@@ -463,10 +537,10 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 {row.authorization.contractName || "No contract title"}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {row.authorization.contractId || "No contract id"} | {row.authorization.invoice || "No invoice"}
-                                                            </Typography>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {row.authorization.donorEntity} {"->"} {row.authorization.receivingEntity}
+                                                                {formatRelationship(
+                                                                    row.authorization.donorEntityAbbr || row.authorization.donorEntity,
+                                                                    row.authorization.receivingEntityAbbr || row.authorization.receivingEntity
+                                                                )}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
@@ -531,26 +605,37 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                     <TableCell sx={{ minWidth: 180, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                Created: {formatDate(row.authorization.Created)}
+                                                                Created: {formatDate(row.authorization.Created, true)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                Updated: {formatDate(row.authorization.Modified)}
+                                                                Updated: {formatDate(row.authorization.Modified, true)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                Assigned: {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate) : "—"}
+                                                                Assigned: {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate, true) : "—"}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
                                                         {row.isDraft ? (
-                                                            <Button
-                                                                variant="contained"
-                                                                color="secondary"
-                                                                size="small"
-                                                                onClick={() => handleResumeDraft(row.authorization.Id)}
-                                                            >
-                                                                Resume Draft
-                                                            </Button>
+                                                            <Stack spacing={1} alignItems="flex-start">
+                                                                <Button
+                                                                    variant="contained"
+                                                                    color="secondary"
+                                                                    size="small"
+                                                                    onClick={() => handleResumeDraft(row.authorization.Id)}
+                                                                >
+                                                                    Resume Draft
+                                                                </Button>
+                                                                <Button
+                                                                    variant="outlined"
+                                                                    color="error"
+                                                                    size="small"
+                                                                    startIcon={<DeleteOutlineOutlinedIcon />}
+                                                                    onClick={() => setDiscardDraftRow(row)}
+                                                                >
+                                                                    Discard Draft
+                                                                </Button>
+                                                            </Stack>
                                                         ) : (
                                                             <Typography variant="caption" color="text.secondary">
                                                                 —
@@ -567,6 +652,21 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                     )}
                 </Stack>
             </Paper>
+
+            <Dialog open={!!discardDraftRow} onClose={() => setDiscardDraftRow(undefined)} fullWidth maxWidth="sm">
+                <DialogTitle>Discard Draft?</DialogTitle>
+                <DialogContent>
+                    <Typography color="text.secondary">
+                        This will permanently discard {discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
+                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
+                        Discard Draft
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Stack>
     );
 };

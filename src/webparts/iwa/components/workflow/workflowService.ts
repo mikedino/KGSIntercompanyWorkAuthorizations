@@ -9,7 +9,7 @@ export class WorkflowService {
         "Id", "Title", "runNumber",
         "runType", "runStatus", "hasDecision", "outcome",
         "currentStepKey", "pendingRole", "stepAssignedDate",
-        "completedOn", "skipPmStep", "approvedSnapshotJson",
+        "completedOn", "skipPmStep", "restartReason", "restartComment", "approvedSnapshotJson",
         "Created", "Modified", "authorization/Id",
         "authorization/Title", "mod/Id", "mod/Title",
         "pendingApprover/Id", "pendingApprover/Title", "pendingApprover/EMail",
@@ -22,7 +22,7 @@ export class WorkflowService {
 
     private static readonly actionSelectQuery: string[] = [
         "Id", "Title", "stepKey",
-        "actionType", "actionDate", "comments",
+        "actionType", "actionDate", "comments", "changeSummary", "changePayloadJson",
         "role", "fromStepKey", "toStepKey",
         "wasSkipped", "skipReason", "Created",
         "Modified", "authorization/Id", "authorization/Title",

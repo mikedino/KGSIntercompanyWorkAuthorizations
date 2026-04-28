@@ -1,12 +1,16 @@
 import * as React from "react";
 import {
-    Autocomplete, Box, Breadcrumbs, Button, Chip, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
+    Autocomplete, Box, Breadcrumbs, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
 } from "@mui/material";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
 import ArrowForwardOutlinedIcon from "@mui/icons-material/ArrowForwardOutlined";
 import NavigateNextOutlinedIcon from "@mui/icons-material/NavigateNextOutlined";
+import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
+import ManageSearchOutlinedIcon from "@mui/icons-material/ManageSearchOutlined";
+import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
+import { alpha } from "@mui/material/styles";
 import dayjs, { Dayjs } from "dayjs";
 import { IPersonaProps } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
@@ -31,11 +35,13 @@ import {
     IPeoplePicker
 } from "../data/props";
 import Strings from "../common/strings";
-import { formatError } from "../common/utils";
+import { formatDate, formatError } from "../common/utils";
+import { authorizationStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
 import { AuthorizationService } from "./iwaService";
 import { ApproverResolver } from "../workflow/defaultApprovers";
 import { WorkflowRunService } from "../workflow/runService";
 import { WorkflowActionService } from "../workflow/actionService";
+import { captureIwaChangeSet } from "../workflow/changeCapture";
 import { IwaReviewSection } from "./IwaReviewSection";
 import { IwaAttachmentsPanel } from "./IwaAttachmentsPanel";
 import {
@@ -61,6 +67,44 @@ interface IAuthorizationFormLocationState {
 type IwaFormStep = 0 | 1 | 2 | 3;
 
 const stepLabels: string[] = ["Basic Information", "Resources & Travel", "Details & Attachments", "Review & Submit"];
+
+const normalizeAuthorizationStatus = (status: AuthorizationStatus | string | undefined): AuthorizationStatus => {
+    const rawStatus = String(status ?? "draft").trim();
+    const lowerStatus = rawStatus.toLowerCase();
+
+    if (lowerStatus === "draft") {
+        return "draft";
+    }
+
+    if (lowerStatus === "submitted") {
+        return "submitted";
+    }
+
+    if (lowerStatus === "underreview") {
+        return "underReview";
+    }
+
+    if (lowerStatus === "approved") {
+        return "approved";
+    }
+
+    if (lowerStatus === "rejected") {
+        return "rejected";
+    }
+
+    if (lowerStatus === "canceled") {
+        return "canceled";
+    }
+
+    if (lowerStatus === "closed") {
+        return "closed";
+    }
+
+    return "draft";
+};
+
+const isDraftStatus = (status: AuthorizationStatus | string | undefined): boolean =>
+    normalizeAuthorizationStatus(status) === "draft";
 
 const createLocalRowId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -138,6 +182,8 @@ const toIsoDate = (value?: Dayjs): string | undefined => {
     return value.startOf("day").toISOString();
 };
 
+const normalizeUniqueValue = (value?: string): string => (value ?? "").trim().toLowerCase();
+
 /**
  * First pass of the authorization create/edit form. The goal is to stand up
  * the header workflow and draft record immediately so attachments and related
@@ -150,9 +196,21 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 }): JSX.Element => {
     const history = useHistory();
     const location = useLocation<IAuthorizationFormLocationState | undefined>();
-    const { refresh } = useIwa();
+    const {
+        clearAuthorizationDetailCache,
+        authorizations,
+        draftAuthorizations,
+        laborLinesByAuthorizationId,
+        loadAuthorizationDetail,
+        refresh,
+        resourcesByAuthorizationId,
+        runByAuthorizationId,
+        travelOdcsByAuthorizationId
+    } = useIwa();
     const { showBusy, hideBusy, showSuccess, hideSuccess } = useShellUi();
     const successTimeoutRef = React.useRef<number | undefined>(undefined);
+    const initialAuthorizationRef = React.useRef<IAuthorizationItem | undefined>(item);
+    const lastSyncedContractIdRef = React.useRef<string | undefined>(item?.contractId);
     const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/all";
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
@@ -165,7 +223,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [contractOgWarning, setContractOgWarning] = React.useState<string>("");
     const [invoiceOptions, setInvoiceOptions] = React.useState<IInvoiceItem[]>(() => [...DataSource.Invoices]);
     const [jobOptions, setJobOptions] = React.useState<IJobItem[]>(() => [...DataSource.Jobs]);
-    const [resourceRows, setResourceRows] = React.useState<IEditableResourceRow[]>([createEmptyResourceRow()]);
+    const [resourceRows, setResourceRows] = React.useState<IEditableResourceRow[]>([]);
     const [travelRows, setTravelRows] = React.useState<IEditableTravelRow[]>([]);
     const [ffpLaborConfig, setFfpLaborConfig] = React.useState<IFfpLaborConfig>({
         jobId: "",
@@ -178,6 +236,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [navigateAfterDialog, setNavigateAfterDialog] = React.useState<boolean>(false);
+    const [discardDraftDialogOpen, setDiscardDraftDialogOpen] = React.useState<boolean>(false);
+    const [duplicateMatch, setDuplicateMatch] = React.useState<IAuthorizationItem | undefined>(undefined);
 
     const [form, setForm] = React.useState<IAuthorizationItem>(() => ({
         ...createEmptyAuthorization(),
@@ -186,7 +246,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
     const [periodStart, setPeriodStart] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodStart));
     const [periodEnd, setPeriodEnd] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodEnd));
-    const isExistingSubmittedEdit = mode === "edit" && form.authorizationStatus !== "draft";
+    const isExistingSubmittedEdit = mode === "edit" && !isDraftStatus(form.authorizationStatus);
+    const isDraftAuthorization = isDraftStatus(form.authorizationStatus);
+    const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
 
     React.useEffect(() => {
         return () => {
@@ -250,6 +312,41 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setDialogOpen(true);
         setNavigateAfterDialog(navigateOnClose);
     }, []);
+
+    const findMatchingAuthorization = React.useCallback((): IAuthorizationItem | undefined => {
+        const donorEntity = normalizeUniqueValue(form.donorEntity);
+        const receivingEntity = normalizeUniqueValue(form.receivingEntity);
+        const contractId = normalizeUniqueValue(form.contractId);
+        const invoice = normalizeUniqueValue(form.invoice);
+
+        if (!donorEntity || !receivingEntity || !contractId) {
+            return undefined;
+        }
+
+        const currentId = draftId ?? form.Id;
+
+        return [...draftAuthorizations, ...authorizations].find((authorization) => {
+            if (authorization.Id === currentId) {
+                return false;
+            }
+
+            return normalizeUniqueValue(authorization.donorEntity) === donorEntity &&
+                normalizeUniqueValue(authorization.receivingEntity) === receivingEntity &&
+                normalizeUniqueValue(authorization.contractId) === contractId &&
+                normalizeUniqueValue(authorization.invoice) === invoice;
+        });
+    }, [authorizations, draftAuthorizations, draftId, form.Id, form.contractId, form.donorEntity, form.invoice, form.receivingEntity]);
+
+    const ensureUniqueAuthorizationCombination = React.useCallback((): boolean => {
+        const match = findMatchingAuthorization();
+
+        if (!match) {
+            return true;
+        }
+
+        setDuplicateMatch(match);
+        return false;
+    }, [findMatchingAuthorization]);
 
     const handleCloseDialog = React.useCallback((): void => {
         setDialogOpen(false);
@@ -338,7 +435,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             };
         });
 
-        setResourceRows(nextResources.length > 0 ? nextResources : [createEmptyResourceRow()]);
+        setResourceRows(nextResources);
 
         const ffpLabor = sortedLaborLines.find((line) => line.pricingType === "ffp");
         setFfpLaborConfig({
@@ -487,12 +584,21 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 return;
             }
 
+            const previousContractId = lastSyncedContractIdRef.current;
+            const firstContractSync = !previousContractId;
+            const contractActuallyChanged = !!previousContractId && previousContractId !== selectedContract.field_19;
+            lastSyncedContractIdRef.current = selectedContract.field_19;
+
             updateField("contractName", selectedContract.field_20 ?? "");
-            updateField("invoice", "");
+            if (contractActuallyChanged) {
+                updateField("invoice", "");
+            }
             applyOgAndLobFromContract(selectedContract);
 
-            const nextPm = await resolveProjectManager(selectedContract);
-            updateField("pm", nextPm);
+            if (contractActuallyChanged || (firstContractSync && !form.pm?.Id)) {
+                const nextPm = await resolveProjectManager(selectedContract);
+                updateField("pm", nextPm);
+            }
 
             setIsInvoicesLoading(true);
 
@@ -516,7 +622,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             setIsInvoicesLoading(false);
             showDialog("Contract Sync Error", formatError(error));
         });
-    }, [applyOgAndLobFromContract, resolveProjectManager, selectedContract, showDialog, updateField]);
+    }, [applyOgAndLobFromContract, form.pm?.Id, resolveProjectManager, selectedContract, showDialog, updateField]);
 
     React.useEffect((): void => {
         if (!selectedOg) {
@@ -537,7 +643,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const removeResourceRow = React.useCallback((id: string): void => {
         setResourceRows((prev) => {
             const next = prev.filter((row) => row.id !== id);
-            return next.length > 0 ? next : [createEmptyResourceRow()];
+            return next;
         });
     }, []);
 
@@ -649,6 +755,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart, resourceStepIsValid]);
 
     const handleStepButtonClick = React.useCallback((targetStep: number): void => {
+        if (targetStep > activeStep && activeStep === 0 && !ensureUniqueAuthorizationCombination()) {
+            return;
+        }
+
         if (targetStep > activeStep && !validateStep(activeStep)) {
             setSubmitted(true);
             showDialog("Missing Required Information", "Please correct the highlighted fields before moving to the next step.");
@@ -656,9 +766,13 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         setActiveStep(targetStep as IwaFormStep);
-    }, [activeStep, showDialog, validateStep]);
+    }, [activeStep, ensureUniqueAuthorizationCombination, showDialog, validateStep]);
 
     const handleNext = React.useCallback((): void => {
+        if (activeStep === 0 && !ensureUniqueAuthorizationCombination()) {
+            return;
+        }
+
         if (!validateStep(activeStep)) {
             setSubmitted(true);
             showDialog("Missing Required Information", "Please correct the highlighted fields before moving to the next step.");
@@ -666,7 +780,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         setActiveStep((prev: IwaFormStep) => Math.min(prev + 1, 3) as IwaFormStep);
-    }, [activeStep, showDialog, validateStep]);
+    }, [activeStep, ensureUniqueAuthorizationCombination, showDialog, validateStep]);
 
     const handlePrevious = React.useCallback((): void => {
         setActiveStep((prev: IwaFormStep) => Math.max(prev - 1, 0) as IwaFormStep);
@@ -719,7 +833,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
     }, [draftId, loadAttachments, showDialog]);
 
-    const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<void> => {
+    const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<Pick<IAuthorizationItem, "baseLaborAmount" | "baseTravelAmount" | "baseGrandTotal">> => {
         const activeResources = resourceRows
             .filter((row) => row.employee?.Id)
             .map((row, index) => ({
@@ -768,7 +882,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 comments: ffpLaborConfig.comments.trim()
             }];
 
-        await LaborLineItemService.replaceForAuthorization(authorizationId, laborRows);
+        const savedLaborLines = await LaborLineItemService.replaceForAuthorization(authorizationId, laborRows);
 
         const activeTravelRows = travelRows.map((row, index) => ({
             title: `${row.lineType.toUpperCase()}-${index + 1}`,
@@ -781,7 +895,21 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             comments: row.comments.trim()
         }));
 
-        await TravelOdcService.replaceForAuthorization(authorizationId, activeTravelRows);
+        const savedTravelRows = await TravelOdcService.replaceForAuthorization(authorizationId, activeTravelRows);
+
+        const baseLaborAmount = savedLaborLines.reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+        const baseTravelAmount = savedTravelRows.reduce((total, line) => total + Number(line.amount ?? 0), 0);
+        const baseGrandTotal = baseLaborAmount + baseTravelAmount;
+
+        const totals = {
+            baseLaborAmount,
+            baseTravelAmount,
+            baseGrandTotal
+        };
+
+        await AuthorizationService.updateBaseAmounts(authorizationId, totals);
+
+        return totals;
     }, [ffpLaborConfig.comments, ffpLaborConfig.jobId, ffpLaborConfig.laborCategory, form.contractType, resourceRows, travelRows]);
 
     const persistAuthorization = React.useCallback(async (status: AuthorizationStatus): Promise<void> => {
@@ -792,33 +920,43 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             return;
         }
 
+        if (!ensureUniqueAuthorizationCombination()) {
+            return;
+        }
+
         setIsSaving(true);
         setSubmitted(true);
-        showBusy(status === "draft" ? "Saving authorization draft..." : "Submitting authorization...");
+        const normalizedStatus = normalizeAuthorizationStatus(status);
+
+        showBusy(
+            normalizedStatus === "draft"
+                ? "Saving authorization draft..."
+                : isExistingSubmittedEdit
+                    ? "Saving authorization changes..."
+                    : "Submitting authorization..."
+        );
 
         const nextForm: IAuthorizationItem = {
             ...form,
             Id: authorizationId,
-            authorizationStatus: status,
+            authorizationStatus: normalizedStatus,
             periodStart: toIsoDate(periodStart),
             periodEnd: toIsoDate(periodEnd)
         };
 
         try {
             let saved: IAuthorizationItem;
-            const isFirstSubmit = status !== "draft" && (
-                !form.currentWorkflowRun?.Id ||
-                String(form.authorizationStatus ?? "draft").toLowerCase() === "draft" ||
-                !form.Title ||
-                form.Title.trim().toLowerCase() === "draft"
-            );
+            const isFirstSubmit = normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
 
             if (isFirstSubmit) {
+                showBusy("Submitting authorization...");
                 const approvers = await ApproverResolver.resolve(nextForm);
 
-                saved = await AuthorizationService.submitNew(nextForm, status);
+                saved = await AuthorizationService.submitNew(nextForm, normalizedStatus);
 
+                showBusy("Creating new workflow...");
                 const firstRun = await WorkflowRunService.createFirstRun(saved, approvers);
+                showBusy("Updating workflow linkages...");
                 await AuthorizationService.updateRunId(saved.Id, firstRun.Id);
                 await WorkflowActionService.createSubmitted(saved, firstRun);
 
@@ -830,16 +968,90 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     }
                 };
             } else {
-                saved = await AuthorizationService.edit(nextForm, status);
+                saved = await AuthorizationService.edit(nextForm, normalizedStatus);
             }
 
-            await syncWorkPackageData(saved.Id);
+            const totals = await syncWorkPackageData(saved.Id);
+            saved = {
+                ...saved,
+                ...totals
+            };
+
+            const activeRun = runByAuthorizationId.get(saved.Id);
+
+            if (
+                normalizedStatus !== "draft" &&
+                isExistingSubmittedEdit &&
+                !isFirstSubmit &&
+                activeRun?.Id &&
+                activeRun.hasDecision
+            ) {
+                showBusy("Restarting workflow...");
+                const approvers = await ApproverResolver.resolve(saved);
+                const changeSet = captureIwaChangeSet({
+                    beforeAuthorization: initialAuthorizationRef.current,
+                    afterAuthorization: saved,
+                    beforeResources: resourcesByAuthorizationId.get(saved.Id) ?? [],
+                    beforeLaborLines: laborLinesByAuthorizationId.get(saved.Id) ?? [],
+                    beforeTravelOdcs: travelOdcsByAuthorizationId.get(saved.Id) ?? [],
+                    afterResourceRows: resourceRows,
+                    afterTravelRows: travelRows,
+                    afterFfpLaborConfig: ffpLaborConfig
+                });
+                const restartReason = "Modify and resubmit";
+                showBusy("Creating new workflow...");
+                const nextRun = await WorkflowRunService.createRestartRun(
+                    saved,
+                    (activeRun.runNumber ?? 0) + 1,
+                    approvers,
+                    restartReason,
+                    changeSet.changeSummary
+                );
+
+                showBusy("Updating workflow linkages...");
+                await AuthorizationService.updateRunId(saved.Id, nextRun.Id);
+                await WorkflowRunService.supersedeRun(activeRun.Id, restartReason, changeSet.changeSummary);
+                showBusy("Capturing change history...");
+                await WorkflowActionService.createRestarted(saved, activeRun, changeSet.changeSummary);
+                await WorkflowActionService.createSubmitted(saved, nextRun, {
+                    actionType: "modified",
+                    comments: changeSet.changeSummary,
+                    changeSummary: changeSet.changeSummary,
+                    changePayloadJson: changeSet.changePayloadJson
+                });
+
+                saved = {
+                    ...saved,
+                    currentWorkflowRun: {
+                        Id: nextRun.Id,
+                        Title: nextRun.Title
+                    }
+                };
+            } else {
+                const nextPmId = saved.pm?.Id ?? null;
+                const pendingPmApproverId = activeRun?.pendingApprover?.Id ?? null;
+
+                if (
+                    normalizedStatus !== "draft" &&
+                    activeRun?.Id &&
+                    activeRun.runStatus === "active" &&
+                    activeRun.currentStepKey === "pm" &&
+                    typeof nextPmId === "number" &&
+                    pendingPmApproverId !== nextPmId
+                ) {
+                    await WorkflowRunService.updatePendingApprover(activeRun.Id, nextPmId);
+                }
+            }
 
             setForm(saved);
             setDraftId(saved.Id);
-            await refresh(true);
+            clearAuthorizationDetailCache(saved.Id);
+            await Promise.all([
+                refresh(true),
+                loadAuthorizationDetail(saved.Id, true)
+            ]);
 
-            if (status === "draft") {
+            if (normalizedStatus === "draft") {
                 showSuccess("Draft saved successfully.");
                 if (successTimeoutRef.current) {
                     window.clearTimeout(successTimeoutRef.current);
@@ -851,7 +1063,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             if (isExistingSubmittedEdit && !isFirstSubmit) {
-                showSuccess("Authorization changes saved successfully.");
+                const activeRunBeforeSave = runByAuthorizationId.get(saved.Id);
+                showSuccess(activeRunBeforeSave?.hasDecision ? "Authorization changes saved and workflow restarted." : "Authorization changes saved successfully.");
                 if (successTimeoutRef.current) {
                     window.clearTimeout(successTimeoutRef.current);
                 }
@@ -876,7 +1089,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             setIsSaving(false);
         }
-    }, [draftId, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, periodEnd, periodStart, refresh, returnTo, showBusy, showDialog, showSuccess, syncWorkPackageData]);
+    }, [clearAuthorizationDetailCache, draftId, ensureUniqueAuthorizationCombination, ffpLaborConfig, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, laborLinesByAuthorizationId, loadAuthorizationDetail, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
     const handleCancel = React.useCallback(async (): Promise<void> => {
         if (mode === "new" && draftId) {
@@ -890,6 +1103,59 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         history.push(returnTo);
     }, [draftId, history, mode, returnTo, showDialog]);
+
+    const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
+        const authorizationId = draftId ?? form.Id;
+
+        if (!authorizationId) {
+            showDialog("Discard Draft Error", "The draft authorization is not ready yet. Please wait a moment and try again.");
+            return;
+        }
+
+        setDiscardDraftDialogOpen(false);
+
+        try {
+            showBusy("Discarding draft...");
+            await AuthorizationService.delete(authorizationId);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSuccess("Draft discarded.");
+            history.push(returnTo);
+        } catch (error) {
+            hideBusy();
+            showDialog("Discard Draft Error", formatError(error));
+        }
+    }, [clearAuthorizationDetailCache, draftId, form.Id, hideBusy, history, refresh, returnTo, showBusy, showDialog, showSuccess]);
+
+    const handleViewDuplicate = React.useCallback(async (): Promise<void> => {
+        if (!duplicateMatch) {
+            return;
+        }
+
+        const duplicateId = duplicateMatch.Id;
+        const currentAuthorizationId = draftId ?? form.Id;
+        const shouldDiscardCurrentDraft = isDraftAuthorization && currentAuthorizationId && currentAuthorizationId !== duplicateId;
+
+        setDuplicateMatch(undefined);
+
+        if (shouldDiscardCurrentDraft) {
+            try {
+                showBusy("Discarding duplicate draft...");
+                await AuthorizationService.delete(currentAuthorizationId);
+                clearAuthorizationDetailCache(currentAuthorizationId);
+                await refresh(true);
+                hideBusy();
+                showSuccess("Draft discarded.");
+            } catch (error) {
+                hideBusy();
+                showDialog("Discard Draft Error", formatError(error));
+                return;
+            }
+        }
+
+        history.push(`/authorizations/view/${duplicateId}`);
+    }, [clearAuthorizationDetailCache, draftId, duplicateMatch, form.Id, hideBusy, history, isDraftAuthorization, refresh, showBusy, showDialog, showSuccess]);
 
     const stepOneHasError = submitted && !validateStep(0);
     const stepTwoHasError = submitted && !validateStep(1);
@@ -964,14 +1230,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                                 minWidth: { lg: 260 },
                                                 cursor: "pointer",
                                                 borderColor: isSelected ? "info.main" : undefined,
-                                                backgroundColor: isSelected ? "action.hover" : "background.paper"
+                                                borderWidth: isSelected ? 2 : undefined,
+                                                backgroundColor: isSelected ? "rgba(3,169,244,0.08)" : "background.paper"
                                             }}
                                         >
                                             <Stack spacing={0.5}>
-                                                <Typography variant="subtitle2" fontWeight={700}>
+                                                <Typography variant="subtitle2" fontWeight={600}>
                                                     {option.label}
                                                 </Typography>
-                                                <Typography variant="body2" color="text.secondary">
+                                                <Typography variant="body2" color={isSelected ? "info.main" : "text.secondary"}>
                                                     {option.helperText}
                                                 </Typography>
                                             </Stack>
@@ -1040,6 +1307,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 updateField("invoice", value?.InvoiceID1 ?? "");
                             }}
                             getOptionLabel={(option: IInvoiceItem) => option.InvoiceID1 ?? ""}
+                            isOptionEqualToValue={(option: IInvoiceItem, value: IInvoiceItem) => option.InvoiceID1 === value.InvoiceID1}
                             filterOptions={(options, state) => {
                                 const search = state.inputValue.trim().toLowerCase();
 
@@ -1276,13 +1544,24 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     />
 
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
-                        <Chip label={`STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} size="small" variant="outlined" />
-                        {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />}
+                        {isDraftAuthorization && (
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                startIcon={<DeleteOutlineOutlinedIcon />}
+                                disabled={isSaving || isBootstrapping}
+                                onClick={() => setDiscardDraftDialogOpen(true)}
+                            >
+                                Discard Draft
+                            </Button>
+                        )}
+                        <Chip label={`STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="outlined" />
+                        {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
                     </Stack>
                 </Stack>
                 </Stack>
 
-                <Paper sx={{ p: { xs: 2, md: 3 }, width: "100%" }}>
+                <Paper sx={{ p: { xs: 1, md: 2 }, width: "100%" }}>
                 <Stack spacing={2}>
                     <Stepper
                         nonLinear
@@ -1290,11 +1569,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         alternativeLabel
                         sx={{
                             "& .MuiStepIcon-root": {
-                                fontSize: { xs: "2rem", md: "2.4rem" }
+                                fontSize: { xs: "1.6rem", md: "1.9rem" }
                             },
                             "& .MuiStepIcon-text": {
                                 fontSize: { xs: "0.9rem", md: "1rem" },
-                                fontWeight: 700
+                                fontWeight: 600
                             },
                             "& .MuiStepLabel-label": {
                                 fontSize: { xs: "0.95rem", md: "1rem" }
@@ -1381,7 +1660,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         startIcon={<SaveOutlinedIcon />}
                                         disabled={isSaving}
                                         onClick={() => {
-                                            persistAuthorization(isExistingSubmittedEdit ? (form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
+                                            persistAuthorization(isExistingSubmittedEdit ? normalizeAuthorizationStatus(form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
                                         }}
                                     >
                                         {isExistingSubmittedEdit ? "Save Changes" : "Save Draft"}
@@ -1402,6 +1681,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         startIcon={<SendOutlinedIcon />}
                                         disabled={isSaving}
                                         onClick={() => {
+                                            if (!ensureUniqueAuthorizationCombination()) {
+                                                return;
+                                            }
+
                                             if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
                                                 setSubmitted(true);
                                                 showDialog("Missing Required Information", "Complete the required fields on the earlier steps before submitting.");
@@ -1419,6 +1702,125 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         </Paper>
                     </>
                 )}
+
+                <Dialog open={discardDraftDialogOpen} onClose={() => setDiscardDraftDialogOpen(false)} fullWidth maxWidth="sm">
+                    <DialogTitle>Discard Draft?</DialogTitle>
+                    <DialogContent>
+                        <Typography color="text.secondary">
+                            This will permanently discard this draft authorization and remove it from your draft list.
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDiscardDraftDialogOpen(false)}>Cancel</Button>
+                        <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={handleDiscardDraft}>
+                            Discard Draft
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                <Dialog open={!!duplicateMatch} onClose={() => setDuplicateMatch(undefined)} fullWidth maxWidth="md">
+                    <DialogTitle>Matching IWA Found</DialogTitle>
+                    <DialogContent>
+                        <Stack spacing={2} sx={{ pt: 1 }}>
+                            <Typography>
+                                An IWA with matching Entities, Contract, and Invoice already exists. This combination of information should be unique per IWA.
+                            </Typography>
+                            {duplicateMatch && (
+                                <Paper variant="outlined" sx={{ p: 2 }}>
+                                    <Grid container spacing={1.5}>
+                                        <Grid size={{ xs: 12, md: 6 }}>
+                                            <Typography variant="caption" color="text.secondary">IWA</Typography>
+                                            <Typography fontWeight={600}>{duplicateMatch.Title}</Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 12, md: 3 }}>
+                                            <Typography variant="caption" color="text.secondary">Status</Typography>
+                                            <Typography>{authorizationStatusLabels[duplicateMatch.authorizationStatus]}</Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 12, md: 3 }}>
+                                            <Typography variant="caption" color="text.secondary">Workflow</Typography>
+                                            <Typography>{duplicateRun ? workflowRunStatusLabels[duplicateRun.runStatus] : "No workflow"}</Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 12, md: 6 }}>
+                                            <Typography variant="caption" color="text.secondary">Submitter</Typography>
+                                            <Typography>{duplicateMatch.Author?.Title ?? "Not available"}</Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 12, md: 3 }}>
+                                            <Typography variant="caption" color="text.secondary">Submitted On</Typography>
+                                            <Typography>{duplicateMatch.Created ? formatDate(duplicateMatch.Created, true) : "—"}</Typography>
+                                        </Grid>
+                                        <Grid size={{ xs: 12, md: 3 }}>
+                                            <Typography variant="caption" color="text.secondary">Last Modified</Typography>
+                                            <Typography>{duplicateMatch.Modified ? formatDate(duplicateMatch.Modified, true) : "—"}</Typography>
+                                        </Grid>
+                                    </Grid>
+                                </Paper>
+                            )}
+                            <Grid container spacing={1.5}>
+                                <Grid size={{ xs: 12, md: 6 }}>
+                                    <Paper
+                                        variant="outlined"
+                                        onClick={() => setDuplicateMatch(undefined)}
+                                        sx={(theme) => ({
+                                            p: 2,
+                                            height: "100%",
+                                            cursor: "pointer",
+                                            borderColor: "text.primary",
+                                            transition: "background-color 160ms ease, border-color 160ms ease, border-width 160ms ease",
+                                            "&:hover": {
+                                                bgcolor: alpha(theme.palette.info.main, 0.04),
+                                                borderColor: "info.main",
+                                                borderWidth: 2
+                                            }
+                                        })}
+                                    >
+                                        <Stack direction="row" spacing={1.5} alignItems="center">
+                                            <TuneOutlinedIcon color="info" sx={{ fontSize: 42, flexShrink: 0 }} />
+                                            <Box>
+                                                <Typography fontWeight={600}>Go back</Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Return to the form and update the entities, contract, or invoice.
+                                                </Typography>
+                                            </Box>
+                                        </Stack>
+                                    </Paper>
+                                </Grid>
+                                <Grid size={{ xs: 12, md: 6 }}>
+                                    <Paper
+                                        variant="outlined"
+                                        onClick={handleViewDuplicate}
+                                        sx={(theme) => ({
+                                            p: 2,
+                                            height: "100%",
+                                            cursor: "pointer",
+                                            borderColor: "text.primary",
+                                            transition: "background-color 160ms ease, border-color 160ms ease, border-width 160ms ease",
+                                            "&:hover": {
+                                                bgcolor: alpha(theme.palette.error.main, 0.04),
+                                                borderColor: "error.main",
+                                                borderWidth: 2
+                                            }
+                                        })}
+                                    >
+                                        <Stack direction="row" spacing={1.5} alignItems="center">
+                                            <ManageSearchOutlinedIcon color="error" sx={{ fontSize: 42, flexShrink: 0 }} />
+                                            <Box>
+                                                <Typography fontWeight={600}>{isDraftAuthorization ? "Discard draft and view existing IWA" : "View existing IWA"}</Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {isDraftAuthorization
+                                                        ? "Delete this draft and open the matching authorization."
+                                                        : "Leave this authorization unchanged and open the matching authorization."}
+                                                </Typography>
+                                            </Box>
+                                        </Stack>
+                                    </Paper>
+                                </Grid>
+                            </Grid>
+                        </Stack>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDuplicateMatch(undefined)}>Close</Button>
+                    </DialogActions>
+                </Dialog>
 
                 <AlertDialog
                     open={dialogOpen}

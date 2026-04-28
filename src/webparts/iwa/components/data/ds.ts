@@ -270,7 +270,7 @@ export class DataSource {
                         this._authorizations = (items?.results ?? []) as unknown as IAuthorizationItem[];
                         resolve(this._authorizations);
                     },
-                (error) => reject(new Error(`Error fetching Authorizations: ${formatError(error)}`))
+                    (error) => reject(new Error(`Error fetching Authorizations: ${formatError(error)}`))
                 );
         });
     }
@@ -310,7 +310,7 @@ export class DataSource {
         "Id", "Title", "runNumber",
         "runType", "runStatus", "hasDecision", "outcome",
         "currentStepKey", "pendingRole", "stepAssignedDate",
-        "completedOn", "skipPmStep", "approvedSnapshotJson",
+        "completedOn", "skipPmStep", "restartReason", "restartComment", "approvedSnapshotJson",
         "Created", "Modified", "authorization/Id",
         "authorization/Title", "mod/Id", "mod/Title",
         "pendingApprover/Id", "pendingApprover/Title", "pendingApprover/EMail",
@@ -354,9 +354,7 @@ export class DataSource {
                     GetAllItems: true,
                     OrderBy: ["Title"],
                     Select: [
-                        "Id", "Title", "abbr",
-                        "GM/Id", "GM/Title", "GM/EMail",
-                        "combinedTitle"
+                        "Id", "Title", "abbr", "GM/Id", "GM/Title", "GM/EMail", "combinedTitle"
                     ],
                     Expand: ["GM"],
                     Top: 5000
@@ -453,10 +451,8 @@ export class DataSource {
                     GetAllItems: true,
                     OrderBy: ["field_20"],
                     Select: [
-                        "Id", "Title", "field_19",
-                        "field_20", "field_35", "field_21",
-                        "field_23", "field_73", "field_75",
-                        "field_16"
+                        "Id", "Title", "field_19", "field_20", "field_35", "field_21",
+                        "field_23", "field_73", "field_75", "field_16"
                     ],
                     Top: 5000
                 })
@@ -483,11 +479,9 @@ export class DataSource {
                 .Items()
                 .query({
                     GetAllItems: true,
-                    OrderBy: ["field_42"],
+                    OrderBy: ["field_14"],
                     Select: [
-                        "Id", "Title", "field_49",
-                        "field_28", "field_14", "InvoiceID1",
-                        "field_42"
+                        "Id", "Title", "field_49", "field_28", "field_14", "InvoiceID1", "field_42"
                     ],
                     Filter: `field_49 eq '${contractId}'`,
                     Top: 5000

@@ -1,3 +1,4 @@
+import { AlertColor } from "@mui/material";
 import * as React from "react";
 
 export interface IShellUiContextValue {
@@ -7,6 +8,8 @@ export interface IShellUiContextValue {
     hideBusy: () => boolean;
     showSuccess: (message: string) => boolean;
     hideSuccess: () => boolean;
+    showSnackbar: (message: string, severity?: AlertColor) => boolean;
+    hideSnackbar: () => boolean;
     alertOpen: boolean;
     alertTitle: string;
     alertMessage: string;
@@ -14,6 +17,9 @@ export interface IShellUiContextValue {
     busyMessage: string;
     successOpen: boolean;
     successMessage: string;
+    snackbarOpen: boolean;
+    snackbarMessage: string;
+    snackbarSeverity: AlertColor;
 }
 
 const ShellUiContext = React.createContext<IShellUiContextValue | undefined>(undefined);
@@ -43,6 +49,9 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
 
     const [successOpen, setSuccessOpen] = React.useState<boolean>(false);
     const [successMessage, setSuccessMessage] = React.useState<string>("");
+    const [snackbarOpen, setSnackbarOpen] = React.useState<boolean>(false);
+    const [snackbarMessage, setSnackbarMessage] = React.useState<string>("");
+    const [snackbarSeverity, setSnackbarSeverity] = React.useState<AlertColor>("success");
 
     const showAlert = React.useCallback((title: string, message: string): boolean => {
         setAlertTitle(title);
@@ -59,6 +68,8 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
     const showBusy = React.useCallback((message: string): boolean => {
         setSuccessOpen(false);
         setSuccessMessage("");
+        setSnackbarOpen(false);
+        setSnackbarMessage("");
         setBusyMessage(message);
         setBusyOpen(true);
         return true;
@@ -70,19 +81,33 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         return true;
     }, []);
 
-    const showSuccess = React.useCallback((message: string): boolean => {
+    const showSnackbar = React.useCallback((message: string, severity: AlertColor = "success"): boolean => {
         setBusyOpen(false);
         setBusyMessage("");
-        setSuccessMessage(message);
-        setSuccessOpen(true);
+        setSuccessOpen(false);
+        setSuccessMessage("");
+        setSnackbarSeverity(severity);
+        setSnackbarMessage(message);
+        setSnackbarOpen(true);
         return true;
     }, []);
+
+    const hideSnackbar = React.useCallback((): boolean => {
+        setSnackbarOpen(false);
+        setSnackbarMessage("");
+        return true;
+    }, []);
+
+    const showSuccess = React.useCallback((message: string): boolean => {
+        return showSnackbar(message, "success");
+    }, [showSnackbar]);
 
     const hideSuccess = React.useCallback((): boolean => {
         setSuccessOpen(false);
         setSuccessMessage("");
+        hideSnackbar();
         return true;
-    }, []);
+    }, [hideSnackbar]);
 
     const value = React.useMemo<IShellUiContextValue>(() => {
         return {
@@ -92,13 +117,18 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
             hideBusy,
             showSuccess,
             hideSuccess,
+            showSnackbar,
+            hideSnackbar,
             alertOpen,
             alertTitle,
             alertMessage,
             busyOpen,
             busyMessage,
             successOpen,
-            successMessage
+            successMessage,
+            snackbarOpen,
+            snackbarMessage,
+            snackbarSeverity
         };
     }, [
         showAlert,
@@ -107,13 +137,18 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         hideBusy,
         showSuccess,
         hideSuccess,
+        showSnackbar,
+        hideSnackbar,
         alertOpen,
         alertTitle,
         alertMessage,
         busyOpen,
         busyMessage,
         successOpen,
-        successMessage
+        successMessage,
+        snackbarOpen,
+        snackbarMessage,
+        snackbarSeverity
     ]);
 
     return (

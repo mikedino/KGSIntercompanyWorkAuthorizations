@@ -2,7 +2,6 @@ import {
     AuthorizationStatus,
     IAuthorizationItem,
     IAppUserItem,
-    IPeoplePicker,
     IWorkflowActionItem,
     IWorkflowRunItem,
     ModStatus,
@@ -11,6 +10,7 @@ import {
     workflowRoleLabels,
     workflowStepLabels
 } from "../data/props";
+import { getBackupCoverageMap } from "../workflow/workflowAccess";
 
 export type MyWorkPresetView =
     | "all"
@@ -76,6 +76,7 @@ export const modStatusLabels: Record<ModStatus, string> = {
  */
 export const workflowActionLabels: Record<WorkflowActionType, string> = {
     submitted: "Submitted",
+    modified: "Modified",
     approved: "Approved",
     rejected: "Rejected",
     returned: "Returned",
@@ -107,35 +108,6 @@ export const getStatusChipColor = (
         default:
             return "info";
     }
-};
-
-/**
- * Build the "people I cover as backup" lookup once so the page can flag delegated work clearly.
- */
-const buildBackupCoverageMap = (
-    appUsers: IAppUserItem[],
-    currentUserId?: number
-): Map<number, string> => {
-    const backupCoverage = new Map<number, string>();
-
-    if (!currentUserId) {
-        return backupCoverage;
-    }
-
-    appUsers.forEach((profile: IAppUserItem): undefined => {
-        const primaryUserId = profile.user?.Id;
-        const isCoveredByCurrentUser = (profile.backups?.results ?? []).some((backup: IPeoplePicker): boolean => {
-            return backup.Id === currentUserId;
-        });
-
-        if (isCoveredByCurrentUser && typeof primaryUserId === "number" && primaryUserId > 0) {
-            backupCoverage.set(primaryUserId, profile.user?.Title ?? "Covered User");
-        }
-
-        return undefined;
-    });
-
-    return backupCoverage;
 };
 
 const buildActionMap = (myActions: IWorkflowActionItem[]): Map<number, IWorkflowActionItem[]> => {
@@ -200,7 +172,7 @@ export const buildMyWorkSummary = (
     appUsers: IAppUserItem[],
     currentUserId?: number
 ): IMyWorkSummary => {
-    const backupCoverageMap = buildBackupCoverageMap(appUsers, currentUserId);
+    const backupCoverageMap = getBackupCoverageMap(appUsers, currentUserId);
     const myActionsByAuthorizationId = buildActionMap(myActions);
 
     const activeRows = authorizations
@@ -209,7 +181,7 @@ export const buildMyWorkSummary = (
             const authorizationActions = myActionsByAuthorizationId.get(authorization.Id) ?? [];
             const pendingApproverId = currentRun?.pendingApprover?.Id;
             const backupForName = typeof pendingApproverId === "number"
-                ? backupCoverageMap.get(pendingApproverId)
+                ? backupCoverageMap.get(pendingApproverId)?.Title
                 : undefined;
 
             const createdByMe = authorization.Author?.Id === currentUserId;

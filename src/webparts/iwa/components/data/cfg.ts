@@ -948,6 +948,17 @@ export const Configuration = Helper.SPConfig({
           defaultValue: "0"
         } as Helper.IFieldInfoChoice,
         {
+          name: "restartReason",
+          title: "Restart Reason",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
+          name: "restartComment",
+          title: "Restart Comment",
+          type: Helper.SPCfgFieldType.Note,
+          noteType: SPTypes.FieldNoteType.TextOnly
+        } as Helper.IFieldInfoNote,
+        {
           name: "hr",
           title: "HR",
           type: Helper.SPCfgFieldType.User
@@ -1046,7 +1057,7 @@ export const Configuration = Helper.SPConfig({
           name: "actionType",
           title: "Action Type",
           type: Helper.SPCfgFieldType.Choice,
-          choices: ["submitted", "approved", "rejected", "returned", "restarted", "canceled", "skipped", "systemGenerated", "pdfGenerated"],
+          choices: ["submitted", "modified", "approved", "rejected", "returned", "restarted", "canceled", "skipped", "systemGenerated", "pdfGenerated"],
           required: true,
           multi: false,
           indexed: true
@@ -1105,6 +1116,18 @@ export const Configuration = Helper.SPConfig({
           name: "skipReason",
           title: "Skip Reason",
           type: Helper.SPCfgFieldType.Text
+        },
+        {
+          name: "changeSummary",
+          title: "Change Summary",
+          type: Helper.SPCfgFieldType.Note,
+          noteType: SPTypes.FieldNoteType.TextOnly
+        } as Helper.IFieldInfoNote,
+        {
+          name: "changePayloadJson",
+          title: "Change Payload Json",
+          type: Helper.SPCfgFieldType.Note,
+          noteType: SPTypes.FieldNoteType.TextOnly
         }
       ],
       ViewInformation: [

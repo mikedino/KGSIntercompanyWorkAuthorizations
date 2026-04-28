@@ -2,13 +2,23 @@
 import dayjs from "dayjs";
 import isToday from "dayjs/plugin/isToday";
 import isYesterday from "dayjs/plugin/isYesterday";
+import utc from "dayjs/plugin/utc";
 
 dayjs.extend(isToday);
 dayjs.extend(isYesterday);
+dayjs.extend(utc);
 
 export type ThemeModePreference = "light" | "dark";
 
 const themeStorageKey = "iwa_theme";
+
+export const RELATIONSHIP_SEPARATOR = "▸";
+
+export const formatRelationship = (
+    left?: string,
+    right?: string,
+    separator: string = RELATIONSHIP_SEPARATOR
+): string => `${left || "—"} ${separator} ${right || "—"}`;
 
 /**
  * Read the saved theme preference without throwing when browser storage is
@@ -67,6 +77,47 @@ export const formatCurrency = (value: number | undefined): string => {
         maximumFractionDigits: 2
     });
 }
+
+export const normalizeDecimalInput = (value: string): string => {
+    const stripped = value.replace(/[^0-9.]/g, "");
+    const firstDecimalIndex = stripped.indexOf(".");
+
+    if (firstDecimalIndex < 0) {
+        return stripped;
+    }
+
+    const whole = stripped.slice(0, firstDecimalIndex + 1);
+    const decimals = stripped.slice(firstDecimalIndex + 1).replace(/\./g, "");
+    return `${whole}${decimals}`;
+};
+
+export const parseNumberOrUndefined = (value: string | number | undefined): number | undefined => {
+    if (typeof value === "number") {
+        return Number.isNaN(value) ? undefined : value;
+    }
+
+    const clean = normalizeDecimalInput(value ?? "");
+
+    if (!clean) {
+        return undefined;
+    }
+
+    const next = Number(clean);
+    return Number.isNaN(next) ? undefined : next;
+};
+
+export const formatCurrencyInputValue = (value: string | number | undefined): string => {
+    const amount = parseNumberOrUndefined(value);
+
+    if (amount === undefined) {
+        return "";
+    }
+
+    return amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+};
 
 // format all errors from objects to line of text
 export const formatError = (error: unknown): string => {
@@ -144,11 +195,20 @@ export const encodeListName = (
 /**
  * Helper function that forces the date value to be formatted in M/D/YYYY regardless of browser setting
  * @param value string value of a date
- * @returns date value in M/D/YYYY or "-"
+ * @param showTime do you want to show the time?
+ * @returns date value in M/D/YYYY or "—"
  */
-export const formatDate = (value?: string): string => {
-    return value ? dayjs(value).format("M/D/YYYY") : "—";
-}
+export const formatDate = (value: string | undefined, showTime: boolean): string => {
+    if (!value) return "—";
+
+    const d = dayjs.utc(value).local();
+
+    if (!d.isValid()) return "—";
+
+    return showTime
+        ? d.format("M/D/YYYY h:mm A")
+        : d.format("M/D/YYYY");
+};
 
 
 /**

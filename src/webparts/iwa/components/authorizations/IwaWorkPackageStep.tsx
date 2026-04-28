@@ -28,7 +28,7 @@ import { IPersonaProps } from "@fluentui/react";
 import { IPeoplePickerContext } from "@pnp/spfx-controls-react/lib/PeoplePicker";
 import { MuiPeoplePicker } from "../ui/CustomPeoplePicker";
 import { IJobItem, IPeoplePicker, TravelLineType } from "../data/props";
-import { formatCurrency } from "../common/utils";
+import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput } from "../common/utils";
 
 export interface IEditableResourceRow {
     id: string;
@@ -82,6 +82,31 @@ const lineTypeOptions: Array<{ value: TravelLineType; label: string; }> = [
     { value: "odc", label: "ODC" },
     { value: "other", label: "Other" }
 ];
+
+const quietTableSx = {
+    "& thead tr": {
+        bgcolor: "background.default"
+    },
+    "& th": {
+        fontWeight: 600,
+        borderBottom: "1px solid",
+        borderColor: "divider"
+    },
+    "& td": {
+        borderBottom: "1px solid",
+        borderColor: "divider"
+    },
+    "& tbody tr:last-child td": {
+        borderBottom: 0
+    }
+};
+
+const totalsRowSx = {
+    "& td": {
+        fontWeight: 600,
+        fontStyle: "italic"
+    }
+};
 
 const createEmptyResourceDraft = (): IEditableResourceRow => ({
     id: "",
@@ -148,33 +173,6 @@ const renderJobOption = (props: React.HTMLAttributes<HTMLLIElement>, option: IJo
     </li>
 );
 
-const normalizeDecimalInput = (value: string): string => {
-    const stripped = value.replace(/[^0-9.]/g, "");
-    const firstDecimalIndex = stripped.indexOf(".");
-
-    if (firstDecimalIndex < 0) {
-        return stripped;
-    }
-
-    const whole = stripped.slice(0, firstDecimalIndex + 1);
-    const decimals = stripped.slice(firstDecimalIndex + 1).replace(/\./g, "");
-    return `${whole}${decimals}`;
-};
-
-const formatAmountForDisplay = (value: string): string => {
-    if (!value.trim()) {
-        return "";
-    }
-
-    const amount = Number(value);
-
-    if (Number.isNaN(amount)) {
-        return value;
-    }
-
-    return formatCurrency(amount).replace("$", "");
-};
-
 export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     contractType,
     jobs,
@@ -204,6 +202,15 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const [travelDraft, setTravelDraft] = React.useState<IEditableTravelRow>(createEmptyTravelDraft());
     const [travelDraftErrors, setTravelDraftErrors] = React.useState<Record<string, string>>({});
     const [travelAmountFocused, setTravelAmountFocused] = React.useState(false);
+    const resourceTotals = React.useMemo(() => {
+        return resourceRows.reduce((totals, row) => ({
+            standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
+            overtimeHours: totals.overtimeHours + Number(normalizeDecimalInput(row.overtimeHours) || 0)
+        }), { standardHours: 0, overtimeHours: 0 });
+    }, [resourceRows]);
+    const travelTotal = React.useMemo(() => {
+        return travelRows.reduce((total, row) => total + Number(normalizeDecimalInput(row.amount) || 0), 0);
+    }, [travelRows]);
 
     const openNewResourceDialog = React.useCallback((): void => {
         setResourceDraft(createEmptyResourceDraft());
@@ -334,18 +341,18 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
                 <Stack spacing={2.5}>
                     <Stack spacing={0.5}>
-                        <Typography variant="h6" fontWeight={700}>
+                        <Typography variant="h6" fontWeight={600}>
                             Resources
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Build the employee roster here. Add rows in a dialog, capture the hours the requestor knows now, and let HR complete protected compensation details later in workflow.
+                            Build the employee roster here. Add rows in a dialog, capture the hours the you knows now. HR will complete the protected compensation details later in the workflow.
                         </Typography>
                     </Stack>
 
                     {contractType === "ffp" && (
                         <Paper variant="outlined" sx={{ p: 2 }}>
                             <Stack spacing={1.5}>
-                                <Typography variant="subtitle1" fontWeight={700}>
+                                <Typography variant="subtitle1" fontWeight={600}>
                                     Shared FFP Labor Line
                                 </Typography>
                                 <Grid container spacing={2}>
@@ -401,8 +408,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             </Typography>
                         </Box>
                     ) : (
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
+                        <TableContainer>
+                            <Table size="small" sx={quietTableSx}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Employee</TableCell>
@@ -435,6 +442,14 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {resourceRows.length > 1 && (
+                                        <TableRow sx={totalsRowSx}>
+                                            <TableCell colSpan={contractType === "tm" ? 4 : 2}>Totals</TableCell>
+                                            {contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
+                                            {contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
+                                            <TableCell />
+                                        </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </TableContainer>
@@ -445,11 +460,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
                 <Stack spacing={2.5}>
                     <Stack spacing={0.5}>
-                        <Typography variant="h6" fontWeight={700}>
+                        <Typography variant="h6" fontWeight={600}>
                             Travel / ODC
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Add optional travel or ODC lines through a dialog, then review them in the list below.
+                            Add optional travel or ODC lines then review them in the list below.
                         </Typography>
                     </Stack>
 
@@ -469,8 +484,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             </Typography>
                         </Box>
                     ) : (
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
+                        <TableContainer>
+                            <Table size="small" sx={quietTableSx}>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Type</TableCell>
@@ -499,6 +514,13 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             </TableCell>
                                         </TableRow>
                                     ))}
+                                    {travelRows.length > 1 && (
+                                        <TableRow sx={totalsRowSx}>
+                                            <TableCell colSpan={3}>Totals</TableCell>
+                                            <TableCell>{formatCurrency(travelTotal)}</TableCell>
+                                            <TableCell />
+                                        </TableRow>
+                                    )}
                                 </TableBody>
                             </Table>
                         </TableContainer>
@@ -667,7 +689,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     label="Amount"
                                     fullWidth
                                     required
-                                    value={travelAmountFocused ? travelDraft.amount : formatAmountForDisplay(travelDraft.amount)}
+                                    value={travelAmountFocused ? travelDraft.amount : formatCurrencyInputValue(travelDraft.amount)}
                                     onChange={(event) => {
                                         const normalized = normalizeDecimalInput(event.target.value);
                                         setTravelDraft((prev) => ({ ...prev, amount: normalized }));

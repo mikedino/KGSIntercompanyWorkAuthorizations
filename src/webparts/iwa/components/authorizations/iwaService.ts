@@ -5,6 +5,8 @@ import { formatError, encodeListName } from "../common/utils";
 import dayjs from 'dayjs';
 import { DataSource } from "../data/ds";
 import { Base } from "gd-sprest/@types/intellisense";
+import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
+import { TravelOdcService } from "../travelodc/travelOdcService";
 
 type IExecWithHeaders<T> = Base.IBaseExecution<T> & {
   headers?: { [key: string]: string };
@@ -16,7 +18,7 @@ export class AuthorizationService {
   static async createDraft(): Promise<number | undefined> {
     const item = await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().add({
       Title: "Draft",
-      authorizationStatus: "Draft"
+      authorizationStatus: "draft"
     }).executeAndWait();
 
     return item.Id ?? undefined;
@@ -151,8 +153,6 @@ export class AuthorizationService {
         approvedTravelAmount: item.approvedTravelAmount ?? 0,
         approvedGrandTotal: item.approvedGrandTotal ?? 0,
         modCount: item.modCount ?? 0,
-        currentWorkflowRunId: item.currentWorkflowRun?.Id ?? null,
-        effectiveApprovedRunId: item.effectiveApprovedRun?.Id ?? null,
         pdfUrl: item.pdfUrl ?? "",
         pdfGeneratedOn: item.pdfGeneratedOn || null,
         approvedOn: item.approvedOn || null,
@@ -163,6 +163,14 @@ export class AuthorizationService {
 
       if (trackingTitle) {
         updateBody.Title = trackingTitle;
+      }
+
+      if (item.currentWorkflowRun?.Id) {
+        updateBody.currentWorkflowRunId = item.currentWorkflowRun.Id;
+      }
+
+      if (item.effectiveApprovedRun?.Id) {
+        updateBody.effectiveApprovedRunId = item.effectiveApprovedRun.Id;
       }
 
       Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(item.Id).update(updateBody).execute(
@@ -210,7 +218,7 @@ export class AuthorizationService {
 
     try {
 
-      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items(itemId).update({
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update({
         __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
         currentWorkflowRunId: currentRunId
       }).executeAndWait();
@@ -219,6 +227,114 @@ export class AuthorizationService {
       const err = formatError(error);
       console.error("Error updating IWA > Run Id: ", error);
       throw new Error(`Error submitting IWA > Run Id: ${err}`);
+    }
+  }
+
+  static async updateModCount(itemId: number, modCount: number): Promise<void> {
+    if (!itemId) {
+      throw new Error("Cannot update authorization mod count: item.Id is missing.");
+    }
+
+    try {
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update({
+        __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+        modCount
+      }).executeAndWait();
+    } catch (error) {
+      const err = formatError(error);
+      console.error("Error updating IWA mod count: ", error);
+      throw new Error(`Error updating IWA mod count: ${err}`);
+    }
+  }
+
+  static async updateBaseAmounts(
+    itemId: number,
+    amounts: {
+      baseLaborAmount: number;
+      baseTravelAmount: number;
+      baseGrandTotal: number;
+    }
+  ): Promise<void> {
+
+    if (!itemId) {
+      throw new Error("Cannot update authorization totals: item.Id is missing.");
+    }
+
+    try {
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update({
+        __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+        baseLaborAmount: amounts.baseLaborAmount,
+        baseTravelAmount: amounts.baseTravelAmount,
+        baseGrandTotal: amounts.baseGrandTotal
+      }).executeAndWait();
+
+    } catch (error) {
+      const err = formatError(error);
+      console.error("Error updating IWA base totals: ", error);
+      throw new Error(`Error updating IWA base totals: ${err}`);
+    }
+  }
+
+  static async recalculateBaseAmounts(itemId: number): Promise<{
+    baseLaborAmount: number;
+    baseTravelAmount: number;
+    baseGrandTotal: number;
+  }> {
+    const [laborLines, travelOdcs] = await Promise.all([
+      LaborLineItemService.getByAuthorization(itemId),
+      TravelOdcService.getByAuthorization(itemId)
+    ]);
+
+    const baseLaborAmount = (laborLines ?? []).reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    const baseTravelAmount = (travelOdcs ?? []).reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    const baseGrandTotal = baseLaborAmount + baseTravelAmount;
+
+    const amounts = {
+      baseLaborAmount,
+      baseTravelAmount,
+      baseGrandTotal
+    };
+
+    await this.updateBaseAmounts(itemId, amounts);
+
+    return amounts;
+  }
+
+  static async updateWorkflowStatus(
+    itemId: number,
+    authorizationStatus: AuthorizationStatus,
+    effectiveApprovedRunId?: number
+  ): Promise<void> {
+
+    if (!itemId) {
+      throw new Error("Cannot update authorization workflow status: item.Id is missing.");
+    }
+
+    const nowIso = new Date().toISOString();
+    const updateBody: Record<string, unknown> = {
+      __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+      authorizationStatus
+    };
+
+    if (authorizationStatus === "approved") {
+      updateBody.approvedOn = nowIso;
+      updateBody.rejectedOn = null;
+    }
+
+    if (authorizationStatus === "rejected") {
+      updateBody.rejectedOn = nowIso;
+    }
+
+    if (effectiveApprovedRunId !== undefined) {
+      updateBody.effectiveApprovedRunId = effectiveApprovedRunId;
+    }
+
+    try {
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update(updateBody).executeAndWait();
+    } catch (error) {
+      const err = formatError(error);
+      console.error("Error updating IWA workflow status: ", error);
+      throw new Error(`Error updating IWA workflow status: ${err}`);
     }
   }
 
