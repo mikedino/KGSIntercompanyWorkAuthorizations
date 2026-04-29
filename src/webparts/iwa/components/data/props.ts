@@ -324,6 +324,7 @@ export interface IResourceItem extends ISystemFields {
 
   employee: IPeoplePicker;
   state: string;
+  laborCategory: string;
   comments?: string;
 }
 
@@ -341,7 +342,6 @@ export interface ILaborLineItem extends ISystemFields {
 
   pricingType: LaborPricingType;
   jobId: string;
-  laborCategory: string;
 
   /* employee linkage: one employee for T&M, many employees may roll up to one FFP line */
   resources?: { results: ILookupItem[] };  // lookup auto-filled from Resource line(s)

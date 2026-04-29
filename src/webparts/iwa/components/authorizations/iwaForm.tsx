@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import * as React from "react";
 import {
     Autocomplete, Box, Breadcrumbs, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
@@ -31,6 +32,7 @@ import {
     IEntityItem,
     IInvoiceItem,
     IJobItem,
+    IModItem,
     IOgItem,
     IPeoplePicker
 } from "../data/props";
@@ -45,7 +47,7 @@ import { captureIwaChangeSet } from "../workflow/changeCapture";
 import { IwaReviewSection } from "./IwaReviewSection";
 import { IwaAttachmentsPanel } from "./IwaAttachmentsPanel";
 import {
-    IFfpLaborConfig,
+    IEditableFfpLaborRow,
     IEditableResourceRow,
     IEditableTravelRow,
     IwaWorkPackageStep
@@ -53,6 +55,7 @@ import {
 import { ResourceService } from "../resources/resourceService";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
+import { ModService } from "../mods/modService";
 
 interface IIwaFormProps {
     context: WebPartContext;
@@ -62,6 +65,7 @@ interface IIwaFormProps {
 
 interface IAuthorizationFormLocationState {
     returnTo?: string;
+    modId?: number;
 }
 
 type IwaFormStep = 0 | 1 | 2 | 3;
@@ -130,6 +134,16 @@ const createEmptyTravelRow = (): IEditableTravelRow => ({
     comments: ""
 });
 
+const createEmptyFfpLaborRow = (): IEditableFfpLaborRow => ({
+    id: createLocalRowId(),
+    jobId: "",
+    chargingPeriod: "monthly",
+    periodQty: "",
+    lumpSumAmount: "",
+    resourceRowIds: [],
+    comments: ""
+});
+
 const contractTypeOptions: Array<{ value: ContractType; label: string; helperText: string; }> = [
     {
         value: "tm",
@@ -184,6 +198,19 @@ const toIsoDate = (value?: Dayjs): string | undefined => {
 
 const normalizeUniqueValue = (value?: string): string => (value ?? "").trim().toLowerCase();
 
+const getActiveModDraftSessionKey = (authorizationId: number): string => `iwa:activeModDraft:${authorizationId}`;
+
+const readSessionModId = (authorizationId?: number): number | undefined => {
+    if (!authorizationId) {
+        return undefined;
+    }
+
+    const value = sessionStorage.getItem(getActiveModDraftSessionKey(authorizationId));
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
 /**
  * First pass of the authorization create/edit form. The goal is to stand up
  * the header workflow and draft record immediately so attachments and related
@@ -202,9 +229,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         draftAuthorizations,
         laborLinesByAuthorizationId,
         loadAuthorizationDetail,
+        modsByAuthorizationId,
         refresh,
         resourcesByAuthorizationId,
         runByAuthorizationId,
+        runsByAuthorizationId,
         travelOdcsByAuthorizationId
     } = useIwa();
     const { showBusy, hideBusy, showSuccess, hideSuccess } = useShellUi();
@@ -212,6 +241,29 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const initialAuthorizationRef = React.useRef<IAuthorizationItem | undefined>(item);
     const lastSyncedContractIdRef = React.useRef<string | undefined>(item?.contractId);
     const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/all";
+    const routeModId = location.state?.modId;
+    const storedModId = readSessionModId(item?.Id);
+    const latestDraftModId = React.useMemo<number | undefined>(() => {
+        if (!item?.Id) {
+            return undefined;
+        }
+
+        const draftMods = (modsByAuthorizationId.get(item.Id) ?? [])
+            .filter((mod: IModItem) => mod.modStatus === "draft")
+            .sort((left: IModItem, right: IModItem) => {
+                const leftModified = Date.parse(left.Modified ?? left.Created ?? "");
+                const rightModified = Date.parse(right.Modified ?? right.Created ?? "");
+
+                if (Number.isFinite(leftModified) && Number.isFinite(rightModified) && leftModified !== rightModified) {
+                    return rightModified - leftModified;
+                }
+
+                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
+            });
+
+        return draftMods[0]?.Id;
+    }, [item?.Id, modsByAuthorizationId]);
+    const activeModDraftId = routeModId ?? storedModId ?? latestDraftModId;
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -225,12 +277,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [jobOptions, setJobOptions] = React.useState<IJobItem[]>(() => [...DataSource.Jobs]);
     const [resourceRows, setResourceRows] = React.useState<IEditableResourceRow[]>([]);
     const [travelRows, setTravelRows] = React.useState<IEditableTravelRow[]>([]);
-    const [ffpLaborConfig, setFfpLaborConfig] = React.useState<IFfpLaborConfig>({
-        jobId: "",
-        laborCategory: "",
-        comments: ""
-    });
+    const [ffpLaborRows, setFfpLaborRows] = React.useState<IEditableFfpLaborRow[]>([]);
+    const [currentMod, setCurrentMod] = React.useState<IModItem | undefined>(undefined);
+    const [modReason, setModReason] = React.useState<string>("");
     const stateOptions = React.useMemo<string[]>(() => [...DataSource.States], []);
+    const laborCategoryOptions = React.useMemo<string[]>(() => [...DataSource.LaborCategories], []);
 
     const [dialogOpen, setDialogOpen] = React.useState<boolean>(false);
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
@@ -248,6 +299,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [periodEnd, setPeriodEnd] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodEnd));
     const isExistingSubmittedEdit = mode === "edit" && !isDraftStatus(form.authorizationStatus);
     const isDraftAuthorization = isDraftStatus(form.authorizationStatus);
+    const isModEditIntent = mode === "edit" && typeof activeModDraftId === "number" && activeModDraftId > 0;
+    const activeModId = currentMod?.Id ?? (isModEditIntent ? activeModDraftId : undefined);
+    const isModDraftMode = isModEditIntent && (currentMod?.modStatus ?? "draft") === "draft";
+    const isBaselineLocked = isModDraftMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
     const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
 
     React.useEffect(() => {
@@ -392,16 +447,26 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setAttachments((files?.results ?? []) as Array<{ FileName: string; ServerRelativeUrl?: string; }>);
     }, []);
 
-    const loadWorkPackageDraft = React.useCallback(async (authorizationId: number): Promise<void> => {
+    const loadWorkPackageDraft = React.useCallback(async (authorizationId: number, modId?: number): Promise<void> => {
         const [resources, laborLines, travelOdcs] = await Promise.all([
             ResourceService.getByAuthorization(authorizationId),
             LaborLineItemService.getByAuthorization(authorizationId),
             TravelOdcService.getByAuthorization(authorizationId)
         ]);
 
-        const sortedResources = [...(resources ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
-        const sortedLaborLines = [...(laborLines ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
-        const sortedTravelOdcs = [...(travelOdcs ?? [])].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const resourceScope = modId
+            ? (resources ?? []).filter((resource) => resource.lineScope === "mod" && resource.mod?.Id === modId)
+            : (resources ?? []).filter((resource) => resource.lineScope !== "mod");
+        const laborScope = modId
+            ? (laborLines ?? []).filter((line) => line.lineScope === "mod" && line.mod?.Id === modId)
+            : (laborLines ?? []).filter((line) => line.lineScope !== "mod");
+        const travelScope = modId
+            ? (travelOdcs ?? []).filter((travel) => travel.lineScope === "mod" && travel.mod?.Id === modId)
+            : (travelOdcs ?? []).filter((travel) => travel.lineScope !== "mod");
+
+        const sortedResources = [...resourceScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const sortedLaborLines = [...laborScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const sortedTravelOdcs = [...travelScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
 
         const tmLaborByResourceId = new Map<number, typeof sortedLaborLines[number]>();
 
@@ -425,8 +490,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 employee: resource.employee,
                 state: resource.state ?? "",
                 comments: resource.comments ?? "",
+                laborCategory: resource.laborCategory ?? "",
                 jobId: tmLabor?.jobId ?? "",
-                laborCategory: tmLabor?.laborCategory ?? "",
                 standardHours: tmLabor?.standardHours !== undefined && tmLabor?.standardHours !== null ? String(tmLabor.standardHours) : "",
                 overtimeHours: tmLabor?.overtimeHours !== undefined && tmLabor?.overtimeHours !== null ? String(tmLabor.overtimeHours) : "",
                 annualSalary: tmLabor?.annualSalary !== undefined && tmLabor?.annualSalary !== null ? String(tmLabor.annualSalary) : "",
@@ -437,12 +502,17 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         setResourceRows(nextResources);
 
-        const ffpLabor = sortedLaborLines.find((line) => line.pricingType === "ffp");
-        setFfpLaborConfig({
-            jobId: ffpLabor?.jobId ?? "",
-            laborCategory: ffpLabor?.laborCategory ?? "",
-            comments: ffpLabor?.comments ?? ""
-        });
+        setFfpLaborRows(sortedLaborLines
+            .filter((line) => line.pricingType === "ffp")
+            .map((line) => ({
+                id: String(line.Id),
+                jobId: line.jobId ?? "",
+                chargingPeriod: line.chargingPeriod ?? "monthly",
+                periodQty: line.periodQty !== undefined && line.periodQty !== null ? String(line.periodQty) : "",
+                lumpSumAmount: line.lumpSumAmount !== undefined && line.lumpSumAmount !== null ? String(line.lumpSumAmount) : "",
+                resourceRowIds: line.resources?.results?.map((resource) => String(resource.Id)) ?? [],
+                comments: line.comments ?? ""
+            })));
 
         const nextTravelRows: IEditableTravelRow[] = sortedTravelOdcs.map((travel) => ({
             id: String(travel.Id),
@@ -537,9 +607,17 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             try {
+                const mod = activeModDraftId ? await ModService.getById(activeModDraftId) : undefined;
+
+                if (mod?.Id && item.Id) {
+                    sessionStorage.setItem(getActiveModDraftSessionKey(item.Id), String(mod.Id));
+                }
+
+                setCurrentMod(mod);
+                setModReason(mod?.reason ?? "");
                 await Promise.all([
                     loadAttachments(item.Id),
-                    loadWorkPackageDraft(item.Id)
+                    loadWorkPackageDraft(item.Id, mod?.Id)
                 ]);
             } catch (error) {
                 showDialog("Attachment Load Error", formatError(error));
@@ -556,7 +634,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             showDialog("Attachment Load Error", formatError(error));
             setIsBootstrapping(false);
         });
-    }, [item?.Id, loadAttachments, loadWorkPackageDraft, mode, showDialog]);
+    }, [activeModDraftId, item?.Id, loadAttachments, loadWorkPackageDraft, mode, showDialog]);
 
     // Keep entity abbreviations and GMs aligned with the selected entities so
     // downstream numbering/workflow logic can trust the header values.
@@ -589,15 +667,17 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             const contractActuallyChanged = !!previousContractId && previousContractId !== selectedContract.field_19;
             lastSyncedContractIdRef.current = selectedContract.field_19;
 
-            updateField("contractName", selectedContract.field_20 ?? "");
-            if (contractActuallyChanged) {
-                updateField("invoice", "");
-            }
-            applyOgAndLobFromContract(selectedContract);
+            if (!isBaselineLocked) {
+                updateField("contractName", selectedContract.field_20 ?? "");
+                if (contractActuallyChanged) {
+                    updateField("invoice", "");
+                }
+                applyOgAndLobFromContract(selectedContract);
 
-            if (contractActuallyChanged || (firstContractSync && !form.pm?.Id)) {
-                const nextPm = await resolveProjectManager(selectedContract);
-                updateField("pm", nextPm);
+                if (contractActuallyChanged || (firstContractSync && !form.pm?.Id)) {
+                    const nextPm = await resolveProjectManager(selectedContract);
+                    updateField("pm", nextPm);
+                }
             }
 
             setIsInvoicesLoading(true);
@@ -622,7 +702,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             setIsInvoicesLoading(false);
             showDialog("Contract Sync Error", formatError(error));
         });
-    }, [applyOgAndLobFromContract, form.pm?.Id, resolveProjectManager, selectedContract, showDialog, updateField]);
+    }, [applyOgAndLobFromContract, form.pm?.Id, isBaselineLocked, resolveProjectManager, selectedContract, showDialog, updateField]);
 
     React.useEffect((): void => {
         if (!selectedOg) {
@@ -645,6 +725,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             const next = prev.filter((row) => row.id !== id);
             return next;
         });
+        setFfpLaborRows((prev) => prev.map((line) => ({
+            ...line,
+            resourceRowIds: line.resourceRowIds.filter((resourceRowId) => resourceRowId !== id)
+        })));
     }, []);
 
     const updateResourceRow = React.useCallback((id: string, patch: Partial<IEditableResourceRow>): void => {
@@ -663,11 +747,35 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setTravelRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
     }, []);
 
-    const updateFfpLabor = React.useCallback((patch: Partial<IFfpLaborConfig>): void => {
-        setFfpLaborConfig((prev) => ({ ...prev, ...patch }));
+    const addFfpLaborRow = React.useCallback((row?: IEditableFfpLaborRow): void => {
+        setFfpLaborRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyFfpLaborRow()]);
+    }, []);
+
+    const removeFfpLaborRow = React.useCallback((id: string): void => {
+        setFfpLaborRows((prev) => prev.filter((row) => row.id !== id));
+    }, []);
+
+    const updateFfpLaborRow = React.useCallback((id: string, patch: Partial<IEditableFfpLaborRow>): void => {
+        setFfpLaborRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
     }, []);
 
     const resourceStepIsValid = React.useMemo((): boolean => {
+        const travelValid = travelRows.every((row) => {
+            if (!row.jobId.trim()) {
+                return false;
+            }
+
+            if (!row.amount.trim()) {
+                return false;
+            }
+
+            return !Number.isNaN(Number(row.amount));
+        });
+
+        if (isModDraftMode && resourceRows.length === 0) {
+            return travelValid;
+        }
+
         if (resourceRows.length === 0) {
             return false;
         }
@@ -687,13 +795,16 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 return false;
             }
 
+            if (!row.laborCategory.trim()) {
+                return false;
+            }
+
             if (form.contractType === "tm") {
                 const standardHours = row.standardHours.trim();
                 const overtimeHours = row.overtimeHours.trim();
                 const hasHours = standardHours || overtimeHours;
 
                 return !!row.jobId.trim() &&
-                    !!row.laborCategory.trim() &&
                     !!hasHours &&
                     (!standardHours || !Number.isNaN(Number(standardHours))) &&
                     (!overtimeHours || !Number.isNaN(Number(overtimeHours)));
@@ -706,24 +817,27 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             return false;
         }
 
-        if (form.contractType === "ffp" && (!ffpLaborConfig.jobId.trim() || !ffpLaborConfig.laborCategory.trim())) {
-            return false;
+        if (form.contractType === "ffp") {
+            const assignedResourceIds = new Set(resourceRows.filter((row) => !!row.employee?.Id).map((row) => row.id));
+            const linkedResourceIds = new Set(ffpLaborRows.flatMap((row) => row.resourceRowIds));
+            const everyResourceLinked = [...assignedResourceIds].every((id) => linkedResourceIds.has(id));
+            const ffpLinesValid = ffpLaborRows.length > 0 && ffpLaborRows.every((row) => {
+                const periodQty = Number(row.periodQty || 0);
+                const lumpSumAmount = Number(row.lumpSumAmount || 0);
+
+                return !!row.jobId.trim() &&
+                    periodQty > 0 &&
+                    lumpSumAmount > 0 &&
+                    row.resourceRowIds.length > 0;
+            });
+
+            if (!ffpLinesValid || !everyResourceLinked) {
+                return false;
+            }
         }
 
-        const travelValid = travelRows.every((row) => {
-            if (!row.jobId.trim()) {
-                return false;
-            }
-
-            if (!row.amount.trim()) {
-                return false;
-            }
-
-            return !Number.isNaN(Number(row.amount));
-        });
-
         return travelValid;
-    }, [ffpLaborConfig.jobId, ffpLaborConfig.laborCategory, form.contractType, resourceRows, travelRows]);
+    }, [ffpLaborRows, form.contractType, isModDraftMode, resourceRows, travelRows]);
 
     const validateStep = React.useCallback((step: IwaFormStep): boolean => {
         if (step === 0) {
@@ -834,18 +948,32 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [draftId, loadAttachments, showDialog]);
 
     const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<Pick<IAuthorizationItem, "baseLaborAmount" | "baseTravelAmount" | "baseGrandTotal">> => {
+        if (isModDraftMode && !activeModId) {
+            throw new Error("The modification draft is still loading. Please wait a moment and try again.");
+        }
+
+        const lineOptions = isModDraftMode && activeModId
+            ? { lineScope: "mod" as const, modId: activeModId }
+            : undefined;
+        const resourceLineNumberByRowId = new Map<string, number>();
         const activeResources = resourceRows
             .filter((row) => row.employee?.Id)
-            .map((row, index) => ({
-                title: `Resource-${index + 1}-${row.employee?.Title ?? "Employee"}`,
-                lineNumber: index + 1,
-                displayOrder: index + 1,
-                employeeId: row.employee!.Id,
-                state: row.state.trim(),
-                comments: row.comments.trim()
-            }));
+            .map((row, index) => {
+                const lineNumber = index + 1;
+                resourceLineNumberByRowId.set(row.id, lineNumber);
 
-        const createdResources = await ResourceService.replaceForAuthorization(authorizationId, activeResources);
+                return {
+                    title: `Resource-${lineNumber}-${row.employee?.Title ?? "Employee"}`,
+                    lineNumber,
+                    displayOrder: lineNumber,
+                    employeeId: row.employee!.Id,
+                    state: row.state.trim(),
+                    laborCategory: row.laborCategory.trim(),
+                    comments: row.comments.trim()
+                };
+            });
+
+        const createdResources = await ResourceService.replaceForAuthorization(authorizationId, activeResources, lineOptions);
         const createdByLineNumber = new Map<number, number>();
         createdResources.forEach((resource) => {
             if (resource.lineNumber) {
@@ -853,7 +981,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
         });
 
-        const laborRows = form.contractType === "tm"
+        const laborRows: Parameters<typeof LaborLineItemService.replaceForAuthorization>[1] = form.contractType === "tm"
             ? resourceRows
                 .filter((row) => row.employee?.Id)
                 .map((row, index) => ({
@@ -862,7 +990,6 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     displayOrder: index + 1,
                     pricingType: "tm" as const,
                     jobId: row.jobId.trim(),
-                    laborCategory: row.laborCategory.trim(),
                     resourceIds: [createdByLineNumber.get(index + 1)].filter((value): value is number => typeof value === "number"),
                     comments: row.comments.trim(),
                     annualSalary: Number(row.annualSalary || 0),
@@ -871,18 +998,28 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     standardHours: Number(row.standardHours || 0),
                     overtimeHours: Number(row.overtimeHours || 0)
                 }))
-            : [{
-                title: "Labor-1-FFP",
-                lineNumber: 1,
-                displayOrder: 1,
-                pricingType: "ffp" as const,
-                jobId: ffpLaborConfig.jobId.trim(),
-                laborCategory: ffpLaborConfig.laborCategory.trim(),
-                resourceIds: createdResources.map((resource) => resource.Id),
-                comments: ffpLaborConfig.comments.trim()
-            }];
+            : ffpLaborRows.map((row, index) => {
+                const lineNumber = index + 1;
+                const resourceIds = row.resourceRowIds
+                    .map((resourceRowId) => resourceLineNumberByRowId.get(resourceRowId))
+                    .map((resourceLineNumber) => resourceLineNumber ? createdByLineNumber.get(resourceLineNumber) : undefined)
+                    .filter((value): value is number => typeof value === "number");
 
-        const savedLaborLines = await LaborLineItemService.replaceForAuthorization(authorizationId, laborRows);
+                return {
+                    title: `Labor-${lineNumber}-FFP`,
+                    lineNumber,
+                    displayOrder: lineNumber,
+                    pricingType: "ffp" as const,
+                    jobId: row.jobId.trim(),
+                    resourceIds,
+                    comments: row.comments.trim(),
+                    chargingPeriod: row.chargingPeriod,
+                    periodQty: Number(row.periodQty || 0),
+                    lumpSumAmount: Number(row.lumpSumAmount || 0)
+                };
+            });
+
+        const savedLaborLines = await LaborLineItemService.replaceForAuthorization(authorizationId, laborRows, lineOptions);
 
         const activeTravelRows = travelRows.map((row, index) => ({
             title: `${row.lineType.toUpperCase()}-${index + 1}`,
@@ -895,11 +1032,26 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             comments: row.comments.trim()
         }));
 
-        const savedTravelRows = await TravelOdcService.replaceForAuthorization(authorizationId, activeTravelRows);
+        const savedTravelRows = await TravelOdcService.replaceForAuthorization(authorizationId, activeTravelRows, lineOptions);
 
         const baseLaborAmount = savedLaborLines.reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
         const baseTravelAmount = savedTravelRows.reduce((total, line) => total + Number(line.amount ?? 0), 0);
         const baseGrandTotal = baseLaborAmount + baseTravelAmount;
+
+        if (isModDraftMode && activeModId) {
+            await ModService.updateDraft(activeModId, {
+                reason: modReason.trim(),
+                laborAmount: baseLaborAmount,
+                travelAmount: baseTravelAmount,
+                grandTotal: baseGrandTotal
+            });
+
+            return {
+                baseLaborAmount: form.baseLaborAmount ?? 0,
+                baseTravelAmount: form.baseTravelAmount ?? 0,
+                baseGrandTotal: form.baseGrandTotal ?? 0
+            };
+        }
 
         const totals = {
             baseLaborAmount,
@@ -910,7 +1062,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         await AuthorizationService.updateBaseAmounts(authorizationId, totals);
 
         return totals;
-    }, [ffpLaborConfig.comments, ffpLaborConfig.jobId, ffpLaborConfig.laborCategory, form.contractType, resourceRows, travelRows]);
+    }, [activeModId, ffpLaborRows, form.baseGrandTotal, form.baseLaborAmount, form.baseTravelAmount, form.contractType, isModDraftMode, modReason, resourceRows, travelRows]);
 
     const persistAuthorization = React.useCallback(async (status: AuthorizationStatus): Promise<void> => {
         const authorizationId = draftId ?? form.Id;
@@ -927,26 +1079,52 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setIsSaving(true);
         setSubmitted(true);
         const normalizedStatus = normalizeAuthorizationStatus(status);
+        const isSubmittingMod = isModDraftMode && normalizedStatus !== "draft";
+
+        if (isModDraftMode && !activeModId) {
+            setIsSaving(false);
+            showDialog("Mod Draft Loading", "The modification draft is still loading. Please wait a moment and try again.");
+            return;
+        }
+
+        if (isSubmittingMod && !currentMod?.Id) {
+            setIsSaving(false);
+            showDialog("Mod Draft Loading", "The modification draft is still loading. Please wait a moment and try again.");
+            return;
+        }
+
+        if (isSubmittingMod && !modReason.trim()) {
+            setIsSaving(false);
+            showDialog("Mod Reason Required", "Please enter a reason for this modification before submitting it for approval.");
+            return;
+        }
 
         showBusy(
-            normalizedStatus === "draft"
-                ? "Saving authorization draft..."
-                : isExistingSubmittedEdit
-                    ? "Saving authorization changes..."
-                    : "Submitting authorization..."
+            isModDraftMode
+                ? normalizedStatus === "draft"
+                    ? "Saving modification draft..."
+                    : "Submitting modification..."
+                : normalizedStatus === "draft"
+                    ? "Saving authorization draft..."
+                    : isExistingSubmittedEdit
+                        ? "Saving authorization changes..."
+                        : "Submitting authorization..."
         );
 
+        const authorizationStatusToSave = isModDraftMode
+            ? normalizeAuthorizationStatus(form.authorizationStatus)
+            : normalizedStatus;
         const nextForm: IAuthorizationItem = {
             ...form,
             Id: authorizationId,
-            authorizationStatus: normalizedStatus,
+            authorizationStatus: authorizationStatusToSave,
             periodStart: toIsoDate(periodStart),
             periodEnd: toIsoDate(periodEnd)
         };
 
         try {
             let saved: IAuthorizationItem;
-            const isFirstSubmit = normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
+            const isFirstSubmit = !isModDraftMode && normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
 
             if (isFirstSubmit) {
                 showBusy("Submitting authorization...");
@@ -979,7 +1157,57 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
             const activeRun = runByAuthorizationId.get(saved.Id);
 
+            if (isSubmittingMod && currentMod?.Id) {
+                showBusy("Capturing modification changes...");
+                const approvers = await ApproverResolver.resolve(saved);
+                const changeSet = captureIwaChangeSet({
+                    beforeAuthorization: initialAuthorizationRef.current,
+                    afterAuthorization: saved,
+                    beforeResources: resourcesByAuthorizationId.get(saved.Id) ?? [],
+                    beforeLaborLines: laborLinesByAuthorizationId.get(saved.Id) ?? [],
+                    beforeTravelOdcs: travelOdcsByAuthorizationId.get(saved.Id) ?? [],
+                    afterResourceRows: resourceRows,
+                    afterTravelRows: travelRows,
+                    afterFfpLaborRows: ffpLaborRows
+                });
+                const nextRunNumber = Math.max(0, ...(runsByAuthorizationId.get(saved.Id) ?? []).map((run) => run.runNumber ?? 0)) + 1;
+
+                showBusy("Creating new workflow...");
+                const modRun = await WorkflowRunService.createModRun(
+                    saved,
+                    currentMod,
+                    nextRunNumber,
+                    approvers,
+                    "Submit modification",
+                    changeSet.changeSummary
+                );
+
+                showBusy("Updating modification linkages...");
+                await ModService.updateDraft(currentMod.Id, {
+                    reason: modReason.trim(),
+                    changeSummary: changeSet.changeSummary,
+                    modStatus: "underReview",
+                    currentWorkflowRunId: modRun.Id
+                });
+                await AuthorizationService.updateRunId(saved.Id, modRun.Id);
+                await WorkflowActionService.createSubmitted(saved, modRun, {
+                    actionType: "modified",
+                    comments: changeSet.changeSummary,
+                    changeSummary: changeSet.changeSummary,
+                    changePayloadJson: changeSet.changePayloadJson,
+                    modId: currentMod.Id
+                });
+
+                saved = {
+                    ...saved,
+                    currentWorkflowRun: {
+                        Id: modRun.Id,
+                        Title: modRun.Title
+                    }
+                };
+            } else
             if (
+                !isModDraftMode &&
                 normalizedStatus !== "draft" &&
                 isExistingSubmittedEdit &&
                 !isFirstSubmit &&
@@ -996,7 +1224,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     beforeTravelOdcs: travelOdcsByAuthorizationId.get(saved.Id) ?? [],
                     afterResourceRows: resourceRows,
                     afterTravelRows: travelRows,
-                    afterFfpLaborConfig: ffpLaborConfig
+                    afterFfpLaborRows: ffpLaborRows
                 });
                 const restartReason = "Modify and resubmit";
                 showBusy("Creating new workflow...");
@@ -1052,12 +1280,25 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             ]);
 
             if (normalizedStatus === "draft") {
-                showSuccess("Draft saved successfully.");
+                showSuccess(isModDraftMode ? "Modification draft saved successfully." : "Draft saved successfully.");
                 if (successTimeoutRef.current) {
                     window.clearTimeout(successTimeoutRef.current);
                 }
                 successTimeoutRef.current = window.setTimeout(() => {
                     hideSuccess();
+                }, 1500);
+                return;
+            }
+
+            if (isSubmittingMod) {
+                showSuccess("Modification submitted for approval.");
+                if (successTimeoutRef.current) {
+                    window.clearTimeout(successTimeoutRef.current);
+                }
+                successTimeoutRef.current = window.setTimeout(() => {
+                    hideSuccess();
+                    sessionStorage.removeItem(getActiveModDraftSessionKey(saved.Id));
+                    history.push(returnTo);
                 }, 1500);
                 return;
             }
@@ -1089,7 +1330,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             setIsSaving(false);
         }
-    }, [clearAuthorizationDetailCache, draftId, ensureUniqueAuthorizationCombination, ffpLaborConfig, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, laborLinesByAuthorizationId, loadAuthorizationDetail, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
+    }, [activeModId, clearAuthorizationDetailCache, currentMod, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, laborLinesByAuthorizationId, loadAuthorizationDetail, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
     const handleCancel = React.useCallback(async (): Promise<void> => {
         if (mode === "new" && draftId) {
@@ -1167,6 +1408,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={entityOptions}
                             value={selectedDonorEntity}
+                            disabled={isBaselineLocked}
                             onChange={(_, value: IEntityItem | null) => {
                                 updateField("donorEntity", value?.Title ?? "");
                             }}
@@ -1186,6 +1428,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={entityOptions}
                             value={selectedReceivingEntity}
+                            disabled={isBaselineLocked}
                             onChange={(_, value: IEntityItem | null) => {
                                 updateField("receivingEntity", value?.Title ?? "");
                             }}
@@ -1223,12 +1466,17 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     return (
                                         <Paper
                                             key={option.value}
-                                            onClick={() => updateField("contractType", option.value)}
+                                            onClick={() => {
+                                                if (!isBaselineLocked) {
+                                                    updateField("contractType", option.value);
+                                                }
+                                            }}
                                             sx={{
                                                 p: 2,
                                                 flex: 1,
                                                 minWidth: { lg: 260 },
-                                                cursor: "pointer",
+                                                cursor: isBaselineLocked ? "default" : "pointer",
+                                                opacity: isBaselineLocked && !isSelected ? 0.58 : 1,
                                                 borderColor: isSelected ? "info.main" : undefined,
                                                 borderWidth: isSelected ? 2 : undefined,
                                                 backgroundColor: isSelected ? "rgba(3,169,244,0.08)" : "background.paper"
@@ -1253,6 +1501,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={contractOptions}
                             value={selectedContract}
+                            disabled={isBaselineLocked}
                             autoHighlight
                             onChange={(_, value: IContractItem | null) => {
                                 updateField("contractId", value?.field_19 ?? "");
@@ -1301,6 +1550,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={sortedInvoiceOptions}
                             value={selectedInvoice}
+                            disabled={isBaselineLocked}
                             loading={isInvoicesLoading}
                             autoHighlight
                             onChange={(_, value: IInvoiceItem | null) => {
@@ -1402,6 +1652,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Autocomplete
                             options={ogOptions}
                             value={selectedOg}
+                            disabled={isBaselineLocked}
                             onChange={(_, value: IOgItem | null) => {
                                 updateField("og", value?.Title ?? "");
                                 updateField("lob", value?.lob?.Title ?? "");
@@ -1488,11 +1739,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         <IwaWorkPackageStep
             contractType={form.contractType}
             jobs={jobOptions}
+            laborCategories={laborCategoryOptions}
             states={stateOptions}
             peoplePickerContext={peoplePickerContext}
             resourceRows={resourceRows}
             travelRows={travelRows}
-            ffpLaborConfig={ffpLaborConfig}
+            ffpLaborRows={ffpLaborRows}
             submitted={submitted}
             onAddResource={addResourceRow}
             onRemoveResource={removeResourceRow}
@@ -1500,15 +1752,34 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             onAddTravel={addTravelRow}
             onRemoveTravel={removeTravelRow}
             onUpdateTravel={updateTravelRow}
-            onUpdateFfpLaborConfig={updateFfpLabor}
+            onAddFfpLabor={addFfpLaborRow}
+            onRemoveFfpLabor={removeFfpLaborRow}
+            onUpdateFfpLabor={updateFfpLaborRow}
         />
     );
 
     const reviewSection = (
-        <Box sx={{ maxWidth: 1200, mx: "auto", width: "100%" }}>
+        <Stack spacing={2} sx={{ maxWidth: 1200, mx: "auto", width: "100%" }}>
+            {isModDraftMode && (
+                <Paper sx={{ p: 2 }}>
+                    <TextField
+                        label="Modification Reason"
+                        fullWidth
+                        required
+                        multiline
+                        minRows={2}
+                        value={modReason}
+                        onChange={(event) => setModReason(event.target.value)}
+                        error={submitted && !modReason.trim()}
+                        helperText={submitted && !modReason.trim()
+                            ? "A reason is required before submitting this Mod."
+                            : "Explain why this modification is needed. This will be stored with the Mod and included in workflow context."}
+                    />
+                </Paper>
+            )}
             <IwaReviewSection
                 attachmentsCount={attachments.length}
-                ffpLaborConfig={ffpLaborConfig}
+                ffpLaborRows={ffpLaborRows}
                 form={form}
                 jobs={jobOptions}
                 periodEnd={periodEnd}
@@ -1518,7 +1789,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 selectedInvoice={selectedInvoice ?? undefined}
                 travelRows={travelRows}
             />
-        </Box>
+        </Stack>
     );
 
     return (
@@ -1530,7 +1801,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         My Work
                     </Link>
                     <Typography color="text.primary">
-                        {mode === "new" ? "New Authorization" : "Edit Authorization"}
+                        {isModDraftMode ? `Mod ${currentMod?.modNumber ?? ""}` : mode === "new" ? "New Authorization" : "Edit Authorization"}
                     </Typography>
                     <Typography color="text.primary">
                         {stepLabels[activeStep]}
@@ -1539,8 +1810,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
                 <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
                     <PageHeader
-                        title={mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
-                        subtitle="Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."
+                        title={isModDraftMode ? `Edit Mod ${currentMod?.modNumber ?? ""} for ${form.Title || "Authorization"}` : mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
+                        subtitle={isModDraftMode
+                            ? "You are working in a Mod Draft. Approved baseline header fields and lines are locked; new work will be captured against this Mod."
+                            : "Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."}
                     />
 
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
@@ -1554,6 +1827,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             >
                                 Discard Draft
                             </Button>
+                        )}
+                        {isModDraftMode && (
+                            <Chip label={`MOD ${currentMod?.modNumber ?? ""}: DRAFT`} color="secondary" size="small" />
                         )}
                         <Chip label={`STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="outlined" />
                         {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
@@ -1660,10 +1936,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         startIcon={<SaveOutlinedIcon />}
                                         disabled={isSaving}
                                         onClick={() => {
-                                            persistAuthorization(isExistingSubmittedEdit ? normalizeAuthorizationStatus(form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
+                                            persistAuthorization(isModDraftMode ? "draft" : isExistingSubmittedEdit ? normalizeAuthorizationStatus(form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
                                         }}
                                     >
-                                        {isExistingSubmittedEdit ? "Save Changes" : "Save Draft"}
+                                        {isModDraftMode ? "Save Mod Draft" : isExistingSubmittedEdit ? "Save Changes" : "Save Draft"}
                                     </Button>
                                     {activeStep < 3 ? (
                                         <Button
@@ -1694,7 +1970,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                             persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
                                         }}
                                     >
-                                        {isExistingSubmittedEdit ? "Save Updates" : "Submit Authorization"}
+                                        {isModDraftMode ? "Submit Mod" : isExistingSubmittedEdit ? "Save Updates" : "Submit Authorization"}
                                     </Button>
                                 )}
                             </Stack>

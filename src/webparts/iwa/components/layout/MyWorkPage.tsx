@@ -122,7 +122,7 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
                         color="text.secondary"
                         sx={{
                             lineHeight: 1.3,
-                            minHeight: isCompact ? 34 : 40
+                            //minHeight: isCompact ? 34 : 40
                         }}
                     >
                         {helperText}

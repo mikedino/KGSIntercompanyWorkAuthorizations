@@ -28,8 +28,8 @@ export interface IEffectiveTmSummaryRow {
     employeeName: string;
     employeeEmail: string;
     state: string;
-    jobId: string;
     laborCategory: string;
+    jobId: string;
 
     baseStandardHours: number;
     baseOvertimeHours: number;
@@ -48,7 +48,6 @@ export interface IEffectiveTmSummaryRow {
 export interface IEffectiveFfpSummaryRow {
     laborLineId: number;
     jobId: string;
-    laborCategory: string;
     chargingPeriod?: ChargingPeriod;
     periodQty?: number;
 
@@ -68,6 +67,7 @@ export interface IResourceRosterRow {
     employeeName: string;
     employeeEmail: string;
     state: string;
+    laborCategory: string;
     lineScope: LineScope;
     modId?: number;
     isActive: boolean;
@@ -83,7 +83,6 @@ export interface ILaborLineDisplayRow {
     modId?: number;
 
     jobId: string;
-    laborCategory: string;
     resourceIds: number[];
     employeeNames: string[];
 

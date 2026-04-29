@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Box } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { Redirect, Route, Switch } from "react-router-dom";
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -13,6 +13,7 @@ import { NotFoundPage } from "../ui/NotFoundPage";
 import { IwaForm } from "../authorizations/iwaForm";
 import { IwaDetailPage } from "../authorizations/IwaDetailPage";
 import { useIwa } from "../data/iwaContext";
+import Strings from "../common/strings";
 
 export interface IAppFrameProps {
     context: WebPartContext;
@@ -86,6 +87,9 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                         <Route path="/admin" render={() => <AdminPage context={context} />} />
                         <Route component={NotFoundPage} />
                     </Switch>
+
+                    <Typography sx={{ width: "100%", mt: 2, textAlign: "right", fontSize: 10 }} >App Version: {Strings.Version}</Typography>
+
                 </Box>
             </Box>
         </>

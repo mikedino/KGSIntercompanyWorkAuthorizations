@@ -3,12 +3,12 @@ import { Divider, Grid, Paper, Stack, Table, TableBody, TableCell, TableContaine
 import { Dayjs } from "dayjs";
 import { ContractType, IAuthorizationItem, IInvoiceItem, IJobItem } from "../data/props";
 import { formatCurrency, RELATIONSHIP_SEPARATOR } from "../common/utils";
-import { IFfpLaborConfig, IEditableResourceRow, IEditableTravelRow } from "./IwaWorkPackageStep";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "./IwaWorkPackageStep";
 
 export interface IIwaReviewSectionProps {
     attachmentsCount: number;
     form: IAuthorizationItem;
-    ffpLaborConfig: IFfpLaborConfig;
+    ffpLaborRows: IEditableFfpLaborRow[];
     jobs: IJobItem[];
     periodEnd?: Dayjs;
     periodStart?: Dayjs;
@@ -45,7 +45,7 @@ const totalsRowSx = {
 
 export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
     attachmentsCount,
-    ffpLaborConfig,
+    ffpLaborRows,
     form,
     jobs,
     periodEnd,
@@ -73,6 +73,16 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
     const travelTotal = React.useMemo(() => {
         return travelRows.reduce((total, row) => total + Number(row.amount || 0), 0);
     }, [travelRows]);
+    const ffpLaborTotal = React.useMemo(() => {
+        return ffpLaborRows.reduce((total, row) => total + Number(row.lumpSumAmount || 0), 0);
+    }, [ffpLaborRows]);
+    const getResourceNames = React.useCallback((resourceRowIds: string[]): string => {
+        const names = resourceRowIds
+            .map((id) => resourceRows.find((resource) => resource.id === id)?.employee?.Title)
+            .filter(Boolean) as string[];
+
+        return names.length ? names.join(", ") : "—";
+    }, [resourceRows]);
 
     return (
         <Paper sx={{ p: { xs: 2, md: 3 } }}>
@@ -110,9 +120,49 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                     <Stack spacing={1.25}>
                         <Typography variant="subtitle2" fontWeight={600}>Resources</Typography>
                         {form.contractType === "ffp" && (
-                            <Typography variant="body2" color="text.secondary">
-                                FFP labor line: {getJobLabel(ffpLaborConfig.jobId)} | {ffpLaborConfig.laborCategory || "No labor category"}
-                            </Typography>
+                            <TableContainer>
+                                <Table size="small" sx={quietTableSx}>
+                                    <TableHead>
+                                            <TableRow>
+                                                <TableCell>Job ID / CLIN</TableCell>
+                                                <TableCell>Charging Period</TableCell>
+                                                <TableCell align="right">Periods</TableCell>
+                                                <TableCell align="right">Total Amount</TableCell>
+                                                <TableCell>Resources</TableCell>
+                                            </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {ffpLaborRows.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5}>No FFP labor / CLIN lines entered.</TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            <>
+                                                {ffpLaborRows.map((row) => {
+                                                    const total = Number(row.lumpSumAmount || 0);
+
+                                                    return (
+                                                        <TableRow key={row.id}>
+                                                            <TableCell>{getJobLabel(row.jobId)}</TableCell>
+                                                            <TableCell>{row.chargingPeriod || "—"}</TableCell>
+                                                            <TableCell align="right">{row.periodQty || "—"}</TableCell>
+                                                            <TableCell align="right">{total ? formatCurrency(total) : "—"}</TableCell>
+                                                            <TableCell>{getResourceNames(row.resourceRowIds)}</TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                                {ffpLaborRows.length > 1 && (
+                                                    <TableRow sx={totalsRowSx}>
+                                                        <TableCell colSpan={3}>Totals</TableCell>
+                                                        <TableCell align="right">{formatCurrency(ffpLaborTotal)}</TableCell>
+                                                        <TableCell />
+                                                    </TableRow>
+                                                )}
+                                            </>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
                         )}
                         <TableContainer>
                             <Table size="small" sx={quietTableSx}>
@@ -120,8 +170,8 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                     <TableRow>
                                         <TableCell>Employee</TableCell>
                                         <TableCell>State</TableCell>
+                                        <TableCell>Labor Category</TableCell>
                                         {form.contractType === "tm" && <TableCell>Job ID</TableCell>}
-                                        {form.contractType === "tm" && <TableCell>Labor Category</TableCell>}
                                         {form.contractType === "tm" && <TableCell>Std Hrs</TableCell>}
                                         {form.contractType === "tm" && <TableCell>OT Hrs</TableCell>}
                                     </TableRow>
@@ -137,15 +187,15 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                 <TableRow key={row.id}>
                                                     <TableCell>{row.employee?.Title ?? "—"}</TableCell>
                                                     <TableCell>{row.state || "—"}</TableCell>
+                                                    <TableCell>{row.laborCategory || "—"}</TableCell>
                                                     {form.contractType === "tm" && <TableCell>{getJobLabel(row.jobId)}</TableCell>}
-                                                    {form.contractType === "tm" && <TableCell>{row.laborCategory || "—"}</TableCell>}
                                                     {form.contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
                                                     {form.contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>
                                             ))}
                                             {resourceRows.length > 1 && (
                                                 <TableRow sx={totalsRowSx}>
-                                                    <TableCell colSpan={form.contractType === "tm" ? 4 : 2}>Totals</TableCell>
+                                                    <TableCell colSpan={form.contractType === "tm" ? 4 : 3}>Totals</TableCell>
                                                     {form.contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
                                                     {form.contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>

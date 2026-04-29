@@ -484,6 +484,14 @@ export const Configuration = Helper.SPConfig({
           required: true
         },
         {
+          name: "laborCategory",
+          title: "Labor Category",
+          description: "Labor category assigned to the resource/employee",
+          type: Helper.SPCfgFieldType.Text,
+          required: true,
+          indexed: true
+        },
+        {
           name: "comments",
           title: "Comments",
           type: Helper.SPCfgFieldType.Note,
@@ -508,6 +516,7 @@ export const Configuration = Helper.SPConfig({
             "lineScope",
             "employee",
             "state",
+            "laborCategory",
             "isActive"
           ]
         }
@@ -584,14 +593,6 @@ export const Configuration = Helper.SPConfig({
           name: "jobId",
           title: "Job ID",
           description: "Direct Job ID / CLIN from JAMIS",
-          type: Helper.SPCfgFieldType.Text,
-          required: true,
-          indexed: true
-        },
-        {
-          name: "laborCategory",
-          title: "Labor Category",
-          description: "Manual entry",
           type: Helper.SPCfgFieldType.Text,
           required: true,
           indexed: true

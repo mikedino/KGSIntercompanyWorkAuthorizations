@@ -27,7 +27,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { IPersonaProps } from "@fluentui/react";
 import { IPeoplePickerContext } from "@pnp/spfx-controls-react/lib/PeoplePicker";
 import { MuiPeoplePicker } from "../ui/CustomPeoplePicker";
-import { IJobItem, IPeoplePicker, TravelLineType } from "../data/props";
+import { ChargingPeriod, IJobItem, IPeoplePicker, TravelLineType } from "../data/props";
 import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput } from "../common/utils";
 
 export interface IEditableResourceRow {
@@ -53,20 +53,25 @@ export interface IEditableTravelRow {
     comments: string;
 }
 
-export interface IFfpLaborConfig {
+export interface IEditableFfpLaborRow {
+    id: string;
     jobId: string;
-    laborCategory: string;
+    chargingPeriod: ChargingPeriod;
+    periodQty: string;
+    lumpSumAmount: string;
+    resourceRowIds: string[];
     comments: string;
 }
 
 export interface IIwaWorkPackageStepProps {
     contractType: "tm" | "ffp";
     jobs: IJobItem[];
+    laborCategories: string[];
     states: string[];
     peoplePickerContext: IPeoplePickerContext;
     resourceRows: IEditableResourceRow[];
     travelRows: IEditableTravelRow[];
-    ffpLaborConfig: IFfpLaborConfig;
+    ffpLaborRows: IEditableFfpLaborRow[];
     submitted: boolean;
     onAddResource: (row?: IEditableResourceRow) => void;
     onRemoveResource: (id: string) => void;
@@ -74,13 +79,21 @@ export interface IIwaWorkPackageStepProps {
     onAddTravel: (row?: IEditableTravelRow) => void;
     onRemoveTravel: (id: string) => void;
     onUpdateTravel: (id: string, patch: Partial<IEditableTravelRow>) => void;
-    onUpdateFfpLaborConfig: (patch: Partial<IFfpLaborConfig>) => void;
+    onAddFfpLabor: (row?: IEditableFfpLaborRow) => void;
+    onRemoveFfpLabor: (id: string) => void;
+    onUpdateFfpLabor: (id: string, patch: Partial<IEditableFfpLaborRow>) => void;
 }
 
 const lineTypeOptions: Array<{ value: TravelLineType; label: string; }> = [
     { value: "travel", label: "Travel" },
     { value: "odc", label: "ODC" },
     { value: "other", label: "Other" }
+];
+
+const chargingPeriodOptions: Array<{ value: ChargingPeriod; label: string; }> = [
+    { value: "monthly", label: "Monthly" },
+    { value: "quarterly", label: "Quarterly" },
+    { value: "yearly", label: "Yearly" }
 ];
 
 const quietTableSx = {
@@ -130,6 +143,16 @@ const createEmptyTravelDraft = (): IEditableTravelRow => ({
     comments: ""
 });
 
+const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
+    id: "",
+    jobId: "",
+    chargingPeriod: "monthly",
+    periodQty: "",
+    lumpSumAmount: "",
+    resourceRowIds: [],
+    comments: ""
+});
+
 const toPeoplePickerValue = (item?: IPersonaProps): IPeoplePicker | undefined => {
     if (!item?.id || !item.text || !item.secondaryText) {
         return undefined;
@@ -176,11 +199,12 @@ const renderJobOption = (props: React.HTMLAttributes<HTMLLIElement>, option: IJo
 export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     contractType,
     jobs,
+    laborCategories,
     states,
     peoplePickerContext,
     resourceRows,
     travelRows,
-    ffpLaborConfig,
+    ffpLaborRows,
     submitted,
     onAddResource,
     onRemoveResource,
@@ -188,11 +212,16 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     onAddTravel,
     onRemoveTravel,
     onUpdateTravel,
-    onUpdateFfpLaborConfig
+    onAddFfpLabor,
+    onRemoveFfpLabor,
+    onUpdateFfpLabor
 }): JSX.Element => {
     const jobOptions = React.useMemo<IJobItem[]>(() => {
         return [...jobs].sort((left, right) => (left.field_13 ?? "").localeCompare(right.field_13 ?? ""));
     }, [jobs]);
+    const laborCategoryOptions = React.useMemo<string[]>(() => {
+        return [...laborCategories].sort((left, right) => left.localeCompare(right));
+    }, [laborCategories]);
 
     const [resourceDialogOpen, setResourceDialogOpen] = React.useState(false);
     const [resourceDraft, setResourceDraft] = React.useState<IEditableResourceRow>(createEmptyResourceDraft());
@@ -202,15 +231,46 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const [travelDraft, setTravelDraft] = React.useState<IEditableTravelRow>(createEmptyTravelDraft());
     const [travelDraftErrors, setTravelDraftErrors] = React.useState<Record<string, string>>({});
     const [travelAmountFocused, setTravelAmountFocused] = React.useState(false);
+    const [ffpDialogOpen, setFfpDialogOpen] = React.useState(false);
+    const [ffpDraft, setFfpDraft] = React.useState<IEditableFfpLaborRow>(createEmptyFfpLaborDraft());
+    const [ffpDraftErrors, setFfpDraftErrors] = React.useState<Record<string, string>>({});
+    const [ffpAmountFocused, setFfpAmountFocused] = React.useState(false);
     const resourceTotals = React.useMemo(() => {
         return resourceRows.reduce((totals, row) => ({
             standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
             overtimeHours: totals.overtimeHours + Number(normalizeDecimalInput(row.overtimeHours) || 0)
         }), { standardHours: 0, overtimeHours: 0 });
     }, [resourceRows]);
+    const ffpTotal = React.useMemo(() => {
+        return ffpLaborRows.reduce((total, row) => {
+            const amount = Number(normalizeDecimalInput(row.lumpSumAmount) || 0);
+            return total + amount;
+        }, 0);
+    }, [ffpLaborRows]);
     const travelTotal = React.useMemo(() => {
         return travelRows.reduce((total, row) => total + Number(normalizeDecimalInput(row.amount) || 0), 0);
     }, [travelRows]);
+
+    const assignedResourceRows = React.useMemo(
+        () => resourceRows.filter((row) => !!row.employee?.Id),
+        [resourceRows]
+    );
+
+    const getResourceNames = React.useCallback((resourceRowIds: string[]): string => {
+        const names = resourceRowIds
+            .map((id) => resourceRows.find((resource) => resource.id === id)?.employee?.Title)
+            .filter(Boolean) as string[];
+
+        return names.length ? names.join(", ") : "—";
+    }, [resourceRows]);
+
+    const getFfpLinesForResource = React.useCallback((resourceRowId: string): string => {
+        const labels = ffpLaborRows
+            .filter((line) => line.resourceRowIds.includes(resourceRowId))
+            .map((line) => line.jobId || "Unassigned Job");
+
+        return labels.length ? labels.join(", ") : "—";
+    }, [ffpLaborRows]);
 
     const openNewResourceDialog = React.useCallback((): void => {
         setResourceDraft(createEmptyResourceDraft());
@@ -243,8 +303,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             nextErrors.jobId = "Job ID is required for T&M resources.";
         }
 
-        if (contractType === "tm" && !resourceDraft.laborCategory.trim()) {
-            nextErrors.laborCategory = "Labor category is required for T&M resources.";
+        if (!resourceDraft.laborCategory.trim()) {
+            nextErrors.laborCategory = "Labor category is required.";
         }
 
         if (contractType === "tm") {
@@ -307,6 +367,71 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         setTravelAmountFocused(false);
     }, []);
 
+    const openNewFfpDialog = React.useCallback((): void => {
+        setFfpDraft(createEmptyFfpLaborDraft());
+        setFfpDraftErrors({});
+        setFfpAmountFocused(false);
+        setFfpDialogOpen(true);
+    }, []);
+
+    const openEditFfpDialog = React.useCallback((row: IEditableFfpLaborRow): void => {
+        setFfpDraft({ ...row });
+        setFfpDraftErrors({});
+        setFfpAmountFocused(false);
+        setFfpDialogOpen(true);
+    }, []);
+
+    const closeFfpDialog = React.useCallback((): void => {
+        setFfpDialogOpen(false);
+        setFfpAmountFocused(false);
+    }, []);
+
+    const saveFfpDraft = React.useCallback((): void => {
+        const nextErrors: Record<string, string> = {};
+        const normalizedPeriodQty = normalizeDecimalInput(ffpDraft.periodQty);
+        const normalizedLumpSumAmount = normalizeDecimalInput(ffpDraft.lumpSumAmount);
+
+        if (!ffpDraft.jobId.trim()) {
+            nextErrors.jobId = "Job ID is required.";
+        }
+
+        if (!normalizedPeriodQty.trim()) {
+            nextErrors.periodQty = "Number of periods is required.";
+        } else if (Number.isNaN(Number(normalizedPeriodQty)) || Number(normalizedPeriodQty) <= 0) {
+            nextErrors.periodQty = "Number of periods must be greater than zero.";
+        }
+
+        if (!normalizedLumpSumAmount.trim()) {
+            nextErrors.lumpSumAmount = "Lump sum amount is required.";
+        } else if (Number.isNaN(Number(normalizedLumpSumAmount)) || Number(normalizedLumpSumAmount) <= 0) {
+            nextErrors.lumpSumAmount = "Lump sum amount must be greater than zero.";
+        }
+
+        if (ffpDraft.resourceRowIds.length === 0) {
+            nextErrors.resourceRowIds = "Select at least one associated resource.";
+        }
+
+        setFfpDraftErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length > 0) {
+            return;
+        }
+
+        const nextDraft = {
+            ...ffpDraft,
+            periodQty: normalizedPeriodQty,
+            lumpSumAmount: normalizedLumpSumAmount
+        };
+
+        if (ffpDraft.id) {
+            onUpdateFfpLabor(ffpDraft.id, nextDraft);
+        } else {
+            onAddFfpLabor(nextDraft);
+        }
+
+        setFfpDialogOpen(false);
+    }, [ffpDraft, onAddFfpLabor, onUpdateFfpLabor]);
+
     const saveTravelDraft = React.useCallback((): void => {
         const nextErrors: Record<string, string> = {};
         const normalizedAmount = normalizeDecimalInput(travelDraft.amount);
@@ -345,52 +470,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             Resources
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            Build the employee roster here. Add rows in a dialog, capture the hours the you knows now. HR will complete the protected compensation details later in the workflow.
+                            Build the employee roster first. You will assign the CLIN and Lump Sum amount below.
                         </Typography>
                     </Stack>
-
-                    {contractType === "ffp" && (
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Stack spacing={1.5}>
-                                <Typography variant="subtitle1" fontWeight={600}>
-                                    Shared FFP Labor Line
-                                </Typography>
-                                <Grid container spacing={2}>
-                                    <Grid size={{ xs: 12, md: 6 }}>
-                                        <Autocomplete
-                                            options={jobOptions}
-                                            value={jobOptions.find((job) => job.field_13 === ffpLaborConfig.jobId) ?? null}
-                                            onChange={(_, value: IJobItem | null) => onUpdateFfpLaborConfig({ jobId: value?.field_13 ?? "" })}
-                                            filterOptions={(options, state) => filterJobOptions(options, state.inputValue)}
-                                            getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
-                                            isOptionEqualToValue={(option, value) => option.Id === value.Id}
-                                            renderOption={renderJobOption}
-                                            renderInput={(params) => (
-                                                <TextField
-                                                    {...params}
-                                                    label="Job ID"
-                                                    required
-                                                    error={submitted && !ffpLaborConfig.jobId}
-                                                    helperText={submitted && !ffpLaborConfig.jobId ? "Job ID is required." : "Shared job / CLIN for the single FFP labor line."}
-                                                />
-                                            )}
-                                        />
-                                    </Grid>
-                                    <Grid size={{ xs: 12, md: 6 }}>
-                                        <TextField
-                                            label="Labor Category"
-                                            fullWidth
-                                            required
-                                            value={ffpLaborConfig.laborCategory}
-                                            onChange={(event) => onUpdateFfpLaborConfig({ laborCategory: event.target.value })}
-                                            error={submitted && !ffpLaborConfig.laborCategory.trim()}
-                                            helperText={submitted && !ffpLaborConfig.laborCategory.trim() ? "Labor category is required." : "Shared labor category for the FFP labor line."}
-                                        />
-                                    </Grid>
-                                </Grid>
-                            </Stack>
-                        </Paper>
-                    )}
 
                     <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
                         <Typography variant="body2" color="text.secondary">
@@ -414,8 +496,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     <TableRow>
                                         <TableCell>Employee</TableCell>
                                         <TableCell>State</TableCell>
+                                        <TableCell>Labor Category</TableCell>
+                                        {contractType === "ffp" && <TableCell>FFP Job / CLIN</TableCell>}
                                         {contractType === "tm" && <TableCell>Job ID</TableCell>}
-                                        {contractType === "tm" && <TableCell>Labor Category</TableCell>}
                                         {contractType === "tm" && <TableCell>Std Hrs</TableCell>}
                                         {contractType === "tm" && <TableCell>OT Hrs</TableCell>}
                                         <TableCell align="right">Actions</TableCell>
@@ -426,8 +509,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         <TableRow key={row.id} hover>
                                             <TableCell>{row.employee?.Title ?? "—"}</TableCell>
                                             <TableCell>{row.state || "—"}</TableCell>
+                                            <TableCell>{row.laborCategory || "—"}</TableCell>
+                                            {contractType === "ffp" && <TableCell>{getFfpLinesForResource(row.id)}</TableCell>}
                                             {contractType === "tm" && <TableCell>{row.jobId || "—"}</TableCell>}
-                                            {contractType === "tm" && <TableCell>{row.laborCategory || "—"}</TableCell>}
                                             {contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
                                             {contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                             <TableCell align="right">
@@ -444,7 +528,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     ))}
                                     {resourceRows.length > 1 && (
                                         <TableRow sx={totalsRowSx}>
-                                            <TableCell colSpan={contractType === "tm" ? 4 : 2}>Totals</TableCell>
+                                            <TableCell colSpan={contractType === "tm" ? 4 : 4}>Totals</TableCell>
                                             {contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
                                             {contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
                                             <TableCell />
@@ -453,6 +537,85 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                 </TableBody>
                             </Table>
                         </TableContainer>
+                    )}
+
+                    {contractType === "ffp" && (
+                        <Stack spacing={1.5}>
+                            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
+                                <Box>
+                                    <Typography variant="subtitle1" fontWeight={600}>
+                                        FFP Labor / CLINs
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Group each fixed-price Job ID / CLIN with its charging period, lump sum, and associated resources.
+                                    </Typography>
+                                </Box>
+                                <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewFfpDialog}>
+                                    Add FFP Line
+                                </Button>
+                            </Stack>
+                            {submitted && ffpLaborRows.length === 0 && (
+                                <Typography variant="body2" color="error">
+                                    Add at least one FFP labor / CLIN line.
+                                </Typography>
+                            )}
+                            {ffpLaborRows.length === 0 ? (
+                                <Box sx={{ py: 1 }}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        No FFP labor / CLIN lines have been added yet.
+                                    </Typography>
+                                </Box>
+                            ) : (
+                                <TableContainer>
+                                    <Table size="small" sx={quietTableSx}>
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell>Job ID / CLIN</TableCell>
+                                                <TableCell>Charging Period</TableCell>
+                                                <TableCell align="right">Periods</TableCell>
+                                                <TableCell align="right">Total Amount</TableCell>
+                                                <TableCell>Resources</TableCell>
+                                                <TableCell align="right">Actions</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {ffpLaborRows.map((row) => {
+                                                const amount = Number(normalizeDecimalInput(row.lumpSumAmount) || 0);
+                                                const total = amount;
+
+                                                return (
+                                                    <TableRow key={row.id} hover>
+                                                        <TableCell>{row.jobId || "—"}</TableCell>
+                                                        <TableCell>{chargingPeriodOptions.find((option) => option.value === row.chargingPeriod)?.label ?? row.chargingPeriod}</TableCell>
+                                                       <TableCell align="right">{row.periodQty || "—"}</TableCell>
+                                                        <TableCell align="right">{total ? formatCurrency(total) : "—"}</TableCell>
+                                                        <TableCell>{getResourceNames(row.resourceRowIds)}</TableCell>
+                                                        <TableCell align="right">
+                                                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                                                <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditFfpDialog(row)}>
+                                                                    Edit
+                                                                </Button>
+                                                                <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => onRemoveFfpLabor(row.id)}>
+                                                                    Remove
+                                                                </Button>
+                                                            </Stack>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                            {ffpLaborRows.length > 1 && (
+                                                <TableRow sx={totalsRowSx}>
+                                                    <TableCell colSpan={3}>Totals</TableCell>
+                                                    <TableCell align="right">{formatCurrency(ffpTotal)}</TableCell>
+                                                    <TableCell />
+                                                    <TableCell />
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            )}
+                        </Stack>
                     )}
                 </Stack>
             </Paper>
@@ -533,46 +696,73 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 <DialogContent dividers>
                     <Stack spacing={3} sx={{ pt: 1 }}>
                         <Grid container spacing={2}>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <MuiPeoplePicker
-                                    label="Employee"
-                                    context={peoplePickerContext}
-                                    value={resourceDraft.employee?.EMail ? [resourceDraft.employee.EMail] : undefined}
-                                    required
-                                    onChange={(items) => {
-                                        const employee = toPeoplePickerValue(items[0]);
-
-                                        setResourceDraft((prev) => ({
-                                            ...prev,
-                                            employee
-                                        }));
+                            <Grid size={{ xs: 12 }}>
+                                <Box
+                                    sx={{
+                                        display: "grid",
+                                        gridTemplateColumns: {
+                                            xs: "1fr",
+                                            md: "minmax(320px, 1fr) minmax(160px, 250px) minmax(180px, 250px)"
+                                        },
+                                        gap: 2,
+                                        alignItems: "start"
                                     }}
-                                    error={Boolean(resourceDraftErrors.employee)}
-                                    helperText={resourceDraftErrors.employee}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <Autocomplete
-                                    freeSolo
-                                    options={states}
-                                    value={resourceDraft.state}
-                                    onChange={(_, value: string | null) => setResourceDraft((prev) => ({ ...prev, state: value ?? "" }))}
-                                    onInputChange={(_, value: string) => setResourceDraft((prev) => ({ ...prev, state: value }))}
-                                    renderInput={(params) => (
-                                        <TextField
-                                            {...params}
-                                            label="State"
-                                            fullWidth
-                                            required
-                                            error={Boolean(resourceDraftErrors.state)}
-                                            helperText={resourceDraftErrors.state || "Choose from Config values or type one if needed."}
-                                        />
-                                    )}
-                                />
+                                >
+                                    <MuiPeoplePicker
+                                        label="Employee"
+                                        context={peoplePickerContext}
+                                        value={resourceDraft.employee?.EMail ? [resourceDraft.employee.EMail] : undefined}
+                                        required
+                                        onChange={(items) => {
+                                            const employee = toPeoplePickerValue(items[0]);
+
+                                            setResourceDraft((prev) => ({
+                                                ...prev,
+                                                employee
+                                            }));
+                                        }}
+                                        error={Boolean(resourceDraftErrors.employee)}
+                                        helperText={resourceDraftErrors.employee}
+                                    />
+                                    <Autocomplete
+                                        freeSolo
+                                        options={states}
+                                        value={resourceDraft.state}
+                                        onChange={(_, value: string | null) => setResourceDraft((prev) => ({ ...prev, state: value ?? "" }))}
+                                        onInputChange={(_, value: string) => setResourceDraft((prev) => ({ ...prev, state: value }))}
+                                        renderInput={(params) => (
+                                            <TextField
+                                                {...params}
+                                                label="State"
+                                                fullWidth
+                                                required
+                                                error={Boolean(resourceDraftErrors.state)}
+                                                helperText={resourceDraftErrors.state || "Choose from Config values or type one if needed."}
+                                            />
+                                        )}
+                                    />
+                                    <Autocomplete
+                                        freeSolo
+                                        options={laborCategoryOptions}
+                                        value={resourceDraft.laborCategory}
+                                        onInputChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value }))}
+                                        onChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value ?? "" }))}
+                                        renderInput={(params) => (
+                                            <TextField
+                                                {...params}
+                                                label="Labor Category"
+                                                fullWidth
+                                                required
+                                                error={Boolean(resourceDraftErrors.laborCategory)}
+                                                helperText={resourceDraftErrors.laborCategory || "Choose from Config values or type one if needed."}
+                                            />
+                                        )}
+                                    />
+                                </Box>
                             </Grid>
                             {contractType === "tm" && (
                                 <>
-                                    <Grid size={{ xs: 12, md: 6 }}>
+                                    <Grid size={{ xs: 12, md: 5 }}>
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
@@ -592,35 +782,24 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             )}
                                         />
                                     </Grid>
-                                    <Grid size={{ xs: 12, md: 6 }}>
+                                    <Grid size={{ xs: 12, md: 3 }}>
                                         <TextField
-                                            label="Labor Category"
-                                            fullWidth
-                                            required
-                                            value={resourceDraft.laborCategory}
-                                            onChange={(event) => setResourceDraft((prev) => ({ ...prev, laborCategory: event.target.value }))}
-                                            error={Boolean(resourceDraftErrors.laborCategory)}
-                                            helperText={resourceDraftErrors.laborCategory}
-                                        />
-                                    </Grid>
-                                    <Grid size={{ xs: 12, md: 6 }}>
-                                        <TextField
-                                            label="Standard Hours"
+                                            label="Enter Standard Hours"
                                             fullWidth
                                             value={resourceDraft.standardHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, standardHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.standardHours)}
-                                            helperText={resourceDraftErrors.standardHours || "Hours entered by the requestor for the labor line."}
+                                            helperText={resourceDraftErrors.standardHours || ""}
                                         />
                                     </Grid>
-                                    <Grid size={{ xs: 12, md: 6 }}>
+                                    <Grid size={{ xs: 12, md: 3 }}>
                                         <TextField
-                                            label="Overtime Hours"
+                                            label="(Optional) Overtime Hours"
                                             fullWidth
                                             value={resourceDraft.overtimeHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, overtimeHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.overtimeHours)}
-                                            helperText={resourceDraftErrors.overtimeHours || "Optional overtime hours. HR/Admin will complete compensation later."}
+                                            helperText={resourceDraftErrors.overtimeHours || ""}
                                         />
                                     </Grid>
                                 </>
@@ -641,6 +820,110 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 <DialogActions>
                     <Button onClick={closeResourceDialog}>Cancel</Button>
                     <Button variant="contained" onClick={saveResourceDraft}>Save Resource</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={ffpDialogOpen} onClose={closeFfpDialog} fullWidth maxWidth="md">
+                <DialogTitle>{ffpDraft.id ? "Edit FFP Labor / CLIN" : "Add FFP Labor / CLIN"}</DialogTitle>
+                <DialogContent dividers>
+                    <Stack spacing={3} sx={{ pt: 1 }}>
+                        <Grid container spacing={2}>
+                            <Grid size={{ xs: 12 }}>
+                                <Autocomplete
+                                    options={jobOptions}
+                                    value={jobOptions.find((job) => job.field_13 === ffpDraft.jobId) ?? null}
+                                    onChange={(_, value: IJobItem | null) => setFfpDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
+                                    filterOptions={(options, state) => filterJobOptions(options, state.inputValue)}
+                                    getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
+                                    isOptionEqualToValue={(option, value) => option.Id === value.Id}
+                                    renderOption={renderJobOption}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Job ID / CLIN"
+                                            required
+                                            error={Boolean(ffpDraftErrors.jobId)}
+                                            helperText={ffpDraftErrors.jobId}
+                                        />
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <TextField
+                                    select
+                                    label="Charging Period"
+                                    fullWidth
+                                    value={ffpDraft.chargingPeriod}
+                                    onChange={(event) => setFfpDraft((prev) => ({ ...prev, chargingPeriod: event.target.value as ChargingPeriod }))}
+                                >
+                                    {chargingPeriodOptions.map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                </TextField>
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <TextField
+                                    label="Number of Periods"
+                                    fullWidth
+                                    required
+                                    value={ffpDraft.periodQty}
+                                    onChange={(event) => setFfpDraft((prev) => ({ ...prev, periodQty: normalizeDecimalInput(event.target.value) }))}
+                                    error={Boolean(ffpDraftErrors.periodQty)}
+                                    helperText={ffpDraftErrors.periodQty}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <TextField
+                                    label="Lump Sum Amount"
+                                    fullWidth
+                                    required
+                                    value={ffpAmountFocused ? ffpDraft.lumpSumAmount : formatCurrencyInputValue(ffpDraft.lumpSumAmount)}
+                                    onFocus={() => setFfpAmountFocused(true)}
+                                    onBlur={() => setFfpAmountFocused(false)}
+                                    onChange={(event) => setFfpDraft((prev) => ({ ...prev, lumpSumAmount: normalizeDecimalInput(event.target.value) }))}
+                                    error={Boolean(ffpDraftErrors.lumpSumAmount)}
+                                    helperText={ffpDraftErrors.lumpSumAmount}
+                                    InputProps={{
+                                        startAdornment: <InputAdornment position="start">$</InputAdornment>
+                                    }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <Autocomplete
+                                    multiple
+                                    disableCloseOnSelect
+                                    options={assignedResourceRows}
+                                    value={assignedResourceRows.filter((row) => ffpDraft.resourceRowIds.includes(row.id))}
+                                    onChange={(_, values) => setFfpDraft((prev) => ({ ...prev, resourceRowIds: values.map((row) => row.id) }))}
+                                    getOptionLabel={(option) => option.employee?.Title ?? "Unnamed resource"}
+                                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label="Associated Resources"
+                                            required
+                                            error={Boolean(ffpDraftErrors.resourceRowIds)}
+                                            helperText={ffpDraftErrors.resourceRowIds || "Add resources first, then associate them to this Job ID / CLIN."}
+                                        />
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12 }}>
+                                <TextField
+                                    label="Comments"
+                                    fullWidth
+                                    multiline
+                                    minRows={2}
+                                    value={ffpDraft.comments}
+                                    onChange={(event) => setFfpDraft((prev) => ({ ...prev, comments: event.target.value }))}
+                                />
+                            </Grid>
+                        </Grid>
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeFfpDialog}>Cancel</Button>
+                    <Button variant="contained" onClick={saveFfpDraft}>Save FFP Line</Button>
                 </DialogActions>
             </Dialog>
 

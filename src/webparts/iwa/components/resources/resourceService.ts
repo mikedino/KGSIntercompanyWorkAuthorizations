@@ -1,5 +1,5 @@
 import { Web } from "gd-sprest";
-import { IResourceItem } from "../data/props";
+import { IResourceItem, LineScope } from "../data/props";
 import Strings from "../common/strings";
 import { encodeListName, formatError } from "../common/utils";
 
@@ -8,7 +8,7 @@ export class ResourceService {
     private static readonly selectQuery: string[] = [
         "Id", "Title", "lineScope",
         "lineNumber", "displayOrder", "isActive",
-        "state", "comments", "authorization/Id",
+        "state", "laborCategory", "comments", "authorization/Id",
         "authorization/Title", "mod/Id", "mod/Title",
         "employee/Id", "employee/Title", "employee/EMail"
     ];
@@ -23,28 +23,46 @@ export class ResourceService {
             displayOrder: number;
             employeeId: number;
             state: string;
+            laborCategory: string;
             comments?: string;
-        }>
+        }>,
+        options?: {
+            lineScope?: LineScope;
+            modId?: number;
+        }
     ): Promise<IResourceItem[]> {
+        const lineScope = options?.lineScope ?? "base";
         const existing = await this.getByAuthorization(authorizationId);
 
         for (const item of existing) {
-            await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();
+            const matchesScope = item.lineScope === lineScope;
+            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId;
+
+            if (matchesScope && matchesMod) {
+                await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();
+            }
         }
 
         for (const row of rows) {
-            await Web().Lists(Strings.Sites.main.lists.Resources).Items().add({
+            const addBody: Record<string, unknown> = {
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Resources)}ListItem` },
                 Title: row.title,
                 authorizationId,
-                lineScope: "base",
+                lineScope,
                 lineNumber: row.lineNumber,
                 displayOrder: row.displayOrder,
                 isActive: true,
                 employeeId: row.employeeId,
                 state: row.state,
+                laborCategory: row.laborCategory,
                 comments: row.comments ?? ""
-            }).executeAndWait();
+            };
+
+            if (options?.modId) {
+                addBody.modId = options.modId;
+            }
+
+            await Web().Lists(Strings.Sites.main.lists.Resources).Items().add(addBody).executeAndWait();
         }
 
         return this.getByAuthorization(authorizationId);

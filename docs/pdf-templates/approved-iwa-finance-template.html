@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Approved IWA Finance Export Template</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.45in;
+    }
+
+    :root {
+      --ink: #172033;
+      --muted: #5b677a;
+      --line: #cfd8e3;
+      --soft-line: #e7edf4;
+      --brand: #0a314d;
+      --accent: #0078a6;
+      --success: #1f7a3a;
+      --panel: #f6f9fc;
+      --warning: #8a5a00;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Aptos", "Segoe UI", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.35;
+      background: #ffffff;
+    }
+
+    .page {
+      width: 100%;
+    }
+
+    .header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      border-bottom: 3px solid var(--brand);
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 8pt;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22pt;
+      line-height: 1.05;
+      font-weight: 600;
+      color: var(--brand);
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 12pt;
+      font-weight: 600;
+      color: var(--brand);
+    }
+
+    h3 {
+      margin: 0 0 6px;
+      font-size: 10.5pt;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 10pt;
+    }
+
+    .status-stack {
+      display: grid;
+      gap: 6px;
+      justify-items: end;
+      min-width: 175px;
+    }
+
+    .pill {
+      display: inline-block;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 8pt;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .pill.success {
+      color: var(--success);
+      background: #edf8f0;
+    }
+
+    .pill.neutral {
+      color: var(--brand);
+      background: #eef5f9;
+    }
+
+    .meta-line {
+      color: var(--muted);
+      font-size: 8.5pt;
+      text-align: right;
+    }
+
+    .finance-band {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: var(--panel);
+      min-height: 58px;
+    }
+
+    .metric .label,
+    .field .label {
+      color: var(--muted);
+      font-size: 7.8pt;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      margin-top: 3px;
+      font-size: 15pt;
+      font-weight: 600;
+      color: var(--brand);
+    }
+
+    .metric .subvalue {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 8.5pt;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 12px;
+      margin-bottom: 12px;
+      break-inside: avoid;
+    }
+
+    .section.tight {
+      padding-bottom: 8px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 14px;
+    }
+
+    .field .value {
+      margin-top: 2px;
+      font-weight: 500;
+    }
+
+    .field .hint {
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 8.5pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin-top: 7px;
+    }
+
+    th {
+      color: var(--muted);
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      font-size: 7.8pt;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-align: left;
+      text-transform: uppercase;
+      padding: 6px 7px;
+    }
+
+    td {
+      border-bottom: 1px solid var(--soft-line);
+      padding: 6px 7px;
+      vertical-align: top;
+      word-wrap: break-word;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .total-row td {
+      border-top: 1px solid var(--line);
+      font-weight: 600;
+      font-style: italic;
+      background: #fbfcfe;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 9pt;
+    }
+
+    .body-copy {
+      white-space: pre-wrap;
+    }
+
+    .approval-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .approval-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 82px;
+      background: #fff;
+    }
+
+    .approval-step {
+      font-weight: 600;
+      color: var(--brand);
+      margin-bottom: 5px;
+    }
+
+    .approval-name {
+      font-weight: 500;
+    }
+
+    .approval-date {
+      color: var(--muted);
+      font-size: 8.5pt;
+      margin-top: 2px;
+    }
+
+    .comment {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 8.5pt;
+    }
+
+    .footer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      margin-top: 12px;
+      padding-top: 8px;
+      font-size: 8pt;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    .optional {
+      color: var(--warning);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <div class="eyebrow">Intercompany Work Authorization</div>
+        <h1>{{authorization.Title}}</h1>
+        <div class="subtitle">
+          {{authorization.donorEntity}} providing services to {{authorization.receivingEntity}}
+        </div>
+      </div>
+      <div class="status-stack">
+        <span class="pill success">Approved</span>
+        <span class="pill neutral">Workflow Run {{approvedRun.runNumber}}</span>
+        <div class="meta-line">Approved {{formatDate authorization.approvedOn true}}</div>
+        <div class="meta-line">Generated {{generatedOn}}</div>
+      </div>
+    </header>
+
+    <section class="finance-band" aria-label="Finance entry summary">
+      <div class="metric">
+        <div class="label">Grand Total</div>
+        <div class="value">{{formatCurrency financialSummary.effectiveGrandTotal}}</div>
+        <div class="subvalue">Labor + Travel / ODC</div>
+      </div>
+      <div class="metric">
+        <div class="label">Labor Total</div>
+        <div class="value">{{formatCurrency financialSummary.effectiveLaborAmount}}</div>
+        <div class="subvalue">{{laborTotals.standardHours}} std hrs / {{laborTotals.overtimeHours}} OT hrs</div>
+      </div>
+      <div class="metric">
+        <div class="label">Travel / ODC</div>
+        <div class="value">{{formatCurrency financialSummary.effectiveTravelAmount}}</div>
+        <div class="subvalue">{{travelSummaryRows.length}} line(s)</div>
+      </div>
+      <div class="metric">
+        <div class="label">Contract Type</div>
+        <div class="value">{{contractTypeLabel}}</div>
+        <div class="subvalue">Mod {{authorization.modCount}}</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Transaction Header</h2>
+      <div class="grid-3">
+        <div class="field">
+          <div class="label">Donor Entity</div>
+          <div class="value">{{authorization.donorEntity}}</div>
+          <div class="hint">{{authorization.donorEntityAbbr}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Recipient Entity</div>
+          <div class="value">{{authorization.receivingEntity}}</div>
+          <div class="hint">{{authorization.receivingEntityAbbr}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Invoice / Task Order</div>
+          <div class="value">{{authorization.invoice}}</div>
+          <div class="hint">Unique with entities + contract</div>
+        </div>
+        <div class="field">
+          <div class="label">Contract ID</div>
+          <div class="value">{{authorization.contractId}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Contract Name</div>
+          <div class="value">{{authorization.contractName}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Period of Performance</div>
+          <div class="value">{{formatDate authorization.periodStart}} - {{formatDate authorization.periodEnd}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Project Manager</div>
+          <div class="value">{{authorization.pm.Title}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Operating Group / LOB</div>
+          <div class="value">{{authorization.og}} / {{authorization.lob}}</div>
+        </div>
+        <div class="field">
+          <div class="label">Submitter</div>
+          <div class="value">{{authorization.Author.Title}}</div>
+          <div class="hint">Submitted {{submittedOn}}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Finance Coding Summary</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 16%;">Line Type</th>
+            <th style="width: 18%;">Job ID</th>
+            <th>Description</th>
+            <th style="width: 16%;" class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Labor</td>
+            <td>{{jobId}}</td>
+            <td>{{laborCategoryOrSummary}}</td>
+            <td class="num">{{formatCurrency laborAmount}}</td>
+          </tr>
+          <tr>
+            <td>Travel / ODC</td>
+            <td>{{jobId}}</td>
+            <td>{{travelDescriptionSummary}}</td>
+            <td class="num">{{formatCurrency travelAmount}}</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="3">Grand Total</td>
+            <td class="num">{{formatCurrency financialSummary.effectiveGrandTotal}}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        The summary table is intended as the first stop for finance entry. Detailed labor and travel lines follow for validation.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Labor Detail - T&amp;M</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 18%;">Employee</th>
+            <th style="width: 8%;">State</th>
+            <th style="width: 14%;">Job ID</th>
+            <th>Labor Category</th>
+            <th style="width: 9%;" class="num">Std Hrs</th>
+            <th style="width: 9%;" class="num">OT Hrs</th>
+            <th style="width: 11%;" class="num">Std Rate</th>
+            <th style="width: 11%;" class="num">OT Rate</th>
+            <th style="width: 13%;" class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{tmSummaryRows[0].employeeName}}</td>
+            <td>{{tmSummaryRows[0].state}}</td>
+            <td>{{tmSummaryRows[0].jobId}}</td>
+            <td>{{tmSummaryRows[0].laborCategory}}</td>
+            <td class="num">{{tmSummaryRows[0].effectiveStandardHours}}</td>
+            <td class="num">{{tmSummaryRows[0].effectiveOvertimeHours}}</td>
+            <td class="num">{{formatCurrency standardRate}}</td>
+            <td class="num">{{formatCurrency overtimeRate}}</td>
+            <td class="num">{{formatCurrency tmSummaryRows[0].effectiveAmount}}</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="4">Labor Totals</td>
+            <td class="num">{{laborTotals.standardHours}}</td>
+            <td class="num">{{laborTotals.overtimeHours}}</td>
+            <td></td>
+            <td></td>
+            <td class="num">{{formatCurrency financialSummary.effectiveLaborAmount}}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note optional">
+        For FFP authorizations, replace this section with the FFP table below and omit rate columns.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Labor Detail - FFP</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 16%;">Job ID</th>
+            <th style="width: 22%;">Labor Category</th>
+            <th>Employees</th>
+            <th style="width: 12%;">Period</th>
+            <th style="width: 8%;" class="num">Qty</th>
+            <th style="width: 14%;" class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ffpSummaryRows[0].jobId}}</td>
+            <td>{{ffpSummaryRows[0].laborCategory}}</td>
+            <td>{{ffpSummaryRows[0].employeeNames}}</td>
+            <td>{{ffpSummaryRows[0].chargingPeriod}}</td>
+            <td class="num">{{ffpSummaryRows[0].periodQty}}</td>
+            <td class="num">{{formatCurrency ffpSummaryRows[0].effectiveAmount}}</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="5">Labor Totals</td>
+            <td class="num">{{formatCurrency financialSummary.effectiveLaborAmount}}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note optional">
+        For T&amp;M authorizations, this section can be suppressed.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Travel / ODC Detail</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 14%;">Type</th>
+            <th style="width: 18%;">Job ID</th>
+            <th>Description</th>
+            <th style="width: 16%;" class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{travelSummaryRows[0].lineType}}</td>
+            <td>{{travelSummaryRows[0].jobId}}</td>
+            <td>{{travelSummaryRows[0].description}}</td>
+            <td class="num">{{formatCurrency travelSummaryRows[0].effectiveAmount}}</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="3">Travel / ODC Totals</td>
+            <td class="num">{{formatCurrency financialSummary.effectiveTravelAmount}}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        All expenses, including travel, lodging, materials, supplies, outside consulting services, and other direct costs, are billed at cost unless otherwise specified.
+      </p>
+    </section>
+
+    <section class="section tight">
+      <h2>Scope, Justification, and Notes</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Scope of Work</h3>
+          <div class="body-copy">{{authorization.scopeOfWork}}</div>
+        </div>
+        <div>
+          <h3>Justification</h3>
+          <div class="body-copy">{{authorization.justification}}</div>
+        </div>
+      </div>
+      <h3 style="margin-top: 10px;">Internal Notes</h3>
+      <div class="body-copy note">{{authorization.notes}}</div>
+    </section>
+
+    <section class="section page-break">
+      <h2>Approval Record</h2>
+      <div class="approval-grid">
+        <div class="approval-card">
+          <div class="approval-step">Submitted</div>
+          <div class="approval-name">{{submittedBy}}</div>
+          <div class="approval-date">{{submittedOn}}</div>
+        </div>
+        <div class="approval-card">
+          <div class="approval-step">PM Review</div>
+          <div class="approval-name">{{pmApprovedBy}}</div>
+          <div class="approval-date">{{pmApprovedOn}}</div>
+          <div class="comment">{{pmComments}}</div>
+        </div>
+        <div class="approval-card">
+          <div class="approval-step">HR Review</div>
+          <div class="approval-name">{{hrApprovedBy}}</div>
+          <div class="approval-date">{{hrApprovedOn}}</div>
+          <div class="comment">{{hrComments}}</div>
+        </div>
+        <div class="approval-card">
+          <div class="approval-step">OG President</div>
+          <div class="approval-name">{{ogApprovedBy}}</div>
+          <div class="approval-date">{{ogApprovedOn}}</div>
+          <div class="comment">{{ogComments}}</div>
+        </div>
+        <div class="approval-card">
+          <div class="approval-step">CFO Review</div>
+          <div class="approval-name">{{cfoApprovedBy}}</div>
+          <div class="approval-date">{{cfoApprovedOn}}</div>
+          <div class="comment">{{cfoComments}}</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div>
+        This document represents the approved Intercompany Work Authorization available for finance transaction entry.
+        Changes after approval should be captured through a Mod and regenerated after approval.
+      </div>
+      <div>Page <span class="pageNumber"></span></div>
+    </footer>
+  </main>
+</body>
+</html>

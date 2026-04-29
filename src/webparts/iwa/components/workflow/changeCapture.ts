@@ -4,7 +4,7 @@ import {
     IResourceItem,
     ITravelOdcItem
 } from "../data/props";
-import { IFfpLaborConfig, IEditableResourceRow, IEditableTravelRow } from "../authorizations/IwaWorkPackageStep";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "../authorizations/IwaWorkPackageStep";
 
 export interface IIwaChangeCaptureInput {
     beforeAuthorization?: IAuthorizationItem;
@@ -14,7 +14,7 @@ export interface IIwaChangeCaptureInput {
     beforeTravelOdcs: ITravelOdcItem[];
     afterResourceRows: IEditableResourceRow[];
     afterTravelRows: IEditableTravelRow[];
-    afterFfpLaborConfig: IFfpLaborConfig;
+    afterFfpLaborRows: IEditableFfpLaborRow[];
 }
 
 export interface IIwaChangeCaptureResult {
@@ -66,6 +66,7 @@ const normalizeExistingResources = (resources: IResourceItem[]): Record<string, 
             lineNumber: resource.lineNumber ?? index + 1,
             employee: normalizePerson(resource.employee),
             state: resource.state ?? "",
+            laborCategory: resource.laborCategory ?? "",
             comments: resource.comments ?? ""
         }))
 );
@@ -77,9 +78,9 @@ const normalizeDraftResources = (rows: IEditableResourceRow[]): Record<string, u
             lineNumber: index + 1,
             employee: normalizePerson(row.employee),
             state: row.state.trim(),
+            laborCategory: row.laborCategory.trim(),
             comments: row.comments.trim(),
             jobId: row.jobId.trim(),
-            laborCategory: row.laborCategory.trim(),
             standardHours: Number(row.standardHours || 0),
             overtimeHours: Number(row.overtimeHours || 0),
             annualSalary: Number(row.annualSalary || 0),
@@ -88,37 +89,51 @@ const normalizeDraftResources = (rows: IEditableResourceRow[]): Record<string, u
         }))
 );
 
-const normalizeExistingLabor = (laborLines: ILaborLineItem[]): Record<string, unknown>[] => (
-    [...laborLines]
-        .sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0))
-        .map((line, index) => ({
-            lineNumber: line.lineNumber ?? index + 1,
-            pricingType: line.pricingType ?? "",
-            jobId: line.jobId ?? "",
-            laborCategory: line.laborCategory ?? "",
-            resourceIds: line.resources?.results?.map((resource) => resource.Id).sort((left, right) => left - right) ?? [],
-            standardHours: Number(line.standardHours ?? 0),
-            overtimeHours: Number(line.overtimeHours ?? 0),
-            annualSalary: Number(line.annualSalary ?? 0),
-            standardRate: Number(line.standardRate ?? 0),
-            overtimeRate: Number(line.overtimeRate ?? 0),
-            totalAmount: Number(line.totalAmount ?? 0),
-            comments: line.comments ?? ""
-        }))
-);
+const normalizeExistingLabor = (laborLines: ILaborLineItem[], resources: IResourceItem[]): Record<string, unknown>[] => {
+    const employeeIdByResourceId = new Map(resources.map((resource) => [resource.Id, resource.employee?.Id ?? null]));
 
-const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpConfig: IFfpLaborConfig, contractType?: string): Record<string, unknown>[] => {
+    return [...laborLines]
+        .sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0))
+        .map((line, index) => {
+            const resourceIds = line.resources?.results?.map((resource) => resource.Id).sort((left, right) => left - right) ?? [];
+
+            return {
+                lineNumber: line.lineNumber ?? index + 1,
+                pricingType: line.pricingType ?? "",
+                jobId: line.jobId ?? "",
+                ...(line.pricingType === "ffp"
+                    ? { employeeIds: resourceIds.map((resourceId) => employeeIdByResourceId.get(resourceId)).filter(Boolean) }
+                    : { resourceIds }),
+                chargingPeriod: line.chargingPeriod ?? "",
+                periodQty: Number(line.periodQty ?? 0),
+                lumpSumAmount: Number(line.lumpSumAmount ?? 0),
+                standardHours: Number(line.standardHours ?? 0),
+                overtimeHours: Number(line.overtimeHours ?? 0),
+                annualSalary: Number(line.annualSalary ?? 0),
+                standardRate: Number(line.standardRate ?? 0),
+                overtimeRate: Number(line.overtimeRate ?? 0),
+                totalAmount: Number(line.totalAmount ?? 0),
+                comments: line.comments ?? ""
+            };
+        });
+};
+
+const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpRows: IEditableFfpLaborRow[], contractType?: string): Record<string, unknown>[] => {
     const activeRows = rows.filter((row) => !!row.employee?.Id);
+    const employeeIdByRowId = new Map(activeRows.map((row) => [row.id, row.employee?.Id ?? null]));
 
     if (contractType === "ffp") {
-        return [{
-            lineNumber: 1,
+        return ffpRows.map((row, index) => ({
+            lineNumber: index + 1,
             pricingType: "ffp",
-            jobId: ffpConfig.jobId.trim(),
-            laborCategory: ffpConfig.laborCategory.trim(),
-            employeeIds: activeRows.map((row) => row.employee?.Id).filter(Boolean),
-            comments: ffpConfig.comments.trim()
-        }];
+            jobId: row.jobId.trim(),
+            employeeIds: row.resourceRowIds.map((resourceRowId) => employeeIdByRowId.get(resourceRowId)).filter(Boolean),
+            chargingPeriod: row.chargingPeriod,
+            periodQty: Number(row.periodQty || 0),
+            lumpSumAmount: Number(row.lumpSumAmount || 0),
+            totalAmount: Number(row.lumpSumAmount || 0),
+            comments: row.comments.trim()
+        }));
     }
 
     return activeRows.map((row, index) => ({
@@ -126,7 +141,6 @@ const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpConfig: IFfpLaborC
         pricingType: "tm",
         employeeId: row.employee?.Id ?? null,
         jobId: row.jobId.trim(),
-        laborCategory: row.laborCategory.trim(),
         standardHours: Number(row.standardHours || 0),
         overtimeHours: Number(row.overtimeHours || 0),
         annualSalary: Number(row.annualSalary || 0),
@@ -168,14 +182,14 @@ export const captureIwaChangeSet = (input: IIwaChangeCaptureInput): IIwaChangeCa
     const before = {
         authorization: normalizeAuthorization(input.beforeAuthorization),
         resources: normalizeExistingResources(input.beforeResources),
-        laborLines: normalizeExistingLabor(input.beforeLaborLines),
+        laborLines: normalizeExistingLabor(input.beforeLaborLines, input.beforeResources),
         travelOdcs: normalizeExistingTravel(input.beforeTravelOdcs)
     };
 
     const after = {
         authorization: normalizeAuthorization(input.afterAuthorization),
         resources: normalizeDraftResources(input.afterResourceRows),
-        laborLines: normalizeDraftLabor(input.afterResourceRows, input.afterFfpLaborConfig, input.afterAuthorization.contractType),
+        laborLines: normalizeDraftLabor(input.afterResourceRows, input.afterFfpLaborRows, input.afterAuthorization.contractType),
         travelOdcs: normalizeDraftTravel(input.afterTravelRows)
     };
 

@@ -7,6 +7,7 @@ interface ICreateModOptions {
     authorizationId: number;
     authorizationTitle: string;
     modNumber: number;
+    modStatus?: IModItem["modStatus"];
     reason?: string;
     changeSummary?: string;
     notes?: string;
@@ -30,7 +31,7 @@ export class ModService {
 
     private static readonly expandQuery: string[] = ["authorization", "currentWorkflowRun", "effectiveApprovedRun"];
 
-    private static getById(modId: number): Promise<IModItem> {
+    static getById(modId: number): Promise<IModItem> {
         return new Promise<IModItem>((resolve, reject) => {
             Web().Lists(Strings.Sites.main.lists.Mods).Items().getById(modId).query({
                 Select: this.selectQuery,
@@ -64,7 +65,7 @@ export class ModService {
             Title: title,
             authorizationId: options.authorizationId,
             modNumber: options.modNumber,
-            modStatus: "submitted",
+            modStatus: options.modStatus ?? "draft",
             reason: options.reason ?? "",
             changeSummary: options.changeSummary ?? "",
             notes: options.notes ?? "",
@@ -78,6 +79,62 @@ export class ModService {
         }
 
         return this.getById(response.Id);
+    }
+
+    static async updateDraft(
+        modId: number,
+        values: {
+            reason?: string;
+            changeSummary?: string;
+            notes?: string;
+            laborAmount?: number;
+            travelAmount?: number;
+            grandTotal?: number;
+            modStatus?: IModItem["modStatus"];
+            currentWorkflowRunId?: number;
+        }
+    ): Promise<void> {
+        if (!modId) {
+            throw new Error("Cannot update Mod draft: mod.Id is missing.");
+        }
+
+        const updateBody: Record<string, unknown> = {
+            __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Mods)}ListItem` }
+        };
+
+        if (values.reason !== undefined) {
+            updateBody.reason = values.reason;
+        }
+
+        if (values.changeSummary !== undefined) {
+            updateBody.changeSummary = values.changeSummary;
+        }
+
+        if (values.notes !== undefined) {
+            updateBody.notes = values.notes;
+        }
+
+        if (values.laborAmount !== undefined) {
+            updateBody.laborAmount = values.laborAmount;
+        }
+
+        if (values.travelAmount !== undefined) {
+            updateBody.travelAmount = values.travelAmount;
+        }
+
+        if (values.grandTotal !== undefined) {
+            updateBody.grandTotal = values.grandTotal;
+        }
+
+        if (values.modStatus !== undefined) {
+            updateBody.modStatus = values.modStatus;
+        }
+
+        if (values.currentWorkflowRunId !== undefined) {
+            updateBody.currentWorkflowRunId = values.currentWorkflowRunId;
+        }
+
+        await Web().Lists(Strings.Sites.main.lists.Mods).Items().getById(modId).update(updateBody).executeAndWait();
     }
 
     static async updateRunId(modId: number, currentRunId: number): Promise<void> {

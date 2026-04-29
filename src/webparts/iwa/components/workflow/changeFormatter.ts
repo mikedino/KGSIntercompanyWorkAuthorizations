@@ -35,6 +35,7 @@ const headerLabels: Record<string, string> = {
 const resourceLabels: Record<string, string> = {
     employee: "Employee",
     state: "State",
+    laborCategory: "Labor Category",
     standardHours: "Standard Hours",
     overtimeHours: "Overtime Hours",
     comments: "Comments"
@@ -43,12 +44,16 @@ const resourceLabels: Record<string, string> = {
 const laborLabels: Record<string, string> = {
     pricingType: "Pricing Type",
     jobId: "Job ID",
-    laborCategory: "Labor Category",
     standardHours: "Standard Hours",
     overtimeHours: "Overtime Hours",
     annualSalary: "Annual Salary",
     standardRate: "Standard Rate",
     overtimeRate: "Overtime Rate",
+    chargingPeriod: "Charging Period",
+    periodQty: "Number of Periods",
+    lumpSumAmount: "Lump Sum Amount",
+    totalAmount: "Total Amount",
+    employeeIds: "Resources",
     comments: "Comments"
 };
 
@@ -60,7 +65,7 @@ const travelLabels: Record<string, string> = {
     comments: "Comments"
 };
 
-const moneyKeys = new Set(["baseLaborAmount", "baseTravelAmount", "baseGrandTotal", "annualSalary", "standardRate", "overtimeRate", "amount", "totalAmount"]);
+const moneyKeys = new Set(["baseLaborAmount", "baseTravelAmount", "baseGrandTotal", "annualSalary", "standardRate", "overtimeRate", "amount", "lumpSumAmount", "totalAmount"]);
 const dateKeys = new Set(["periodStart", "periodEnd"]);
 
 const asRecord = (value: unknown): Record<string, unknown> => {

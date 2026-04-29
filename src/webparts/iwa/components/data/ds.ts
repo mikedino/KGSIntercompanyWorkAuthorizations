@@ -195,6 +195,14 @@ export class DataSource {
             .sort((left, right) => left.localeCompare(right));
     }
 
+    static get LaborCategories(): string[] {
+        return this._config
+            .filter((config) => config.IsFor === "LaborCategory")
+            .map((config) => config.Title?.trim() ?? "")
+            .filter((title) => !!title)
+            .sort((left, right) => left.localeCompare(right));
+    }
+
     static getConfig(): Promise<IConfigItem[]> {
         return new Promise<IConfigItem[]>((resolve, reject) => {
             this._config = [];
@@ -208,7 +216,7 @@ export class DataSource {
                         "User/Id", "User/Title", "User/EMail"
                     ],
                     Expand: ["User"],
-                    Filter: `IsFor eq 'HR' or IsFor eq 'CFO' or IsFor eq 'UserGuide' or IsFor eq 'State'`,
+                    Filter: `IsFor eq 'HR' or IsFor eq 'CFO' or IsFor eq 'UserGuide' or IsFor eq 'State' or IsFor eq 'LaborCategory'`,
                     Top: 5000
                 })
                 .execute(

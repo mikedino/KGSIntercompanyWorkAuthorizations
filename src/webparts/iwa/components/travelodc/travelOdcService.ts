@@ -1,5 +1,5 @@
 import { Web } from "gd-sprest";
-import { ITravelOdcItem } from "../data/props";
+import { ITravelOdcItem, LineScope } from "../data/props";
 import Strings from "../common/strings";
 import { encodeListName, formatError } from "../common/utils";
 
@@ -26,20 +26,30 @@ export class TravelOdcService {
             description?: string;
             amount: number;
             comments?: string;
-        }>
+        }>,
+        options?: {
+            lineScope?: LineScope;
+            modId?: number;
+        }
     ): Promise<ITravelOdcItem[]> {
+        const lineScope = options?.lineScope ?? "base";
         const existing = await this.getByAuthorization(authorizationId);
 
         for (const item of existing) {
-            await Web().Lists(Strings.Sites.main.lists.TravelODC).Items(item.Id).recycle().executeAndWait();
+            const matchesScope = item.lineScope === lineScope;
+            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId;
+
+            if (matchesScope && matchesMod) {
+                await Web().Lists(Strings.Sites.main.lists.TravelODC).Items(item.Id).recycle().executeAndWait();
+            }
         }
 
         for (const row of rows) {
-            await Web().Lists(Strings.Sites.main.lists.TravelODC).Items().add({
+            const addBody: Record<string, unknown> = {
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.TravelODC)}ListItem` },
                 Title: row.title,
                 authorizationId,
-                lineScope: "base",
+                lineScope,
                 lineNumber: row.lineNumber,
                 displayOrder: row.displayOrder,
                 isActive: true,
@@ -48,7 +58,13 @@ export class TravelOdcService {
                 description: row.description ?? "",
                 amount: row.amount,
                 comments: row.comments ?? ""
-            }).executeAndWait();
+            };
+
+            if (options?.modId) {
+                addBody.modId = options.modId;
+            }
+
+            await Web().Lists(Strings.Sites.main.lists.TravelODC).Items().add(addBody).executeAndWait();
         }
 
         return this.getByAuthorization(authorizationId);

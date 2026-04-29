@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-    Accordion, AccordionDetails, AccordionSummary, Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, CircularProgress, Grid, Paper, Stack, Step, StepLabel, Stepper, useTheme,
+    Accordion, AccordionDetails, AccordionSummary, Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, useTheme,
     Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -29,9 +29,6 @@ import { AuthorizationService } from "./iwaService";
 import { WorkflowDecisionService } from "../workflow/decisionService";
 import { getWorkflowActionPermission } from "../workflow/workflowAccess";
 import { formatIwaChangePayload } from "../workflow/changeFormatter";
-import { ApproverResolver } from "../workflow/defaultApprovers";
-import { WorkflowRunService } from "../workflow/runService";
-import { WorkflowActionService } from "../workflow/actionService";
 import { ModService } from "../mods/modService";
 
 type DetailTab = "summary" | "resources" | "travel" | "workflow" | "mods" | "history";
@@ -46,6 +43,13 @@ const detailTabs: Array<{ value: DetailTab; label: string; }> = [
 ];
 
 const baseWorkflowSteps: WorkflowStepKey[] = ["submit", "pm", "hr", "ogPresident", "cfo"];
+
+const contractTypeLabels: Record<IAuthorizationItem["contractType"], string> = {
+    tm: "T&M",
+    ffp: "FFP"
+};
+
+const getActiveModDraftSessionKey = (authorizationId: number): string => `iwa:activeModDraft:${authorizationId}`;
 
 interface ICompDraft {
     annualSalary: string;
@@ -258,7 +262,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         authorizations,
         currentUser,
         draftAuthorizations,
-        isAuthorizationDetailLoading,
         laborLinesByAuthorizationId,
         lastRefreshed,
         loadAuthorizationDetail,
@@ -278,6 +281,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [dialogOpen, setDialogOpen] = React.useState<boolean>(false);
     const [workflowDecision, setWorkflowDecision] = React.useState<"approved" | "rejected" | undefined>(undefined);
+    const [workflowDialogMode, setWorkflowDialogMode] = React.useState<"approved" | "rejected">("approved");
     const [workflowComments, setWorkflowComments] = React.useState<string>("");
     const [workflowCommentError, setWorkflowCommentError] = React.useState<string>("");
     const [commentDialog, setCommentDialog] = React.useState<{ title: string; comments: string } | undefined>(undefined);
@@ -308,9 +312,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const laborLines = laborLinesByAuthorizationId.get(authorizationId) ?? [];
     const travelOdcs = travelOdcsByAuthorizationId.get(authorizationId) ?? [];
     const mods = modsByAuthorizationId.get(authorizationId) ?? [];
-    const detailLoading = isAuthorizationDetailLoading(authorizationId);
     const mayViewComp = canViewCompensation(currentUser, authorization);
     const mayEditComp = canEditCompensation(currentUser);
+    const isFfpAuthorization = authorization?.contractType === "ffp";
+    const canEditCompInHrReview = mayEditComp && currentRun?.runStatus === "active" && currentRun.currentStepKey === "hr";
+    const workflowDialogDecision = workflowDecision ?? workflowDialogMode;
     const activeStep = getCurrentStepIndex(currentRun);
     const stepperActiveStep = currentRun?.runStatus === "completed" ? -1 : activeStep;
     const workflowPermission = React.useMemo(() => {
@@ -411,43 +417,24 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         setModPromptOpen(false);
         const nextModNumber = Math.max(0, ...mods.map((mod) => mod.modNumber ?? 0)) + 1;
-        const nextRunNumber = Math.max(0, ...workflowRuns.map((run) => run.runNumber ?? 0)) + 1;
         const summary = `Modification ${nextModNumber} initiated.`;
 
         try {
-            showBusy("Initiating modification...");
+            showBusy("Creating modification draft...");
             const mod = await ModService.create({
                 authorizationId: authorization.Id,
                 authorizationTitle: authorization.Title,
                 modNumber: nextModNumber,
-                reason: "Modification initiated",
+                modStatus: "draft",
+                reason: "",
                 changeSummary: summary,
-                laborAmount: authorization.approvedLaborAmount ?? authorization.baseLaborAmount ?? 0,
-                travelAmount: authorization.approvedTravelAmount ?? authorization.baseTravelAmount ?? 0,
-                grandTotal: authorization.approvedGrandTotal ?? authorization.baseGrandTotal ?? 0
+                laborAmount: 0,
+                travelAmount: 0,
+                grandTotal: 0
             });
 
-            showBusy("Creating new workflow...");
-            const approvers = await ApproverResolver.resolve(authorization);
-            const run = await WorkflowRunService.createModRun(
-                authorization,
-                mod,
-                nextRunNumber,
-                approvers,
-                "Initiate modification",
-                summary
-            );
-
-            showBusy("Updating modification linkages...");
-            await ModService.updateRunId(mod.Id, run.Id);
-            await AuthorizationService.updateRunId(authorization.Id, run.Id);
+            showBusy("Updating authorization...");
             await AuthorizationService.updateModCount(authorization.Id, nextModNumber);
-            await WorkflowActionService.createSubmitted(authorization, run, {
-                actionType: "modified",
-                comments: summary,
-                changeSummary: summary,
-                modId: mod.Id
-            });
 
             showBusy("Refreshing authorization...");
             await Promise.all([
@@ -455,11 +442,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 loadAuthorizationDetail(authorization.Id, true)
             ]);
 
+            sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(mod.Id));
             hideBusy();
             history.push(`/authorizations/edit/${authorization.Id}`, {
                 returnTo: `/authorizations/view/${authorization.Id}`,
-                modId: mod.Id,
-                workflowRunId: run.Id
+                modId: mod.Id
             });
         } catch (error) {
             hideBusy();
@@ -467,7 +454,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, hideBusy, history, loadAuthorizationDetail, mods, refresh, showBusy, workflowRuns]);
+    }, [authorization, hideBusy, history, loadAuthorizationDetail, mods, refresh, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
@@ -480,6 +467,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         }
 
         setWorkflowDecision(decision);
+        setWorkflowDialogMode(decision);
         setWorkflowComments("");
         setWorkflowCommentError("");
     }, [authorization, currentRun, laborLines, showSnackbar]);
@@ -495,22 +483,23 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             return;
         }
 
+        const decision = workflowDecision;
         const trimmedComments = workflowComments.trim();
 
-        if (workflowDecision === "rejected" && !trimmedComments) {
+        if (decision === "rejected" && !trimmedComments) {
             setWorkflowCommentError("Reject comments are required.");
             return;
         }
 
         try {
             handleCloseWorkflowDecision();
-            showBusy(workflowDecision === "approved" ? "Approving workflow step..." : "Rejecting workflow step...");
-            await WorkflowDecisionService.submitDecision(authorization, currentRun, workflowDecision, trimmedComments);
+            showBusy(decision === "approved" ? "Approving workflow step..." : "Rejecting workflow step...");
+            await WorkflowDecisionService.submitDecision(authorization, currentRun, decision, trimmedComments);
             await Promise.all([
                 refresh(true),
                 loadAuthorizationDetail(authorizationId, true)
             ]);
-            showSuccess(workflowDecision === "approved" ? "Workflow step approved." : "Workflow step rejected and returned to the submitter.");
+            showSuccess(decision === "approved" ? "Workflow step approved." : "Workflow step rejected and returned to the submitter.");
             window.setTimeout(() => hideSuccess(), 1600);
         } catch (error) {
             hideBusy();
@@ -783,38 +772,62 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
     const resourcesTab = (
         <Stack spacing={2}>
-            {mayEditComp && (
+            {canEditCompInHrReview && !isFfpAuthorization && (
                 <Alert severity="info">
-                    Only HR, current PM and Admins can view salary information. Salary derives standard rate from salary ÷ 2080 unless HR/Admin overrides the rate fields.
+                    Only HR, current PM and Admins can view salary information. Std rate is derived from salary ÷ 2080 unless HR/Admin overrides the rate fields.
                 </Alert>
             )}
             <TableContainer>
                 <Table size="small" sx={quietTableSx}>
                     <TableHead>
                         <TableRow>
-                            <TableCell>Employee / Resource</TableCell>
-                            <TableCell>State</TableCell>
-                            <TableCell>Job ID</TableCell>
-                            <TableCell>Labor Category</TableCell>
-                            <TableCell align="right">Std Hrs</TableCell>
-                            <TableCell align="right">OT Hrs</TableCell>
-                            {mayViewComp && <TableCell align="right">Salary</TableCell>}
-                            {mayViewComp && <TableCell align="right">Std Rate</TableCell>}
-                            {mayViewComp && <TableCell align="right">OT Rate</TableCell>}
-                            <TableCell align="right">Total</TableCell>
-                            {mayEditComp && <TableCell align="right">Action</TableCell>}
+                            {isFfpAuthorization ? (
+                                <>
+                                    <TableCell>Job ID</TableCell>
+                                    <TableCell>Charging Period</TableCell>
+                                    <TableCell align="right">Periods</TableCell>
+                                    <TableCell>Resources</TableCell>
+                                </>
+                            ) : (
+                                <>
+                                    <TableCell>Employee / Resource</TableCell>
+                                    <TableCell>State</TableCell>
+                                    <TableCell>Job ID</TableCell>
+                                    <TableCell>Labor Category</TableCell>
+                                    <TableCell align="right">Std Hrs</TableCell>
+                                    <TableCell align="right">OT Hrs</TableCell>
+                                    {mayViewComp && <TableCell align="right">Salary</TableCell>}
+                                    {mayViewComp && <TableCell align="right">Std Rate</TableCell>}
+                                    {mayViewComp && <TableCell align="right">OT Rate</TableCell>}
+                                </>
+                            )}
+                            <TableCell align="right">{isFfpAuthorization ? "Total Amount" : "Total"}</TableCell>
+                            {canEditCompInHrReview && !isFfpAuthorization && <TableCell align="right">Action</TableCell>}
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {laborLines.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={mayEditComp ? 11 : mayViewComp ? 10 : 7}>No labor lines found.</TableCell>
+                                <TableCell colSpan={isFfpAuthorization ? 5 : canEditCompInHrReview ? 11 : mayViewComp ? 10 : 7}>No labor lines found.</TableCell>
                             </TableRow>
                         ) : (
                             <>
                                 {laborLines.map((line) => {
+                                    if (isFfpAuthorization) {
+                                        return (
+                                            <TableRow key={line.Id} hover>
+                                                <TableCell>{line.jobId || "—"}</TableCell>
+                                                <TableCell>{line.chargingPeriod || "—"}</TableCell>
+                                                <TableCell align="right">{line.periodQty ?? "—"}</TableCell>
+                                                <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
+                                                <TableCell align="right">{formatCurrency(line.totalAmount)}</TableCell>
+                                            </TableRow>
+                                        );
+                                    }
+
+                                    const lineResource = resources.find((resource) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
                                     const draft = compDrafts[line.Id] ?? toCompDraft(line);
-                                    const isEditingComp = !!editingCompLineIds[line.Id];
+                                    const isEditingComp = canEditCompInHrReview && !!editingCompLineIds[line.Id];
                                     const preview = resolveLaborCompensation({
                                         annualSalary: parseNumberOrUndefined(draft.annualSalary),
                                         standardRate: parseNumberOrUndefined(draft.standardRate),
@@ -826,9 +839,9 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                     return (
                                         <TableRow key={line.Id} hover>
                                             <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
-                                            <TableCell>{line.pricingType === "tm" ? resources.find((resource) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id))?.state ?? "—" : "Multiple"}</TableCell>
+                                            <TableCell>{line.pricingType === "tm" ? lineResource?.state ?? "—" : "Multiple"}</TableCell>
                                             <TableCell>{line.jobId || "—"}</TableCell>
-                                            <TableCell>{line.laborCategory || "—"}</TableCell>
+                                            <TableCell>{lineResource?.laborCategory || "—"}</TableCell>
                                             <TableCell align="right">
                                                 {isEditingComp ? (
                                                     <TextField size="small" value={draft.standardHours} onChange={(event) => handleUpdateDraft(line.Id, { standardHours: normalizeDecimalInput(event.target.value) })} sx={compactNumberInputSx} />
@@ -841,7 +854,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                             </TableCell>
                                             {mayViewComp && (
                                                 <TableCell align="right">
-                                                    {mayEditComp && isEditingComp ? (
+                                                    {isEditingComp ? (
                                                         <TextField
                                                             size="small"
                                                             value={draft.annualSalary}
@@ -855,7 +868,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                             )}
                                             {mayViewComp && (
                                                 <TableCell align="right">
-                                                    {mayEditComp && isEditingComp ? (
+                                                    {isEditingComp ? (
                                                         <TextField
                                                             size="small"
                                                             value={draft.standardRate || formatCurrencyInputValue(preview.standardRate)}
@@ -869,7 +882,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                             )}
                                             {mayViewComp && (
                                                 <TableCell align="right">
-                                                    {mayEditComp && isEditingComp ? (
+                                                    {isEditingComp ? (
                                                         <TextField
                                                             size="small"
                                                             value={draft.overtimeRate || formatCurrencyInputValue(preview.overtimeRate)}
@@ -882,7 +895,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                                 </TableCell>
                                             )}
                                             <TableCell align="right">{formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount)}</TableCell>
-                                            {mayEditComp && (
+                                            {canEditCompInHrReview && (
                                                 <TableCell align="right">
                                                     {isEditingComp ? (
                                                         <Stack direction="row" spacing={0.5} justifyContent="flex-end">
@@ -910,14 +923,14 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                 })}
                                 {laborLines.length > 1 && (
                                     <TableRow sx={totalsRowSx}>
-                                        <TableCell colSpan={4}>Totals</TableCell>
-                                        <TableCell align="right">{laborTotals.standardHours || "—"}</TableCell>
-                                        <TableCell align="right">{laborTotals.overtimeHours || "—"}</TableCell>
-                                        {mayViewComp && <TableCell />}
-                                        {mayViewComp && <TableCell />}
-                                        {mayViewComp && <TableCell />}
+                                        <TableCell colSpan={isFfpAuthorization ? 4 : 4}>Totals</TableCell>
+                                        {!isFfpAuthorization && <TableCell align="right">{laborTotals.standardHours || "—"}</TableCell>}
+                                        {!isFfpAuthorization && <TableCell align="right">{laborTotals.overtimeHours || "—"}</TableCell>}
+                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
+                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
+                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
                                         <TableCell align="right">{formatCurrency(laborTotals.totalAmount)}</TableCell>
-                                        {mayEditComp && <TableCell />}
+                                        {!isFfpAuthorization && canEditCompInHrReview && <TableCell />}
                                     </TableRow>
                                 )}
                             </>
@@ -1047,7 +1060,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                     const rejectedStepIndex = runSteps.findIndex((candidate) => getStepAction(runActions, candidate)?.actionType === "rejected");
                                     const stepIndex = runSteps.indexOf(step);
                                     const skippedAfterRejection = rejectedStepIndex >= 0 && stepIndex > rejectedStepIndex && !action && step !== "submitter";
-                                    const skipped = (step === "pm" && run.skipPmStep === true) || skippedAfterRejection;
+                                    const skippedForFfpHr = step === "hr" && isFfpAuthorization;
+                                    const skipped = (step === "pm" && run.skipPmStep === true) || skippedForFfpHr || skippedAfterRejection;
                                     const label = workflowStepLabels[step];
                                     const approver = getWorkflowStepApprover(step, authorization, run);
                                     const completedBy = action?.actionBy?.Title ?? (action ? "System" : "");
@@ -1139,6 +1153,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                                             This step was skipped because the PM was the submitter
                                                         </Typography>
                                                     )}
+                                                    {step === "hr" && skippedForFfpHr && (
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            HR Review is not required for FFP contracts.
+                                                        </Typography>
+                                                    )}
                                                 </Stack>
                                             </Paper>
                                         </Stack>
@@ -1191,6 +1210,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                         <Typography variant="h4" fontWeight={600}>{authorization.Title}</Typography>
                         <Chip label={authorizationStatusLabels[authorization.authorizationStatus]} color={getStatusChipColor(authorization.authorizationStatus)} />
+                        <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
                         {currentRun && <Chip label={`Workflow ${workflowRunStatusLabels[currentRun.runStatus]}`} color="info" variant="outlined" />}
                     </Stack>
                     <Typography color="text.secondary">
@@ -1346,13 +1366,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 </BottomNavigation>
             </Paper>
 
-            {detailLoading && (
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                    <CircularProgress size={22} />
-                    <Typography color="text.secondary">Loading authorization details...</Typography>
-                </Stack>
-            )}
-
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
                 {selectedTab === "summary" && summaryTab}
                 {selectedTab === "resources" && resourcesTab}
@@ -1366,11 +1379,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
             <AlertDialog open={dialogOpen} title={dialogTitle} message={dialogMessage} onClose={() => setDialogOpen(false)} />
             <Dialog open={!!workflowDecision} onClose={handleCloseWorkflowDecision} fullWidth maxWidth="sm">
-                <DialogTitle>{workflowDecision === "approved" ? "Approve Workflow Step" : "Reject Workflow Step"}</DialogTitle>
+                <DialogTitle>{workflowDialogDecision === "approved" ? "Approve Workflow Step" : "Reject Workflow Step"}</DialogTitle>
                 <DialogContent>
                     <Stack spacing={1.5} sx={{ pt: 1 }}>
                         <Typography variant="body2" color="text.secondary">
-                            {workflowDecision === "approved"
+                            {workflowDialogDecision === "approved"
                                 ? "Approval comments are optional."
                                 : "Reject comments are required and will be shown to the submitter."}
                         </Typography>
@@ -1396,10 +1409,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     <Button onClick={handleCloseWorkflowDecision}>Cancel</Button>
                     <Button
                         variant="contained"
-                        color={workflowDecision === "approved" ? "success" : "error"}
+                        color={workflowDialogDecision === "approved" ? "success" : "error"}
                         onClick={handleSubmitWorkflowDecision}
                     >
-                        {workflowDecision === "approved" ? "Approve" : "Reject"}
+                        {workflowDialogDecision === "approved" ? "Approve" : "Reject"}
                     </Button>
                 </DialogActions>
             </Dialog>

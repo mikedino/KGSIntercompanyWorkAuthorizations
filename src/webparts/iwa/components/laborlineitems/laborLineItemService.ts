@@ -1,5 +1,5 @@
 import { Web } from "gd-sprest";
-import { ILaborLineItem } from "../data/props";
+import { ChargingPeriod, ILaborLineItem, LineScope } from "../data/props";
 import Strings from "../common/strings";
 import { encodeListName, formatError } from "../common/utils";
 import { resolveLaborCompensation } from "../resources/laborMath";
@@ -9,7 +9,7 @@ export class LaborLineItemService {
     private static readonly selectQuery: string[] = [
         "Id", "Title", "lineScope",
         "lineNumber", "displayOrder", "isActive",
-        "pricingType", "jobId", "laborCategory",
+        "pricingType", "jobId",
         "annualSalary", "standardRate", "overtimeRate",
         "standardHours", "overtimeHours", "standardAmount",
         "overtimeAmount", "chargingPeriod", "periodQty",
@@ -28,7 +28,6 @@ export class LaborLineItemService {
             displayOrder: number;
             pricingType: "tm" | "ffp";
             jobId: string;
-            laborCategory: string;
             resourceIds: number[];
             comments?: string;
             annualSalary?: number;
@@ -36,12 +35,25 @@ export class LaborLineItemService {
             overtimeRate?: number;
             standardHours?: number;
             overtimeHours?: number;
-        }>
+            chargingPeriod?: ChargingPeriod;
+            periodQty?: number;
+            lumpSumAmount?: number;
+        }>,
+        options?: {
+            lineScope?: LineScope;
+            modId?: number;
+        }
     ): Promise<ILaborLineItem[]> {
+        const lineScope = options?.lineScope ?? "base";
         const existing = await this.getByAuthorization(authorizationId);
 
         for (const item of existing) {
-            await Web().Lists(Strings.Sites.main.lists.LaborLine).Items(item.Id).recycle().executeAndWait();
+            const matchesScope = item.lineScope === lineScope;
+            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId;
+
+            if (matchesScope && matchesMod) {
+                await Web().Lists(Strings.Sites.main.lists.LaborLine).Items(item.Id).recycle().executeAndWait();
+            }
         }
 
         for (const row of rows) {
@@ -52,18 +64,20 @@ export class LaborLineItemService {
                 standardHours: row.standardHours,
                 overtimeHours: row.overtimeHours
             });
+            const ffpPeriodQty = Number(row.periodQty ?? 0);
+            const ffpLumpSumAmount = Number(row.lumpSumAmount ?? 0);
+            const ffpTotalAmount = ffpLumpSumAmount;
 
-            await Web().Lists(Strings.Sites.main.lists.LaborLine).Items().add({
+            const addBody: Record<string, unknown> = {
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.LaborLine)}ListItem` },
                 Title: row.title,
                 authorizationId,
-                lineScope: "base",
+                lineScope,
                 lineNumber: row.lineNumber,
                 displayOrder: row.displayOrder,
                 isActive: true,
                 pricingType: row.pricingType,
                 jobId: row.jobId,
-                laborCategory: row.laborCategory,
                 resourcesId: { results: row.resourceIds },
                 comments: row.comments ?? "",
                 annualSalary: row.pricingType === "tm" ? compensation.annualSalary : 0,
@@ -73,11 +87,17 @@ export class LaborLineItemService {
                 overtimeHours: row.pricingType === "tm" ? compensation.overtimeHours : 0,
                 standardAmount: row.pricingType === "tm" ? compensation.standardAmount : 0,
                 overtimeAmount: row.pricingType === "tm" ? compensation.overtimeAmount : 0,
-                chargingPeriod: "monthly",
-                periodQty: 1,
-                lumpSumAmount: 0,
-                totalAmount: row.pricingType === "tm" ? compensation.totalAmount : 0
-            }).executeAndWait();
+                chargingPeriod: row.pricingType === "ffp" ? row.chargingPeriod ?? "monthly" : "monthly",
+                periodQty: row.pricingType === "ffp" ? ffpPeriodQty : 1,
+                lumpSumAmount: row.pricingType === "ffp" ? ffpLumpSumAmount : 0,
+                totalAmount: row.pricingType === "tm" ? compensation.totalAmount : ffpTotalAmount
+            };
+
+            if (options?.modId) {
+                addBody.modId = options.modId;
+            }
+
+            await Web().Lists(Strings.Sites.main.lists.LaborLine).Items().add(addBody).executeAndWait();
         }
 
         return this.getByAuthorization(authorizationId);
