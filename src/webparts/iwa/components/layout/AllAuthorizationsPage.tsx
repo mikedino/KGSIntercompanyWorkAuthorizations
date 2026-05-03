@@ -45,6 +45,7 @@ import { useIwa } from "../data/iwaContext";
 import { workflowRoleLabels } from "../data/props";
 import { useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
+import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
 import {
     AllAuthorizationsPresetView,
@@ -144,7 +145,7 @@ const canEditAuthorization = (row: IAllAuthorizationsRow | undefined): boolean =
         return false;
     }
 
-    if (row.authorization.authorizationStatus === "draft") {
+    if (row.authorization.authorizationStatus === "draft" || row.isModDraft) {
         return true;
     }
 
@@ -157,6 +158,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const {
         authorizations,
         draftAuthorizations,
+        draftModsByAuthorizationId,
         isBootLoading,
         runByAuthorizationId,
         clearAuthorizationDetailCache,
@@ -195,8 +197,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     } | null>(null);
 
     const allRows = React.useMemo((): IAllAuthorizationsRow[] => {
-        return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId);
-    }, [authorizations, draftAuthorizations, runByAuthorizationId]);
+        return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId, draftModsByAuthorizationId);
+    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, runByAuthorizationId]);
 
     const entityOptions = React.useMemo((): string[] => {
         return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [
@@ -333,12 +335,20 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         setDiscardDraftRow(undefined);
 
         try {
-            showBusy("Discarding draft...");
-            await AuthorizationService.delete(authorizationId);
+            showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+
+            if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
+                await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
+                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (discardDraftRow.authorization.modCount ?? 1) - 1));
+                sessionStorage.removeItem(`iwa:activeModDraft:${authorizationId}`);
+            } else {
+                await AuthorizationService.delete(authorizationId);
+            }
+
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess("Draft discarded.");
+            showSuccess(discardDraftRow.isModDraft ? "Modification draft discarded." : "Draft discarded.");
         } catch (error) {
             hideBusy();
             showFeatureDialog("Discard Draft Error", formatError(error));
@@ -707,7 +717,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
                                                 <TableCell sx={{ width: columnWidths.authorizationStatus, verticalAlign: "top" }}>
                                                     <Chip
-                                                        label={authorizationStatusLabels[row.authorization.authorizationStatus]}
+                                                        label={row.isModDraft ? "Mod Draft" : authorizationStatusLabels[row.authorization.authorizationStatus]}
                                                         color={getStatusChipColor(row.authorization.authorizationStatus)}
                                                         size="small"
                                                     />
@@ -840,7 +850,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                         closeRowMenu();
                         if (canEditAuthorization(selectedMenuRow)) {
                             history.push(`/authorizations/edit/${selectedMenuRow!.authorization.Id}`, {
-                                returnTo: `/all-authorizations/${selectedView}`
+                                returnTo: `/all-authorizations/${selectedView}`,
+                                modId: selectedMenuRow?.draftMod?.Id
                             });
                             return;
                         }
@@ -852,7 +863,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     }}
                 >
                     <EditOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
-                    {selectedMenuRow?.authorization.authorizationStatus === "draft" ? "Resume Draft" : "Edit Authorization"}
+                    {selectedMenuRow?.isModDraft ? "Resume Mod" : selectedMenuRow?.authorization.authorizationStatus === "draft" ? "Resume Draft" : "Edit Authorization"}
                 </MenuItem>
 
                 <MenuItem
@@ -873,7 +884,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     View PDF
                 </MenuItem>
 
-                {selectedMenuRow?.authorization.authorizationStatus === "draft" && (
+                {(selectedMenuRow?.authorization.authorizationStatus === "draft" || selectedMenuRow?.isModDraft) && (
                     <MenuItem
                         onClick={() => {
                             closeRowMenu();
@@ -881,7 +892,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                         }}
                     >
                         <DeleteOutlineOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
-                        Discard Draft
+                        {selectedMenuRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
                     </MenuItem>
                 )}
 
@@ -900,16 +911,18 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
             </Menu>
 
             <Dialog open={!!discardDraftRow} onClose={() => setDiscardDraftRow(undefined)} fullWidth maxWidth="sm">
-                <DialogTitle>Discard Draft?</DialogTitle>
+                <DialogTitle>{discardDraftRow?.isModDraft ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>
                 <DialogContent>
                     <Typography color="text.secondary">
-                        This will permanently discard {discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.
+                        {discardDraftRow?.isModDraft
+                            ? `This will permanently discard Mod ${discardDraftRow.draftMod?.modNumber ?? ""} and remove linked mod resources, labor, and travel.`
+                            : `This will permanently discard ${discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.`}
                     </Typography>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
                     <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
-                        Discard Draft
+                        {discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
                     </Button>
                 </DialogActions>
             </Dialog>

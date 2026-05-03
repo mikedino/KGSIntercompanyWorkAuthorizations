@@ -10,6 +10,7 @@ import {
     IInvoiceItem,
     IJobItem,
     ILobItem,
+    IModItem,
     IOgItem,
     IPeoplePicker,
     IWorkflowRunItem
@@ -306,6 +307,40 @@ export class DataSource {
                 .execute(
                     (items) => resolve((items?.results ?? []) as unknown as IAuthorizationItem[]),
                     (error) => reject(new Error(`Error fetching Draft Authorizations: ${formatError(error)}`))
+                );
+        });
+    }
+
+    static getDraftModsByAuthor(): Promise<IModItem[]> {
+        return new Promise<IModItem[]>((resolve, reject) => {
+            const currentUserId = ContextInfo.userId;
+
+            if (!currentUserId) {
+                resolve([]);
+                return;
+            }
+
+            Web(Strings.Sites.main.url)
+                .Lists(Strings.Sites.main.lists.Mods)
+                .Items()
+                .query({
+                    GetAllItems: true,
+                    OrderBy: ["Modified desc"],
+                    Select: [
+                        "Id", "Title", "modNumber", "modStatus",
+                        "reason", "changeSummary", "notes",
+                        "laborAmount", "travelAmount", "grandTotal",
+                        "Created", "Modified", "Author/Id",
+                        "Author/Title", "Author/EMail",
+                        "authorization/Id", "authorization/Title"
+                    ],
+                    Expand: ["Author", "authorization"],
+                    Filter: `modStatus eq 'draft' and Author/Id eq ${currentUserId}`,
+                    Top: 5000
+                })
+                .execute(
+                    (items) => resolve((items?.results ?? []) as unknown as IModItem[]),
+                    (error) => reject(new Error(`Error fetching Draft Mods: ${formatError(error)}`))
                 );
         });
     }

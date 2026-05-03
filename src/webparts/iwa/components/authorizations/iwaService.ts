@@ -303,7 +303,12 @@ export class AuthorizationService {
   static async updateWorkflowStatus(
     itemId: number,
     authorizationStatus: AuthorizationStatus,
-    effectiveApprovedRunId?: number
+    effectiveApprovedRunId?: number,
+    approvedAmounts?: {
+      approvedLaborAmount: number;
+      approvedTravelAmount: number;
+      approvedGrandTotal: number;
+    }
   ): Promise<void> {
 
     if (!itemId) {
@@ -319,6 +324,12 @@ export class AuthorizationService {
     if (authorizationStatus === "approved") {
       updateBody.approvedOn = nowIso;
       updateBody.rejectedOn = null;
+
+      if (approvedAmounts) {
+        updateBody.approvedLaborAmount = approvedAmounts.approvedLaborAmount;
+        updateBody.approvedTravelAmount = approvedAmounts.approvedTravelAmount;
+        updateBody.approvedGrandTotal = approvedAmounts.approvedGrandTotal;
+      }
     }
 
     if (authorizationStatus === "rejected") {

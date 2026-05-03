@@ -3,7 +3,7 @@ import { Divider, Grid, Paper, Stack, Table, TableBody, TableCell, TableContaine
 import { Dayjs } from "dayjs";
 import { ContractType, IAuthorizationItem, IInvoiceItem, IJobItem } from "../data/props";
 import { formatCurrency, RELATIONSHIP_SEPARATOR } from "../common/utils";
-import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "./IwaWorkPackageStep";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "./workPackage/workPackageTypes";
 
 export interface IIwaReviewSectionProps {
     attachmentsCount: number;
@@ -88,7 +88,7 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
         <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Grid container spacing={2.5}>
                 <Grid size={{ xs: 12, md: 6 }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Donor / Receiver</Typography>
+                    <Typography variant="subtitle2" fontWeight={600}>Donor Entity ► Receiving Entity</Typography>
                     <Typography variant="body1" color="text.secondary">{`${form.donorEntity || "—"} ${RELATIONSHIP_SEPARATOR} ${form.receivingEntity || "—"}`}</Typography>
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>

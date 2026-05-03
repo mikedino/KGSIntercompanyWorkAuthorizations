@@ -4,7 +4,7 @@ import {
     IResourceItem,
     ITravelOdcItem
 } from "../data/props";
-import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "../authorizations/IwaWorkPackageStep";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "../authorizations/workPackage/workPackageTypes";
 
 export interface IIwaChangeCaptureInput {
     beforeAuthorization?: IAuthorizationItem;

@@ -1,28 +1,8 @@
 import * as React from "react";
 import {
-    Box,
-    BottomNavigation,
-    BottomNavigationAction,
-    Button,
-    Chip,
-    CircularProgress,
-    Divider,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    IconButton,
-    Paper,
-    Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    TextField,
-    Tooltip,
-    Typography
+    Box, BottomNavigation, BottomNavigationAction, Button, Chip, CircularProgress, Divider, Dialog, DialogActions,
+    DialogContent, DialogTitle, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+    TableRow, TextField, Tooltip, Typography
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { alpha, useTheme } from "@mui/material/styles";
@@ -33,11 +13,13 @@ import ContentPasteGoOutlinedIcon from "@mui/icons-material/ContentPasteGoOutlin
 import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
+import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { useIwa } from "../data/iwaContext";
 import { formatDate, formatError, formatRelationship, formatSinceDate } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
 import { useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
+import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
 import {
     authorizationStatusLabels,
@@ -148,20 +130,97 @@ const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
     return presetViews.some((view) => view.value === value);
 };
 
+const hasModIndicator = (row: IMyWorkRow): boolean => {
+    return row.isModDraft || row.currentRun?.runType === "mod" || (row.authorization.modCount ?? 0) > 0;
+};
+
+const getModIndicatorLabel = (row: IMyWorkRow): string => {
+    if (row.isModDraft && row.draftMod?.modNumber) {
+        return `M${row.draftMod.modNumber}`;
+    }
+
+    if (row.currentRun?.runType === "mod" && row.currentRun.mod?.Title) {
+        return row.currentRun.mod.Title.replace(/^.*MOD-/i, "M");
+    }
+
+    return `M${row.authorization.modCount ?? 0}`;
+};
+
+const getMyWorkStatusLabel = (row: IMyWorkRow): string => {
+    if (row.isModDraft) {
+        return "Mod Draft";
+    }
+
+    if (row.currentRun?.runType === "mod") {
+        switch (row.currentRun.runStatus) {
+            case "active":
+                return "Mod Submitted";
+            case "completed":
+                return "Mod Approved";
+            case "rejected":
+                return "Mod Rejected";
+            case "canceled":
+                return "Mod Canceled";
+            case "superseded":
+                return "Mod Superseded";
+            default:
+                return "Mod Submitted";
+        }
+    }
+
+    return `Authorization ${authorizationStatusLabels[row.authorization.authorizationStatus]}`;
+};
+
+const getMyWorkStatusChipColor = (
+    row: IMyWorkRow
+): "default" | "success" | "warning" | "error" | "info" => {
+    if (row.currentRun?.runType === "mod") {
+        switch (row.currentRun.runStatus) {
+            case "active":
+                return "warning";
+            case "completed":
+                return "success";
+            case "rejected":
+            case "canceled":
+                return "error";
+            case "superseded":
+                return "default";
+            default:
+                return "info";
+        }
+    }
+
+    return getStatusChipColor(row.authorization.authorizationStatus);
+};
+
 const MyWorkMobileCard: React.FC<{
     row: IMyWorkRow;
     onResumeDraft: (id: number) => void;
     onDiscardDraft: (row: IMyWorkRow) => void;
 }> = ({ row, onResumeDraft, onDiscardDraft }): JSX.Element => {
-    const currentStatusLabel = `Authorization ${authorizationStatusLabels[row.authorization.authorizationStatus]}`;
+    const resumeLabel = row.isModDraft ? "Resume Mod" : "Resume Draft";
+    const discardLabel = row.isModDraft ? "Discard Mod" : "Discard Draft";
 
     return (
         <Paper sx={{ p: 2.25, borderRadius: 3 }}>
             <Stack spacing={1.5}>
                 <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={600}>
-                        {row.authorization.Title}
-                    </Typography>
+                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="h6" fontWeight={600}>
+                            {row.authorization.Title}
+                        </Typography>
+                        {hasModIndicator(row) && (
+                            <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
+                                <Chip
+                                    icon={<AccountTreeOutlinedIcon />}
+                                    label={getModIndicatorLabel(row)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ height: 22 }}
+                                />
+                            </Tooltip>
+                        )}
+                    </Stack>
                     <Typography variant="body2" color="text.secondary">
                         {row.authorization.contractName || "No contract title"} | {row.authorization.contractId || "No contract id"}
                     </Typography>
@@ -181,8 +240,8 @@ const MyWorkMobileCard: React.FC<{
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip
-                        label={currentStatusLabel}
-                        color={getStatusChipColor(row.authorization.authorizationStatus)}
+                        label={getMyWorkStatusLabel(row)}
+                        color={getMyWorkStatusChipColor(row)}
                         size="small"
                     />
                     <Chip label={getRunScopeLabel(row.currentRun)} size="small" variant="outlined" />
@@ -216,14 +275,14 @@ const MyWorkMobileCard: React.FC<{
                             color="secondary"
                             onClick={() => onResumeDraft(row.authorization.Id)}
                         >
-                            Resume Draft
+                            {resumeLabel}
                         </Button>
                         <Button
                             variant="outlined"
                             color="error"
                             onClick={() => onDiscardDraft(row)}
                         >
-                            Discard Draft
+                            {discardLabel}
                         </Button>
                     </Stack>
                 )}
@@ -240,6 +299,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
     const {
         authorizations,
         draftAuthorizations,
+        draftModsByAuthorizationId,
         appUsers,
         currentUser,
         isBootLoading,
@@ -289,11 +349,12 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             authorizations,
             draftAuthorizations,
             runByAuthorizationId,
+            draftModsByAuthorizationId,
             myActions,
             appUsers,
             currentUser?.user?.Id
         );
-    }, [authorizations, draftAuthorizations, appUsers, currentUser?.user?.Id, myActions, runByAuthorizationId]);
+    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, appUsers, currentUser?.user?.Id, myActions, runByAuthorizationId]);
 
     const handleResumeDraft = React.useCallback((authorizationId: number): void => {
         history.push(`/authorizations/edit/${authorizationId}`, {
@@ -310,12 +371,20 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         setDiscardDraftRow(undefined);
 
         try {
-            showBusy("Discarding draft...");
-            await AuthorizationService.delete(authorizationId);
+            showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+
+            if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
+                await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
+                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (discardDraftRow.authorization.modCount ?? 1) - 1));
+                sessionStorage.removeItem(`iwa:activeModDraft:${authorizationId}`);
+            } else {
+                await AuthorizationService.delete(authorizationId);
+            }
+
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess("Draft discarded.");
+            showSuccess(discardDraftRow.isModDraft ? "Modification draft discarded." : "Draft discarded.");
         } catch (error) {
             hideBusy();
             showSnackbar(formatError(error), "error");
@@ -530,9 +599,22 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                 >
                                                     <TableCell sx={{ minWidth: 260, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
-                                                            <Typography fontWeight={600}>
-                                                                {row.authorization.Title}
-                                                            </Typography>
+                                                            <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
+                                                                <Typography fontWeight={600}>
+                                                                    {row.authorization.Title}
+                                                                </Typography>
+                                                                {hasModIndicator(row) && (
+                                                                    <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
+                                                                        <Chip
+                                                                            icon={<AccountTreeOutlinedIcon />}
+                                                                            label={getModIndicatorLabel(row)}
+                                                                            size="small"
+                                                                            variant="outlined"
+                                                                            sx={{ height: 22 }}
+                                                                        />
+                                                                    </Tooltip>
+                                                                )}
+                                                            </Stack>
                                                             <Typography variant="body2" color="text.secondary">
                                                                 {row.authorization.contractName || "No contract title"}
                                                             </Typography>
@@ -560,8 +642,8 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                     <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
                                                         <Stack spacing={0.75}>
                                                             <Chip
-                                                                label={`Authorization ${authorizationStatusLabels[row.authorization.authorizationStatus]}`}
-                                                                color={getStatusChipColor(row.authorization.authorizationStatus)}
+                                                                label={getMyWorkStatusLabel(row)}
+                                                                color={getMyWorkStatusChipColor(row)}
                                                                 size="small"
                                                                 sx={{ width: "fit-content" }}
                                                             />
@@ -576,7 +658,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 {getRunScopeLabel(row.currentRun)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {row.isDraft ? "Draft not yet submitted" : row.currentRun?.runStatus === "active" ? "Active workflow" : "No active workflow"}
+                                                                {row.isModDraft ? `Mod ${row.draftMod?.modNumber ?? ""} not yet submitted` : row.isDraft ? "Draft not yet submitted" : row.currentRun?.runStatus === "active" ? "Active workflow" : "No active workflow"}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
@@ -586,7 +668,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 {row.isDraft ? "Waiting for you" : row.currentRun?.pendingApprover?.Title ?? "No current approver"}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
-                                                                {row.isDraft ? "Resume draft" : getPendingLabel(row.currentRun)}
+                                                                {row.isModDraft ? "Resume mod" : row.isDraft ? "Resume draft" : getPendingLabel(row.currentRun)}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
@@ -624,16 +706,15 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                     size="small"
                                                                     onClick={() => handleResumeDraft(row.authorization.Id)}
                                                                 >
-                                                                    Resume Draft
+                                                                    {row.isModDraft ? "Resume Mod" : "Resume Draft"}
                                                                 </Button>
                                                                 <Button
                                                                     variant="outlined"
                                                                     color="error"
                                                                     size="small"
-                                                                    startIcon={<DeleteOutlineOutlinedIcon />}
                                                                     onClick={() => setDiscardDraftRow(row)}
                                                                 >
-                                                                    Discard Draft
+                                                                    {row.isModDraft ? "Discard Mod" : "Discard Draft"}
                                                                 </Button>
                                                             </Stack>
                                                         ) : (
@@ -654,16 +735,18 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             </Paper>
 
             <Dialog open={!!discardDraftRow} onClose={() => setDiscardDraftRow(undefined)} fullWidth maxWidth="sm">
-                <DialogTitle>Discard Draft?</DialogTitle>
+                <DialogTitle>{discardDraftRow?.isModDraft ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>
                 <DialogContent>
                     <Typography color="text.secondary">
-                        This will permanently discard {discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.
+                        {discardDraftRow?.isModDraft
+                            ? `This will permanently discard Mod ${discardDraftRow.draftMod?.modNumber ?? ""} and remove linked mod resources, labor, and travel.`
+                            : `This will permanently discard ${discardDraftRow?.authorization.Title ?? "this draft authorization"} and remove it from your draft list.`}
                     </Typography>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
                     <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
-                        Discard Draft
+                        {discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
                     </Button>
                 </DialogActions>
             </Dialog>

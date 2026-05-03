@@ -1,6 +1,7 @@
 import {
     AuthorizationStatus,
     IAuthorizationItem,
+    IModItem,
     IWorkflowRunItem,
     WorkflowRole,
     WorkflowRunStatus,
@@ -42,6 +43,8 @@ export interface IAllAuthorizationsRow {
     authorization: IAuthorizationItem;
     currentRun?: IWorkflowRunItem;
     hasMods: boolean;
+    isModDraft: boolean;
+    draftMod?: IModItem;
     searchIndex: string;
 }
 
@@ -106,15 +109,19 @@ const toSearchParts = (authorization: IAuthorizationItem, run?: IWorkflowRunItem
  */
 export const buildAllAuthorizationRows = (
     authorizations: IAuthorizationItem[],
-    runByAuthorizationId: Map<number, IWorkflowRunItem>
+    runByAuthorizationId: Map<number, IWorkflowRunItem>,
+    draftModsByAuthorizationId: Map<number, IModItem> = new Map()
 ): IAllAuthorizationsRow[] => {
     return authorizations.map((authorization: IAuthorizationItem): IAllAuthorizationsRow => {
         const currentRun = runByAuthorizationId.get(authorization.Id);
+        const draftMod = draftModsByAuthorizationId.get(authorization.Id);
 
         return {
             authorization,
             currentRun,
             hasMods: (authorization.modCount ?? 0) > 0,
+            isModDraft: !!draftMod,
+            draftMod,
             searchIndex: normalizeText(toSearchParts(authorization, currentRun).join(" | "))
         };
     });

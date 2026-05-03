@@ -32,11 +32,15 @@ export class ResourceService {
         }
     ): Promise<IResourceItem[]> {
         const lineScope = options?.lineScope ?? "base";
+        if (lineScope === "mod" && !options?.modId) {
+            throw new Error("Cannot save mod resources without a Mod lookup.");
+        }
+
         const existing = await this.getByAuthorization(authorizationId);
 
         for (const item of existing) {
             const matchesScope = item.lineScope === lineScope;
-            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId;
+            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId || !item.mod?.Id;
 
             if (matchesScope && matchesMod) {
                 await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();
@@ -65,7 +69,8 @@ export class ResourceService {
             await Web().Lists(Strings.Sites.main.lists.Resources).Items().add(addBody).executeAndWait();
         }
 
-        return this.getByAuthorization(authorizationId);
+        const saved = await this.getByAuthorization(authorizationId);
+        return saved.filter((item) => item.lineScope === lineScope && (lineScope === "base" || item.mod?.Id === options?.modId));
     }
 
     static getByAuthorization(authorizationId: number): Promise<IResourceItem[]> {
@@ -81,5 +86,19 @@ export class ResourceService {
                 (error) => reject(new Error(`Error fetching Resources by Authorization: ${formatError(error)}`))
             );
         });
+    }
+
+    static async deleteForMod(authorizationId: number, modId: number): Promise<void> {
+        if (!authorizationId || !modId) {
+            return;
+        }
+
+        const existing = await this.getByAuthorization(authorizationId);
+
+        for (const item of existing) {
+            if (item.lineScope === "mod" && item.mod?.Id === modId) {
+                await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();
+            }
+        }
     }
 }

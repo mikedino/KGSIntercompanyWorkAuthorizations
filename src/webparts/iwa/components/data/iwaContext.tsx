@@ -22,6 +22,7 @@ import { WorkflowService } from "../workflow/workflowService";
 export interface IIwaContext {
   authorizations: IAuthorizationItem[];
   draftAuthorizations: IAuthorizationItem[];
+  draftModsByAuthorizationId: Map<number, IModItem>;
   runByAuthorizationId: Map<number, IWorkflowRunItem>;
 
   appUser?: IAppUserItem;
@@ -76,6 +77,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
   const {
     authorizations,
     draftAuthorizations,
+    draftModsByAuthorizationId,
     runByAuthorizationId,
     appUser,
     isBootLoading,
@@ -491,6 +493,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     return {
       authorizations,
       draftAuthorizations,
+      draftModsByAuthorizationId,
       runByAuthorizationId,
 
       appUser: currentUser,
@@ -532,6 +535,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     actionsByAuthorizationId,
     authorizations,
     draftAuthorizations,
+    draftModsByAuthorizationId,
     appUserByUserId,
     appUsers,
     clearAuthorizationDetailCache,

@@ -2,6 +2,9 @@ import { Web } from "gd-sprest";
 import { IModItem } from "../data/props";
 import Strings from "../common/strings";
 import { encodeListName, formatError } from "../common/utils";
+import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
+import { ResourceService } from "../resources/resourceService";
+import { TravelOdcService } from "../travelodc/travelOdcService";
 
 interface ICreateModOptions {
     authorizationId: number;
@@ -24,12 +27,12 @@ export class ModService {
         "notes", "laborAmount", "travelAmount",
         "grandTotal", "pdfUrl", "pdfGeneratedOn",
         "approvedOn", "rejectedOn", "canceledOn",
-        "Created", "Modified", "authorization/Id",
+        "Created", "Modified", "Author/Id", "Author/Title", "Author/EMail", "authorization/Id",
         "authorization/Title", "currentWorkflowRun/Id", "currentWorkflowRun/Title",
         "effectiveApprovedRun/Id", "effectiveApprovedRun/Title"
     ];
 
-    private static readonly expandQuery: string[] = ["authorization", "currentWorkflowRun", "effectiveApprovedRun"];
+    private static readonly expandQuery: string[] = ["Author", "authorization", "currentWorkflowRun", "effectiveApprovedRun"];
 
     static getById(modId: number): Promise<IModItem> {
         return new Promise<IModItem>((resolve, reject) => {
@@ -177,5 +180,19 @@ export class ModService {
         }
 
         await Web().Lists(Strings.Sites.main.lists.Mods).Items().getById(modId).update(updateBody).executeAndWait();
+    }
+
+    static async discardDraft(authorizationId: number, modId: number): Promise<void> {
+        if (!authorizationId || !modId) {
+            throw new Error("Cannot discard Mod draft: authorization.Id or mod.Id is missing.");
+        }
+
+        await Promise.all([
+            ResourceService.deleteForMod(authorizationId, modId),
+            LaborLineItemService.deleteForMod(authorizationId, modId),
+            TravelOdcService.deleteForMod(authorizationId, modId)
+        ]);
+
+        await Web().Lists(Strings.Sites.main.lists.Mods).Items(modId).recycle().executeAndWait();
     }
 }

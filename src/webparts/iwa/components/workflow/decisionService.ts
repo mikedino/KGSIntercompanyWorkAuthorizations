@@ -83,13 +83,23 @@ export class WorkflowDecisionService {
         }
 
         if (result.completed) {
+            let approvedAuthorization = authorization;
+
+            if (run.runType !== "mod") {
+                const approvedAmounts = await AuthorizationService.recalculateBaseAmounts(authorization.Id);
+                approvedAuthorization = {
+                    ...authorization,
+                    ...approvedAmounts
+                };
+            }
+
             await Web()
                 .Lists(Strings.Sites.main.lists.WorkflowRuns)
                 .Items()
                 .getById(run.Id)
                 .update({
                     __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
-                    approvedSnapshotJson: JSON.stringify(this.buildApprovedSnapshot(authorization))
+                    approvedSnapshotJson: JSON.stringify(this.buildApprovedSnapshot(approvedAuthorization))
                 })
                 .executeAndWait();
 
@@ -97,7 +107,11 @@ export class WorkflowDecisionService {
                 await ModService.updateWorkflowStatus(run.mod.Id, "approved", run.Id);
                 await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id);
             } else {
-                await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id);
+                await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id, {
+                    approvedLaborAmount: approvedAuthorization.baseLaborAmount ?? 0,
+                    approvedTravelAmount: approvedAuthorization.baseTravelAmount ?? 0,
+                    approvedGrandTotal: approvedAuthorization.baseGrandTotal ?? 0
+                });
             }
             return;
         }

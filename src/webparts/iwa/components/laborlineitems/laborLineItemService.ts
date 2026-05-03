@@ -45,11 +45,15 @@ export class LaborLineItemService {
         }
     ): Promise<ILaborLineItem[]> {
         const lineScope = options?.lineScope ?? "base";
+        if (lineScope === "mod" && !options?.modId) {
+            throw new Error("Cannot save mod labor lines without a Mod lookup.");
+        }
+
         const existing = await this.getByAuthorization(authorizationId);
 
         for (const item of existing) {
             const matchesScope = item.lineScope === lineScope;
-            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId;
+            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId || !item.mod?.Id;
 
             if (matchesScope && matchesMod) {
                 await Web().Lists(Strings.Sites.main.lists.LaborLine).Items(item.Id).recycle().executeAndWait();
@@ -100,7 +104,8 @@ export class LaborLineItemService {
             await Web().Lists(Strings.Sites.main.lists.LaborLine).Items().add(addBody).executeAndWait();
         }
 
-        return this.getByAuthorization(authorizationId);
+        const saved = await this.getByAuthorization(authorizationId);
+        return saved.filter((item) => item.lineScope === lineScope && (lineScope === "base" || item.mod?.Id === options?.modId));
     }
 
     static getByAuthorization(authorizationId: number): Promise<ILaborLineItem[]> {
@@ -116,6 +121,20 @@ export class LaborLineItemService {
                 (error) => reject(new Error(`Error fetching Labor Lines by Authorization: ${formatError(error)}`))
             );
         });
+    }
+
+    static async deleteForMod(authorizationId: number, modId: number): Promise<void> {
+        if (!authorizationId || !modId) {
+            return;
+        }
+
+        const existing = await this.getByAuthorization(authorizationId);
+
+        for (const item of existing) {
+            if (item.lineScope === "mod" && item.mod?.Id === modId) {
+                await Web().Lists(Strings.Sites.main.lists.LaborLine).Items(item.Id).recycle().executeAndWait();
+            }
+        }
     }
 
     static async updateCompensation(

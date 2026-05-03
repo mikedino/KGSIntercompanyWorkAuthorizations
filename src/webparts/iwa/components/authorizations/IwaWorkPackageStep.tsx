@@ -1,67 +1,22 @@
 import * as React from "react";
 import {
-    Autocomplete,
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Grid,
-    MenuItem,
-    Paper,
-    Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    TextField,
-    Typography
+    Autocomplete,    Alert,    Box,    Button,    Dialog,    DialogActions,    DialogContent,
+    DialogTitle,    Grid,    MenuItem,    Paper,    Stack,    Table,    TableBody,    TableCell,    TableContainer,
+    TableHead,    TableRow,    TextField,    Typography
 } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import KeyboardArrowDownOutlinedIcon from "@mui/icons-material/KeyboardArrowDownOutlined";
+import KeyboardArrowUpOutlinedIcon from "@mui/icons-material/KeyboardArrowUpOutlined";
 import { IPersonaProps } from "@fluentui/react";
 import { IPeoplePickerContext } from "@pnp/spfx-controls-react/lib/PeoplePicker";
 import { MuiPeoplePicker } from "../ui/CustomPeoplePicker";
 import { ChargingPeriod, IJobItem, IPeoplePicker, TravelLineType } from "../data/props";
 import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput } from "../common/utils";
-
-export interface IEditableResourceRow {
-    id: string;
-    employee?: IPeoplePicker;
-    state: string;
-    comments: string;
-    jobId: string;
-    laborCategory: string;
-    standardHours: string;
-    overtimeHours: string;
-    annualSalary: string;
-    standardRate: string;
-    overtimeRate: string;
-}
-
-export interface IEditableTravelRow {
-    id: string;
-    lineType: TravelLineType;
-    jobId: string;
-    description: string;
-    amount: string;
-    comments: string;
-}
-
-export interface IEditableFfpLaborRow {
-    id: string;
-    jobId: string;
-    chargingPeriod: ChargingPeriod;
-    periodQty: string;
-    lumpSumAmount: string;
-    resourceRowIds: string[];
-    comments: string;
-}
+import { IwaPriorResourcesPanel } from "./workPackage/IwaPriorResourcesPanel";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow, IPriorResourceRow } from "./workPackage/workPackageTypes";
 
 export interface IIwaWorkPackageStepProps {
     contractType: "tm" | "ffp";
@@ -72,6 +27,8 @@ export interface IIwaWorkPackageStepProps {
     resourceRows: IEditableResourceRow[];
     travelRows: IEditableTravelRow[];
     ffpLaborRows: IEditableFfpLaborRow[];
+    priorResourceRows?: IPriorResourceRow[];
+    showPriorResources?: boolean;
     submitted: boolean;
     onAddResource: (row?: IEditableResourceRow) => void;
     onRemoveResource: (id: string) => void;
@@ -205,6 +162,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     resourceRows,
     travelRows,
     ffpLaborRows,
+    priorResourceRows = [],
+    showPriorResources = false,
     submitted,
     onAddResource,
     onRemoveResource,
@@ -235,6 +194,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const [ffpDraft, setFfpDraft] = React.useState<IEditableFfpLaborRow>(createEmptyFfpLaborDraft());
     const [ffpDraftErrors, setFfpDraftErrors] = React.useState<Record<string, string>>({});
     const [ffpAmountFocused, setFfpAmountFocused] = React.useState(false);
+    const [priorResourcesOpen, setPriorResourcesOpen] = React.useState(false);
     const resourceTotals = React.useMemo(() => {
         return resourceRows.reduce((totals, row) => ({
             standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
@@ -271,6 +231,26 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
 
         return labels.length ? labels.join(", ") : "—";
     }, [ffpLaborRows]);
+
+    const copyPriorResource = React.useCallback((row: IPriorResourceRow): void => {
+        onAddResource({
+            id: "",
+            employee: row.employee,
+            state: row.state,
+            comments: "",
+            jobId: row.jobId,
+            laborCategory: row.laborCategory,
+            standardHours: "",
+            overtimeHours: "",
+            annualSalary: "",
+            standardRate: "",
+            overtimeRate: ""
+        });
+    }, [onAddResource]);
+
+    const copyAllPriorResources = React.useCallback((): void => {
+        priorResourceRows.forEach(copyPriorResource);
+    }, [copyPriorResource, priorResourceRows]);
 
     const openNewResourceDialog = React.useCallback((): void => {
         setResourceDraft(createEmptyResourceDraft());
@@ -310,10 +290,10 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         if (contractType === "tm") {
             const standardHours = normalizeDecimalInput(resourceDraft.standardHours);
             const overtimeHours = normalizeDecimalInput(resourceDraft.overtimeHours);
-            const hasHours = standardHours.trim() || overtimeHours.trim();
+            const totalHours = Number(standardHours || 0) + Number(overtimeHours || 0);
 
-            if (!hasHours) {
-                nextErrors.standardHours = "Enter standard hours, overtime hours, or both.";
+            if (Number.isNaN(totalHours) || totalHours <= 0) {
+                nextErrors.standardHours = "Total standard and overtime hours must be greater than zero.";
             } else {
                 if (standardHours.trim() && Number.isNaN(Number(standardHours))) {
                     nextErrors.standardHours = "Standard hours must be numeric.";
@@ -465,23 +445,45 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         <Stack spacing={3}>
             <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
                 <Stack spacing={2.5}>
-                    <Stack spacing={0.5}>
+                    <Stack spacing={1.5}>
                         <Typography variant="h6" fontWeight={600}>
                             Resources
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Build the employee roster first. You will assign the CLIN and Lump Sum amount below.
-                        </Typography>
+                        <Alert severity="info">
+                            {contractType === "ffp"
+                                ? "Build the resource roster first. You will assign each user to the CLIN and provide the Lump Sum amount below."
+                                : "Add the resources and hours here. HR will provide the salary information during the review process."}
+                        </Alert>
                     </Stack>
 
                     <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
                         <Typography variant="body2" color="text.secondary">
                             {resourceRows.length} resource line{resourceRows.length === 1 ? "" : "s"}
                         </Typography>
-                        <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewResourceDialog}>
-                            Add Resource
-                        </Button>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+                            {showPriorResources && priorResourceRows.length > 0 && (
+                                <Button
+                                    variant="outlined"
+                                    startIcon={priorResourcesOpen ? <KeyboardArrowUpOutlinedIcon /> : <KeyboardArrowDownOutlinedIcon />}
+                                    onClick={() => setPriorResourcesOpen((open) => !open)}
+                                >
+                                    Prior Resources
+                                </Button>
+                            )}
+                            <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewResourceDialog}>
+                                Add Resource
+                            </Button>
+                        </Stack>
                     </Stack>
+
+                    {showPriorResources && (
+                        <IwaPriorResourcesPanel
+                            open={priorResourcesOpen}
+                            priorResourceRows={priorResourceRows}
+                            onCopyAll={copyAllPriorResources}
+                            onCopyResource={copyPriorResource}
+                        />
+                    )}
 
                     {resourceRows.length === 0 ? (
                         <Box sx={{ py: 2 }}>
@@ -737,7 +739,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                 fullWidth
                                                 required
                                                 error={Boolean(resourceDraftErrors.state)}
-                                                helperText={resourceDraftErrors.state || "Choose from Config values or type one if needed."}
+                                                helperText={resourceDraftErrors.state}
                                             />
                                         )}
                                     />
@@ -754,7 +756,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                 fullWidth
                                                 required
                                                 error={Boolean(resourceDraftErrors.laborCategory)}
-                                                helperText={resourceDraftErrors.laborCategory || "Choose from Config values or type one if needed."}
+                                                helperText={resourceDraftErrors.laborCategory || "Manually enter a Labor Cat"}
                                             />
                                         )}
                                     />

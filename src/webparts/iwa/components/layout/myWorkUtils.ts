@@ -2,6 +2,7 @@ import {
     AuthorizationStatus,
     IAuthorizationItem,
     IAppUserItem,
+    IModItem,
     IWorkflowActionItem,
     IWorkflowRunItem,
     ModStatus,
@@ -30,6 +31,8 @@ export interface IMyWorkRow {
     actedOnByMe: boolean;
     myActionCount: number;
     isDraft: boolean;
+    isModDraft: boolean;
+    draftMod?: IModItem;
     relationshipBadges: string[];
     searchIndex: string;
 }
@@ -168,6 +171,7 @@ export const buildMyWorkSummary = (
     authorizations: IAuthorizationItem[],
     draftAuthorizations: IAuthorizationItem[],
     runByAuthorizationId: Map<number, IWorkflowRunItem>,
+    draftModsByAuthorizationId: Map<number, IModItem>,
     myActions: IWorkflowActionItem[],
     appUsers: IAppUserItem[],
     currentUserId?: number
@@ -178,13 +182,14 @@ export const buildMyWorkSummary = (
     const activeRows = authorizations
         .map((authorization: IAuthorizationItem): IMyWorkRow => {
             const currentRun = runByAuthorizationId.get(authorization.Id);
+            const draftMod = draftModsByAuthorizationId.get(authorization.Id);
             const authorizationActions = myActionsByAuthorizationId.get(authorization.Id) ?? [];
             const pendingApproverId = currentRun?.pendingApprover?.Id;
             const backupForName = typeof pendingApproverId === "number"
                 ? backupCoverageMap.get(pendingApproverId)?.Title
                 : undefined;
 
-            const createdByMe = authorization.Author?.Id === currentUserId;
+            const createdByMe = authorization.Author?.Id === currentUserId || !!draftMod;
             const meaningfulActions = authorizationActions.filter((action: IWorkflowActionItem): boolean => {
                 return isMeaningfulMyAction(action, createdByMe);
             });
@@ -212,6 +217,10 @@ export const buildMyWorkSummary = (
                 relationshipBadges.push("I Acted On This");
             }
 
+            if (draftMod) {
+                relationshipBadges.push("Mod Draft");
+            }
+
             const row: IMyWorkRow = {
                 authorization,
                 currentRun,
@@ -221,7 +230,9 @@ export const buildMyWorkSummary = (
                 backupForNames,
                 actedOnByMe,
                 myActionCount: meaningfulActions.length,
-                isDraft: false,
+                isDraft: !!draftMod,
+                isModDraft: !!draftMod,
+                draftMod,
                 relationshipBadges,
                 searchIndex: ""
             };
@@ -261,6 +272,7 @@ export const buildMyWorkSummary = (
 
     const draftRows = draftAuthorizations
         .map((authorization: IAuthorizationItem): IMyWorkRow => {
+            const draftMod = draftModsByAuthorizationId.get(authorization.Id);
             const row: IMyWorkRow = {
                 authorization,
                 currentRun: undefined,
@@ -271,7 +283,9 @@ export const buildMyWorkSummary = (
                 actedOnByMe: false,
                 myActionCount: 0,
                 isDraft: true,
-                relationshipBadges: ["Draft I Started"],
+                isModDraft: !!draftMod,
+                draftMod,
+                relationshipBadges: [draftMod ? "Mod Draft" : "Draft I Started"],
                 searchIndex: ""
             };
 

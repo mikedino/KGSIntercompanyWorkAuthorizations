@@ -1,27 +1,20 @@
 import * as React from "react";
 import {
-    Accordion, AccordionDetails, AccordionSummary, Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, useTheme,
-    Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography
+    Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, useTheme,
+    Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import InputAdornment from "@mui/material/InputAdornment";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
-import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
-import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import ExpandMoreOutlinedIcon from "@mui/icons-material/ExpandMoreOutlined";
-import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
-import SummarizeOutlinedIcon from "@mui/icons-material/SummarizeOutlined";
 import { useHistory, useParams } from "react-router-dom";
-import { IAuthorizationItem, ILaborLineItem, IPeoplePicker, IResourceItem, ITravelOdcItem, IWorkflowActionItem, IWorkflowRunItem, WorkflowStepKey, workflowStepLabels } from "../data/props";
+import { IAuthorizationItem, ILaborLineItem, IModItem, IWorkflowActionItem, IWorkflowRunItem, workflowStepLabels } from "../data/props";
 import { useIwa } from "../data/iwaContext";
-import { formatCurrency, formatCurrencyInputValue, formatDate, formatError, formatRelationship, normalizeDecimalInput, parseNumberOrUndefined, RELATIONSHIP_SEPARATOR } from "../common/utils";
+import { formatCurrencyInputValue, formatDate, formatError, formatRelationship, normalizeDecimalInput, parseNumberOrUndefined } from "../common/utils";
 import { authorizationStatusLabels, getStatusChipColor, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
 import { canEditCompensation, canViewCompensation } from "../resources/laborAccess";
-import { resolveLaborCompensation } from "../resources/laborMath";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { useShellUi } from "../ui/ShellUiContext";
 import AlertDialog from "../ui/Alert";
@@ -30,226 +23,30 @@ import { WorkflowDecisionService } from "../workflow/decisionService";
 import { getWorkflowActionPermission } from "../workflow/workflowAccess";
 import { formatIwaChangePayload } from "../workflow/changeFormatter";
 import { ModService } from "../mods/modService";
-
-type DetailTab = "summary" | "resources" | "travel" | "workflow" | "mods" | "history";
-
-const detailTabs: Array<{ value: DetailTab; label: string; }> = [
-    { value: "summary", label: "Summary" },
-    { value: "resources", label: "Resources & Labor" },
-    { value: "travel", label: "Travel / ODC" },
-    { value: "workflow", label: "Workflow" },
-    { value: "mods", label: "Mods" },
-    { value: "history", label: "History" }
-];
-
-const baseWorkflowSteps: WorkflowStepKey[] = ["submit", "pm", "hr", "ogPresident", "cfo"];
-
-const contractTypeLabels: Record<IAuthorizationItem["contractType"], string> = {
-    tm: "T&M",
-    ffp: "FFP"
-};
-
-const getActiveModDraftSessionKey = (authorizationId: number): string => `iwa:activeModDraft:${authorizationId}`;
-
-interface ICompDraft {
-    annualSalary: string;
-    standardRate: string;
-    overtimeRate: string;
-    standardHours: string;
-    overtimeHours: string;
-}
-
-interface ICompOverrideDraft {
-    standardRate: boolean;
-    overtimeRate: boolean;
-}
-
-const toCompDraft = (line: ILaborLineItem): ICompDraft => ({
-    annualSalary: formatCurrencyInputValue(line.annualSalary),
-    standardRate: formatCurrencyInputValue(line.standardRate),
-    overtimeRate: formatCurrencyInputValue(line.overtimeRate),
-    standardHours: line.standardHours ? String(line.standardHours) : "",
-    overtimeHours: line.overtimeHours ? String(line.overtimeHours) : ""
-});
-
-const roundCurrency = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const isSameCurrency = (left?: number, right?: number): boolean => {
-    return Math.abs(Number(left ?? 0) - Number(right ?? 0)) < 0.01;
-};
-
-const getCompOverrideDraft = (line: ILaborLineItem): ICompOverrideDraft => {
-    const annualSalary = Number(line.annualSalary ?? 0);
-    const standardRate = Number(line.standardRate ?? 0);
-    const overtimeRate = Number(line.overtimeRate ?? 0);
-    const derivedStandardRate = annualSalary > 0 ? roundCurrency(annualSalary / 2080) : 0;
-    const effectiveStandardRate = standardRate > 0 ? standardRate : derivedStandardRate;
-    const derivedOvertimeRate = effectiveStandardRate > 0 ? roundCurrency(effectiveStandardRate * 1.5) : 0;
-
-    return {
-        standardRate: standardRate > 0 && !isSameCurrency(standardRate, derivedStandardRate),
-        overtimeRate: overtimeRate > 0 && !isSameCurrency(overtimeRate, derivedOvertimeRate)
-    };
-};
-
-const getDerivedRatesFromSalary = (annualSalary: number | undefined): { standardRate: number; overtimeRate: number } => {
-    const standardRate = annualSalary && annualSalary > 0 ? roundCurrency(annualSalary / 2080) : 0;
-
-    return {
-        standardRate,
-        overtimeRate: roundCurrency(standardRate * 1.5)
-    };
-};
-
-const compactNumberInputSx = {
-    width: 68,
-    "& input": {
-        textAlign: "right"
-    }
-};
-
-const compactCurrencyInputSx = {
-    width: 102,
-    "& input": {
-        textAlign: "right"
-    }
-};
-
-const quietTableSx = {
-    "& thead tr": {
-        bgcolor: "background.default"
-    },
-    "& th": {
-        fontWeight: 600,
-        borderBottom: "1px solid",
-        borderColor: "divider"
-    },
-    "& td": {
-        borderBottom: "1px solid",
-        borderColor: "divider"
-    },
-    "& tbody tr:last-child td": {
-        borderBottom: 0
-    }
-};
-
-const totalsRowSx = {
-    "& td": {
-        fontWeight: 600,
-        fontStyle: "italic"
-    }
-};
-
-const getCurrentStepIndex = (run?: IWorkflowRunItem): number => {
-    if (!run) {
-        return 0;
-    }
-
-    const index = baseWorkflowSteps.indexOf(run.currentStepKey);
-    return index >= 0 ? index : 0;
-};
-
-const getStepAction = (actions: IWorkflowActionItem[], step: WorkflowStepKey): IWorkflowActionItem | undefined => {
-    if (step === "submit") {
-        return actions.find((action) => action.stepKey === step && (action.actionType === "submitted" || action.actionType === "modified"));
-    }
-
-    if (step === "submitter") {
-        return actions.find((action) => action.stepKey === step && (action.actionType === "returned" || action.actionType === "restarted"));
-    }
-
-    return actions.find((action) => action.stepKey === step && (action.actionType === "approved" || action.actionType === "rejected"));
-};
-
-const getResourceNamesForLabor = (line: ILaborLineItem, resources: IResourceItem[]): string => {
-    const ids = line.resources?.results?.map((resource) => resource.Id) ?? [];
-    const names = ids
-        .map((id) => resources.find((resource) => resource.Id === id)?.employee?.Title)
-        .filter(Boolean) as string[];
-
-    return names.length ? names.join(", ") : "—";
-};
-
-const getLaborForResource = (resource: IResourceItem, laborLines: ILaborLineItem[]): ILaborLineItem | undefined => {
-    return laborLines.find((line) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
-};
-
-const getWorkflowStepApprover = (
-    step: WorkflowStepKey,
-    authorization: IAuthorizationItem,
-    run?: IWorkflowRunItem
-): IPeoplePicker | undefined => {
-    switch (step) {
-        case "pm":
-            return authorization.pm;
-        case "hr":
-            return run?.hr;
-        case "ogPresident":
-            return run?.ogPresident;
-        case "cfo":
-            return run?.cfo;
-        case "submit":
-        case "submitter":
-        default:
-            return authorization.Author;
-    }
-};
-
-const getWorkflowActionChipColor = (
-    action?: IWorkflowActionItem,
-    isCurrent?: boolean,
-    skipped?: boolean
-): "default" | "success" | "warning" | "error" | "info" => {
-    if (skipped) {
-        return "default";
-    }
-
-    if (isCurrent) {
-        return "warning";
-    }
-
-    if (action?.actionType === "approved" || action?.actionType === "submitted" || action?.actionType === "modified") {
-        return "success";
-    }
-
-    if (action?.actionType === "rejected") {
-        return "error";
-    }
-
-    if (action?.actionType === "returned") {
-        return "warning";
-    }
-
-    return "info";
-};
-
-const getMissingCompensationMessage = (
-    authorization: IAuthorizationItem | undefined,
-    run: IWorkflowRunItem | undefined,
-    laborLines: ILaborLineItem[]
-): string | undefined => {
-    if (!authorization || !run) {
-        return undefined;
-    }
-
-    const requiresCompensationCheck =
-        (authorization.contractType === "tm" && run.currentStepKey === "hr") ||
-        (authorization.contractType === "ffp" && run.currentStepKey === "pm");
-
-    if (!requiresCompensationCheck) {
-        return undefined;
-    }
-
-    const hasMissingTotal = laborLines.length === 0 || laborLines.some((line) => Number(line.totalAmount ?? 0) <= 0);
-
-    if (!hasMissingTotal) {
-        return undefined;
-    }
-
-    return authorization.contractType === "tm"
-        ? "HR must enter compensation before approving this T&M authorization. Each labor line needs a Total Amount greater than $0."
-        : "The lump sum amount must be entered before approving this FFP authorization. Each labor line needs a Total Amount greater than $0.";
-};
+import { IwaHistoryTab } from "./view/IwaHistoryTab";
+import { IwaModsTab } from "./view/IwaModsTab";
+import { IwaResourcesLaborTab } from "./view/IwaResourcesLaborTab";
+import { IwaSummaryTab } from "./view/IwaSummaryTab";
+import { IwaTravelOdcTab } from "./view/IwaTravelOdcTab";
+import { IwaWorkflowTab } from "./view/IwaWorkflowTab";
+import {
+    baseWorkflowSteps,
+    contractTypeLabels,
+    DetailTab,
+    detailTabs,
+    getActiveModDraftSessionKey,
+    getCompOverrideDraft,
+    getCurrentStepIndex,
+    getDerivedRatesFromSalary,
+    getLaborDisplayName,
+    getMissingCompensationMessage,
+    getModScopeLabel,
+    getStepAction,
+    ICompDraft,
+    ICompOverrideDraft,
+    roundCurrency,
+    toCompDraft
+} from "./view/iwaViewUtils";
 
 export const IwaDetailPage: React.FC = (): JSX.Element => {
     const history = useHistory();
@@ -262,6 +59,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         authorizations,
         currentUser,
         draftAuthorizations,
+        draftModsByAuthorizationId,
         laborLinesByAuthorizationId,
         lastRefreshed,
         loadAuthorizationDetail,
@@ -309,13 +107,69 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         return actions.filter((action) => action.workflowRun?.Id === currentRun.Id);
     }, [actions, currentRun?.Id]);
     const resources = resourcesByAuthorizationId.get(authorizationId) ?? [];
-    const laborLines = laborLinesByAuthorizationId.get(authorizationId) ?? [];
-    const travelOdcs = travelOdcsByAuthorizationId.get(authorizationId) ?? [];
+    const laborLines = React.useMemo(() => {
+        return (laborLinesByAuthorizationId.get(authorizationId) ?? [])
+            .filter((line) => line.isActive !== false)
+            .filter((line) => {
+                if (line.pricingType === "ffp") {
+                    return true;
+                }
+
+                return (line.resources?.results?.length ?? 0) > 0;
+            })
+            .sort((left, right) => {
+                const leftName = getLaborDisplayName(left, resources);
+                const rightName = getLaborDisplayName(right, resources);
+                const nameSort = leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
+
+                if (nameSort !== 0) {
+                    return nameSort;
+                }
+
+                const scopeSort = getModScopeLabel(left).localeCompare(getModScopeLabel(right), undefined, { numeric: true, sensitivity: "base" });
+
+                if (scopeSort !== 0) {
+                    return scopeSort;
+                }
+
+                return (left.jobId ?? "").localeCompare(right.jobId ?? "", undefined, { numeric: true, sensitivity: "base" });
+            });
+    }, [authorizationId, laborLinesByAuthorizationId, resources]);
+    const travelOdcs = React.useMemo(() => {
+        return (travelOdcsByAuthorizationId.get(authorizationId) ?? [])
+            .filter((line) => line.isActive !== false)
+            .sort((left, right) => {
+                const scopeSort = getModScopeLabel(left).localeCompare(getModScopeLabel(right), undefined, { numeric: true, sensitivity: "base" });
+
+                if (scopeSort !== 0) {
+                    return scopeSort;
+                }
+
+                return (left.jobId ?? "").localeCompare(right.jobId ?? "", undefined, { numeric: true, sensitivity: "base" });
+            });
+    }, [authorizationId, travelOdcsByAuthorizationId]);
     const mods = modsByAuthorizationId.get(authorizationId) ?? [];
+    const draftMod = React.useMemo<IModItem | undefined>(() => {
+        return mods.find((mod) => mod.modStatus === "draft") ?? draftModsByAuthorizationId.get(authorizationId);
+    }, [authorizationId, draftModsByAuthorizationId, mods]);
+    const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
+    const currentUserId = currentUser?.user?.Id;
+    const canEditDraftMod = !!draftMod && !!currentUserId && draftMod.Author?.Id === currentUserId;
     const mayViewComp = canViewCompensation(currentUser, authorization);
     const mayEditComp = canEditCompensation(currentUser);
     const isFfpAuthorization = authorization?.contractType === "ffp";
     const canEditCompInHrReview = mayEditComp && currentRun?.runStatus === "active" && currentRun.currentStepKey === "hr";
+    const canEditCompLine = React.useCallback((line: ILaborLineItem): boolean => {
+        if (!canEditCompInHrReview || !currentRun) {
+            return false;
+        }
+
+        if (currentRun.runType === "mod") {
+            return line.lineScope === "mod" && !!currentRun.mod?.Id && line.mod?.Id === currentRun.mod.Id;
+        }
+
+        return line.lineScope !== "mod";
+    }, [canEditCompInHrReview, currentRun]);
     const workflowDialogDecision = workflowDecision ?? workflowDialogMode;
     const activeStep = getCurrentStepIndex(currentRun);
     const stepperActiveStep = currentRun?.runStatus === "completed" ? -1 : activeStep;
@@ -325,7 +179,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const hasActiveWorkflowRun = React.useMemo(() => {
         return workflowRuns.some((run) => run.runStatus === "active");
     }, [workflowRuns]);
-    const canInitiateMod = !!authorization && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun;
+    const canInitiateMod = !!authorization && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
     const laborTotals = React.useMemo(() => {
         return laborLines.reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
@@ -333,12 +187,78 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             totalAmount: totals.totalAmount + Number(line.totalAmount ?? 0)
         }), { standardHours: 0, overtimeHours: 0, totalAmount: 0 });
     }, [laborLines]);
+    const laborDeltaTotal = React.useMemo(() => {
+        return laborLines
+            .filter((line) => line.lineScope === "mod")
+            .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    }, [laborLines]);
+    const resourceRosterRows = React.useMemo(() => {
+        const employeeMap = new Map<number, {
+            key: number;
+            title: string;
+            email: string;
+            labels: string[];
+        }>();
+
+        resources
+            .filter((resource) => resource.isActive !== false && !!resource.employee?.Id)
+            .forEach((resource) => {
+                const employeeId = resource.employee!.Id;
+                const existing = employeeMap.get(employeeId) ?? {
+                    key: employeeId,
+                    title: resource.employee!.Title,
+                    email: resource.employee!.EMail,
+                    labels: []
+                };
+                const label = getModScopeLabel(resource);
+
+                if (!existing.labels.includes(label)) {
+                    existing.labels.push(label);
+                    existing.labels.sort((left, right) => {
+                        if (left === "BASE") {
+                            return -1;
+                        }
+
+                        if (right === "BASE") {
+                            return 1;
+                        }
+
+                        return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+                    });
+                }
+
+                employeeMap.set(employeeId, existing);
+            });
+
+        return Array.from(employeeMap.values()).sort((left, right) => left.title.localeCompare(right.title));
+    }, [resources]);
     const travelTotal = React.useMemo(() => {
         return travelOdcs.reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    }, [travelOdcs]);
+    const travelDeltaTotal = React.useMemo(() => {
+        return travelOdcs
+            .filter((line) => line.lineScope === "mod")
+            .reduce((total, line) => total + Number(line.amount ?? 0), 0);
     }, [travelOdcs]);
     const formattedChangeSections = React.useMemo(() => {
         return formatIwaChangePayload(changeDialog?.changePayloadJson, changeDialog?.changeSummary);
     }, [changeDialog]);
+    const changeDialogRun = React.useMemo(() => {
+        if (!changeDialog?.workflowRun?.Id) {
+            return undefined;
+        }
+
+        return workflowRuns.find((run) => run.Id === changeDialog.workflowRun?.Id);
+    }, [changeDialog?.workflowRun?.Id, workflowRuns]);
+    const changeDialogMod = React.useMemo(() => {
+        const modId = changeDialogRun?.mod?.Id;
+
+        if (!modId) {
+            return undefined;
+        }
+
+        return mods.find((mod) => mod.Id === modId);
+    }, [changeDialogRun?.mod?.Id, mods]);
 
     React.useEffect((): void => {
         if (workflowRuns.length === 0) {
@@ -385,6 +305,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             return;
         }
 
+        if (draftMod) {
+            return;
+        }
+
         if (currentRun?.hasDecision) {
             setModifyPromptOpen(true);
             return;
@@ -393,7 +317,19 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         history.push(`/authorizations/edit/${authorization.Id}`, {
             returnTo: `/authorizations/view/${authorization.Id}`
         });
-    }, [authorization, currentRun?.hasDecision, history]);
+    }, [authorization, currentRun?.hasDecision, draftMod, history]);
+
+    const handleEditMod = React.useCallback((): void => {
+        if (!authorization || !draftMod?.Id || !canEditDraftMod) {
+            return;
+        }
+
+        sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(draftMod.Id));
+        history.push(`/authorizations/edit/${authorization.Id}`, {
+            returnTo: `/authorizations/view/${authorization.Id}`,
+            modId: draftMod.Id
+        });
+    }, [authorization, canEditDraftMod, draftMod, history]);
 
     const handleConfirmModify = React.useCallback((): void => {
         if (!authorization) {
@@ -697,509 +633,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         );
     }
 
-    const summaryTab = (
-        <Grid container spacing={1.5}>
-            <Grid size={{ xs: 12, lg: 6, xl: 4 }}>
-                <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Contract</Typography>
-                    <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
-                        {[
-                            ["Contract ID", authorization.contractId || "—"],
-                            ["Contract Name", authorization.contractName || "—"],
-                            ["Invoice / Task Order", authorization.invoice || "Not specified"],
-                            ["Project Manager", authorization.pm?.Title || "—"],
-                            ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`]
-                        ].map(([label, value]) => (
-                            <Grid key={label} size={{ xs: 12, sm: 6 }}>
-                                <Typography variant="caption" color="text.secondary">{label}</Typography>
-                                <Typography fontWeight={500}>{value}</Typography>
-                            </Grid>
-                        ))}
-                    </Grid>
-                </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, lg: 6, xl: 4 }}>
-                <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Entities / Organization</Typography>
-                    <Stack spacing={1} sx={{ mt: 0.5 }}>
-                        <Box>
-                            <Typography variant="caption" color="text.secondary">Entities</Typography>
-                            <Typography fontWeight={500}>
-                                {authorization.donorEntity || "—"} <Box component="span" sx={{ color: "secondary.main" }}>{RELATIONSHIP_SEPARATOR}</Box> {authorization.receivingEntity || "—"}
-                            </Typography>
-                        </Box>
-                        <Box>
-                            <Typography variant="caption" color="text.secondary">Operating Group / LOB</Typography>
-                            <Typography fontWeight={500}>{authorization.og || "—"} | {authorization.lob || "—"}</Typography>
-                        </Box>
-                    </Stack>
-                </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, xl: 4 }}>
-                <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Labor Costs</Typography>
-                    <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
-                        {[
-                            ["Base Labor", authorization.baseLaborAmount],
-                            ["Base Travel / ODC", authorization.baseTravelAmount],
-                            ["Base Grand Total", authorization.baseGrandTotal],
-                            ["Approved Labor", authorization.approvedLaborAmount],
-                            ["Approved Travel / ODC", authorization.approvedTravelAmount],
-                            ["Approved Grand Total", authorization.approvedGrandTotal]
-                        ].map(([label, value]) => (
-                            <Grid key={String(label)} size={{ xs: 6, sm: 4 }}>
-                                <Typography variant="caption" color="text.secondary">{label}</Typography>
-                                <Typography fontWeight={600}>{formatCurrency(Number(value ?? 0))}</Typography>
-                            </Grid>
-                        ))}
-                    </Grid>
-                </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, xl: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Scope of Work</Typography>
-                    <Typography color="text.secondary">{authorization.scopeOfWork || "—"}</Typography>
-                </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, xl: 6 }}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" fontWeight={600}>Justification</Typography>
-                    <Typography color="text.secondary">{authorization.justification || "—"}</Typography>
-                </Paper>
-            </Grid>
-        </Grid>
-    );
-
-    const resourcesTab = (
-        <Stack spacing={2}>
-            {canEditCompInHrReview && !isFfpAuthorization && (
-                <Alert severity="info">
-                    Only HR, current PM and Admins can view salary information. Std rate is derived from salary ÷ 2080 unless HR/Admin overrides the rate fields.
-                </Alert>
-            )}
-            <TableContainer>
-                <Table size="small" sx={quietTableSx}>
-                    <TableHead>
-                        <TableRow>
-                            {isFfpAuthorization ? (
-                                <>
-                                    <TableCell>Job ID</TableCell>
-                                    <TableCell>Charging Period</TableCell>
-                                    <TableCell align="right">Periods</TableCell>
-                                    <TableCell>Resources</TableCell>
-                                </>
-                            ) : (
-                                <>
-                                    <TableCell>Employee / Resource</TableCell>
-                                    <TableCell>State</TableCell>
-                                    <TableCell>Job ID</TableCell>
-                                    <TableCell>Labor Category</TableCell>
-                                    <TableCell align="right">Std Hrs</TableCell>
-                                    <TableCell align="right">OT Hrs</TableCell>
-                                    {mayViewComp && <TableCell align="right">Salary</TableCell>}
-                                    {mayViewComp && <TableCell align="right">Std Rate</TableCell>}
-                                    {mayViewComp && <TableCell align="right">OT Rate</TableCell>}
-                                </>
-                            )}
-                            <TableCell align="right">{isFfpAuthorization ? "Total Amount" : "Total"}</TableCell>
-                            {canEditCompInHrReview && !isFfpAuthorization && <TableCell align="right">Action</TableCell>}
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {laborLines.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={isFfpAuthorization ? 5 : canEditCompInHrReview ? 11 : mayViewComp ? 10 : 7}>No labor lines found.</TableCell>
-                            </TableRow>
-                        ) : (
-                            <>
-                                {laborLines.map((line) => {
-                                    if (isFfpAuthorization) {
-                                        return (
-                                            <TableRow key={line.Id} hover>
-                                                <TableCell>{line.jobId || "—"}</TableCell>
-                                                <TableCell>{line.chargingPeriod || "—"}</TableCell>
-                                                <TableCell align="right">{line.periodQty ?? "—"}</TableCell>
-                                                <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
-                                                <TableCell align="right">{formatCurrency(line.totalAmount)}</TableCell>
-                                            </TableRow>
-                                        );
-                                    }
-
-                                    const lineResource = resources.find((resource) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
-                                    const draft = compDrafts[line.Id] ?? toCompDraft(line);
-                                    const isEditingComp = canEditCompInHrReview && !!editingCompLineIds[line.Id];
-                                    const preview = resolveLaborCompensation({
-                                        annualSalary: parseNumberOrUndefined(draft.annualSalary),
-                                        standardRate: parseNumberOrUndefined(draft.standardRate),
-                                        overtimeRate: parseNumberOrUndefined(draft.overtimeRate),
-                                        standardHours: parseNumberOrUndefined(draft.standardHours),
-                                        overtimeHours: parseNumberOrUndefined(draft.overtimeHours)
-                                    });
-
-                                    return (
-                                        <TableRow key={line.Id} hover>
-                                            <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
-                                            <TableCell>{line.pricingType === "tm" ? lineResource?.state ?? "—" : "Multiple"}</TableCell>
-                                            <TableCell>{line.jobId || "—"}</TableCell>
-                                            <TableCell>{lineResource?.laborCategory || "—"}</TableCell>
-                                            <TableCell align="right">
-                                                {isEditingComp ? (
-                                                    <TextField size="small" value={draft.standardHours} onChange={(event) => handleUpdateDraft(line.Id, { standardHours: normalizeDecimalInput(event.target.value) })} sx={compactNumberInputSx} />
-                                                ) : line.standardHours ?? "—"}
-                                            </TableCell>
-                                            <TableCell align="right">
-                                                {isEditingComp ? (
-                                                    <TextField size="small" value={draft.overtimeHours} onChange={(event) => handleUpdateDraft(line.Id, { overtimeHours: normalizeDecimalInput(event.target.value) })} sx={compactNumberInputSx} />
-                                                ) : line.overtimeHours ?? "—"}
-                                            </TableCell>
-                                            {mayViewComp && (
-                                                <TableCell align="right">
-                                                    {isEditingComp ? (
-                                                        <TextField
-                                                            size="small"
-                                                            value={draft.annualSalary}
-                                                            onChange={(event) => handleAnnualSalaryChange(line.Id, event.target.value)}
-                                                            onBlur={() => handleCurrencyDraftBlur(line.Id, "annualSalary")}
-                                                            sx={compactCurrencyInputSx}
-                                                            slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
-                                                        />
-                                                    ) : formatCurrency(line.annualSalary)}
-                                                </TableCell>
-                                            )}
-                                            {mayViewComp && (
-                                                <TableCell align="right">
-                                                    {isEditingComp ? (
-                                                        <TextField
-                                                            size="small"
-                                                            value={draft.standardRate || formatCurrencyInputValue(preview.standardRate)}
-                                                            onChange={(event) => handleStandardRateChange(line.Id, event.target.value)}
-                                                            onBlur={() => handleCurrencyDraftBlur(line.Id, "standardRate")}
-                                                            sx={compactCurrencyInputSx}
-                                                            slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
-                                                        />
-                                                    ) : formatCurrency(line.standardRate)}
-                                                </TableCell>
-                                            )}
-                                            {mayViewComp && (
-                                                <TableCell align="right">
-                                                    {isEditingComp ? (
-                                                        <TextField
-                                                            size="small"
-                                                            value={draft.overtimeRate || formatCurrencyInputValue(preview.overtimeRate)}
-                                                            onChange={(event) => handleOvertimeRateChange(line.Id, event.target.value)}
-                                                            onBlur={() => handleCurrencyDraftBlur(line.Id, "overtimeRate")}
-                                                            sx={compactCurrencyInputSx}
-                                                            slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
-                                                        />
-                                                    ) : formatCurrency(line.overtimeRate)}
-                                                </TableCell>
-                                            )}
-                                            <TableCell align="right">{formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount)}</TableCell>
-                                            {canEditCompInHrReview && (
-                                                <TableCell align="right">
-                                                    {isEditingComp ? (
-                                                        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                                                            <Tooltip title="Recalculate rates from salary">
-                                                                <Button size="small" startIcon={<CalculateOutlinedIcon />} onClick={() => handleRecalculateCompRates(line.Id)}>
-                                                                    Recalc
-                                                                </Button>
-                                                            </Tooltip>
-                                                            <Button size="small" startIcon={<SaveOutlinedIcon />} onClick={() => handleSaveComp(line)}>
-                                                                Save
-                                                            </Button>
-                                                            <Button size="small" onClick={() => handleCancelCompEdit(line)}>
-                                                                Cancel
-                                                            </Button>
-                                                        </Stack>
-                                                    ) : (
-                                                        <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => handleStartCompEdit(line)}>
-                                                            Edit
-                                                        </Button>
-                                                    )}
-                                                </TableCell>
-                                            )}
-                                        </TableRow>
-                                    );
-                                })}
-                                {laborLines.length > 1 && (
-                                    <TableRow sx={totalsRowSx}>
-                                        <TableCell colSpan={isFfpAuthorization ? 4 : 4}>Totals</TableCell>
-                                        {!isFfpAuthorization && <TableCell align="right">{laborTotals.standardHours || "—"}</TableCell>}
-                                        {!isFfpAuthorization && <TableCell align="right">{laborTotals.overtimeHours || "—"}</TableCell>}
-                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
-                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
-                                        {!isFfpAuthorization && mayViewComp && <TableCell />}
-                                        <TableCell align="right">{formatCurrency(laborTotals.totalAmount)}</TableCell>
-                                        {!isFfpAuthorization && canEditCompInHrReview && <TableCell />}
-                                    </TableRow>
-                                )}
-                            </>
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-            <Box>
-                <Typography variant="subtitle2" fontWeight={600}>Resource Roster</Typography>
-                <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-                    {resources.map((resource) => {
-                        const labor = getLaborForResource(resource, laborLines);
-                        const modLabels = labor ? ["BASE"] : [];
-                        return (
-                            <Grid key={resource.Id} size={{ xs: 12, md: 6, xl: 4 }}>
-                                <Paper sx={{ p: 1.5, height: "100%" }}>
-                                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                                        <Typography fontWeight={600}>{resource.employee?.Title ?? "—"}</Typography>
-                                        <Stack direction="row" spacing={0.5}>
-                                            {modLabels.map((label) => (
-                                                <Chip key={label} label={label} size="small" color="secondary" variant="outlined" />
-                                            ))}
-                                        </Stack>
-                                    </Stack>
-                                    <Typography variant="body2" color="text.secondary">{resource.employee?.EMail ?? ""}</Typography>
-                                </Paper>
-                            </Grid>
-                        );
-                    })}
-                </Grid>
-            </Box>
-        </Stack>
-    );
-
-    const travelTab = (
-        <TableContainer>
-            <Table size="small" sx={quietTableSx}>
-                <TableHead>
-                    <TableRow>
-                        <TableCell>Type</TableCell>
-                        <TableCell>Job ID</TableCell>
-                        <TableCell>Description</TableCell>
-                        <TableCell>Comments</TableCell>
-                        <TableCell align="right">Amount</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {travelOdcs.length === 0 ? (
-                        <TableRow><TableCell colSpan={5}>No travel or ODC lines found.</TableCell></TableRow>
-                    ) : (
-                        <>
-                            {travelOdcs.map((line: ITravelOdcItem) => (
-                                <TableRow key={line.Id}>
-                                    <TableCell>{line.lineType.toUpperCase()}</TableCell>
-                                    <TableCell>{line.jobId || "—"}</TableCell>
-                                    <TableCell>{line.description || "—"}</TableCell>
-                                    <TableCell>{line.comments || "—"}</TableCell>
-                                    <TableCell align="right">{formatCurrency(line.amount)}</TableCell>
-                                </TableRow>
-                            ))}
-                            {travelOdcs.length > 1 && (
-                                <TableRow sx={totalsRowSx}>
-                                    <TableCell colSpan={4}>Totals</TableCell>
-                                    <TableCell align="right">{formatCurrency(travelTotal)}</TableCell>
-                                </TableRow>
-                            )}
-                        </>
-                    )}
-                </TableBody>
-            </Table>
-        </TableContainer>
-    );
-
-    const workflowTab = (
-        <Stack spacing={2}>
-            {workflowRuns.length === 0 ? (
-                <Typography color="text.secondary">No workflow runs found.</Typography>
-            ) : workflowRuns.map((run) => {
-                const runActions = actions.filter((action) => action.workflowRun?.Id === run.Id);
-                const runSteps: WorkflowStepKey[] = run.currentStepKey === "submitter" || runActions.some((action) => action.stepKey === "submitter")
-                    ? [...baseWorkflowSteps, "submitter"]
-                    : baseWorkflowSteps;
-                const modifiedAction = runActions.find((action) => action.actionType === "modified" && (!!action.changeSummary || !!action.changePayloadJson));
-
-                return (
-                    <Accordion
-                        key={run.Id}
-                        expanded={expandedRunId === run.Id}
-                        onChange={(_event, expanded) => setExpandedRunId(expanded ? run.Id : false)}
-                        disableGutters
-                        sx={{
-                            border: "1px solid",
-                            borderColor: "divider",
-                            borderRadius: "8px !important",
-                            bgcolor: "background.paper",
-                            "&:before": { display: "none" }
-                        }}
-                    >
-                        <AccordionSummary expandIcon={<ExpandMoreOutlinedIcon />}>
-                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between" sx={{ width: "100%", pr: 1 }}>
-                                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                                    <Typography variant="h6" fontWeight={600}>Run {run.runNumber ?? "-"}</Typography>
-                                    <Chip label={workflowRunStatusLabels[run.runStatus]} size="small" color={run.runStatus === "active" ? "info" : run.runStatus === "completed" ? "success" : "default"} variant={run.runStatus === "superseded" ? "outlined" : "filled"} />
-                                    {modifiedAction && (
-                                        <Button
-                                            size="small"
-                                            startIcon={<SummarizeOutlinedIcon />}
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                setChangeDialog(modifiedAction);
-                                            }}
-                                        >
-                                            Changes
-                                        </Button>
-                                    )}
-                                </Stack>
-                                <Typography variant="caption" color="text.secondary">
-                                    {run.completedOn ? `Completed ${formatDate(run.completedOn, true)}` : `Started ${formatDate(run.Created, true)}`}
-                                </Typography>
-                            </Stack>
-                        </AccordionSummary>
-                        <AccordionDetails sx={{ pt: 0 }}>
-                            <Stack spacing={1.5}>
-                                {runSteps.map((step) => {
-                                    const action = getStepAction(runActions, step);
-                                    const isCurrent = run.currentStepKey === step && run.runStatus === "active";
-                                    const rejectedStepIndex = runSteps.findIndex((candidate) => getStepAction(runActions, candidate)?.actionType === "rejected");
-                                    const stepIndex = runSteps.indexOf(step);
-                                    const skippedAfterRejection = rejectedStepIndex >= 0 && stepIndex > rejectedStepIndex && !action && step !== "submitter";
-                                    const skippedForFfpHr = step === "hr" && isFfpAuthorization;
-                                    const skipped = (step === "pm" && run.skipPmStep === true) || skippedForFfpHr || skippedAfterRejection;
-                                    const label = workflowStepLabels[step];
-                                    const approver = getWorkflowStepApprover(step, authorization, run);
-                                    const completedBy = action?.actionBy?.Title ?? (action ? "System" : "");
-                                    const actedOnBehalf = action?.actionBy?.Id && approver?.Id && action.actionBy.Id !== approver.Id && step !== "submit";
-                                    const statusLabel = skipped
-                                        ? "Skipped"
-                                        : isCurrent
-                                            ? "Pending"
-                                            : action
-                                                ? action.actionType === "submitted"
-                                                    ? "Submitted"
-                                                    : action.actionType === "modified"
-                                                        ? "Modified"
-                                                        : action.actionType === "approved"
-                                                            ? "Approved"
-                                                            : action.actionType === "returned"
-                                                                ? "Returned"
-                                                                : action.actionType === "restarted"
-                                                                    ? "Restarted"
-                                                                    : "Rejected"
-                                                : "Queued";
-
-                                    return (
-                                        <Stack key={`${run.Id}-${step}`} direction="row" spacing={1.5} alignItems="stretch">
-                                            <Stack alignItems="center" sx={{ pt: 0.5 }}>
-                                                <Box
-                                                    sx={(theme) => ({
-                                                        width: 14,
-                                                        height: 14,
-                                                        borderRadius: "50%",
-                                                        bgcolor: isCurrent ? theme.palette.warning.main : skipped ? theme.palette.divider : action ? theme.palette.success.main : theme.palette.divider,
-                                                        border: `2px solid ${theme.palette.background.paper}`
-                                                    })}
-                                                />
-                                                {stepIndex !== runSteps.length - 1 && (
-                                                    <Box sx={{ width: 2, flex: 1, minHeight: 34, bgcolor: "divider", mt: 0.5 }} />
-                                                )}
-                                            </Stack>
-                                            <Paper
-                                                variant="outlined"
-                                                sx={{
-                                                    p: 1.75,
-                                                    flex: 1,
-                                                    borderColor: isCurrent ? "secondary.main" : "divider",
-                                                    bgcolor: isCurrent ? "action.hover" : "background.paper"
-                                                }}
-                                            >
-                                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }}>
-                                                    <Box>
-                                                        <Stack direction="row" spacing={0.75} alignItems="center">
-                                                            <Typography fontWeight={600}>{label}</Typography>
-                                                            {action && !!action.comments && (
-                                                                <Tooltip title="View comments">
-                                                                    <IconButton
-                                                                        size="small"
-                                                                        color="secondary"
-                                                                        onClick={() => setCommentDialog({ title: `${label} Comments`, comments: action.comments ?? "" })}
-                                                                        sx={{ p: 0.25 }}
-                                                                    >
-                                                                        <ChatBubbleOutlineOutlinedIcon fontSize="small" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            )}
-                                                        </Stack>
-                                                        <Typography variant="body2" color="text.secondary">
-                                                            {actedOnBehalf ? `${completedBy} on behalf of ${approver?.Title ?? "the assigned approver"}` : approver?.Title ?? "No approver assigned"}
-                                                        </Typography>
-                                                    </Box>
-                                                    <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
-                                                        <Stack spacing={0.5} alignItems="flex-end">
-                                                            <Chip label={statusLabel} color={getWorkflowActionChipColor(action, isCurrent, skipped)} size="small" variant={skipped || !action && !isCurrent ? "outlined" : "filled"} />
-                                                            {isCurrent && (
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                    {formatDate(run.stepAssignedDate, true)}
-                                                                </Typography>
-                                                            )}
-                                                            {action && (
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                    {formatDate(action.actionDate, true)}
-                                                                </Typography>
-                                                            )}
-                                                        </Stack>
-                                                    </Stack>
-                                                </Stack>
-
-                                                <Stack spacing={1}>
-                                                    {step === "pm" && skipped && run.skipPmStep && (
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            This step was skipped because the PM was the submitter
-                                                        </Typography>
-                                                    )}
-                                                    {step === "hr" && skippedForFfpHr && (
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            HR Review is not required for FFP contracts.
-                                                        </Typography>
-                                                    )}
-                                                </Stack>
-                                            </Paper>
-                                        </Stack>
-                                    );
-                                })}
-                            </Stack>
-                        </AccordionDetails>
-                    </Accordion>
-                );
-            })}
-        </Stack>
-    );
-
-    const historyTab = (
-        <TableContainer>
-            <Table size="small" sx={quietTableSx}>
-                <TableHead>
-                    <TableRow>
-                        <TableCell>Date</TableCell>
-                        <TableCell>Action</TableCell>
-                        <TableCell>Step</TableCell>
-                        <TableCell>By</TableCell>
-                        <TableCell>Comments</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {actions.length === 0 ? (
-                        <TableRow><TableCell colSpan={5}>No workflow actions found.</TableCell></TableRow>
-                    ) : actions.map((action) => (
-                        <TableRow key={action.Id}>
-                            <TableCell>{formatDate(action.actionDate, true)}</TableCell>
-                            <TableCell>{action.actionType}</TableCell>
-                            <TableCell>{workflowStepLabels[action.stepKey] ?? action.stepKey}</TableCell>
-                            <TableCell>{action.actionBy?.Title ?? "—"}</TableCell>
-                            <TableCell>{action.comments || action.skipReason || "—"}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </TableContainer>
-    );
-
     return (
         <Stack spacing={2.5}>
             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
@@ -1210,6 +643,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                         <Typography variant="h4" fontWeight={600}>{authorization.Title}</Typography>
                         <Chip label={authorizationStatusLabels[authorization.authorizationStatus]} color={getStatusChipColor(authorization.authorizationStatus)} />
+                        {draftMod && <Chip label={`Mod ${draftMod.modNumber ?? ""} Draft`} color="secondary" />}
                         <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
                         {currentRun && <Chip label={`Workflow ${workflowRunStatusLabels[currentRun.runStatus]}`} color="info" variant="outlined" />}
                     </Stack>
@@ -1218,17 +652,29 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Typography>
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
-                    {canInitiateMod ? (
+                    {canEditDraftMod ? (
+                        <Button variant="contained" color="secondary" startIcon={<EditOutlinedIcon />} onClick={handleEditMod}>
+                            Edit Mod
+                        </Button>
+                    ) : canInitiateMod ? (
                         <Button variant="contained" color="secondary" startIcon={<AccountTreeOutlinedIcon />} onClick={handleOpenInitiateMod}>
                             Initiate Mod
                         </Button>
-                    ) : (
+                    ) : !draftMod ? (
                         <Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={handleEdit}>
                             Edit
                         </Button>
-                    )}
+                    ) : null}
                 </Stack>
             </Stack>
+
+            {draftMod && (
+                <Alert severity="info">
+                    {canEditDraftMod
+                        ? `This authorization has Mod ${draftMod.modNumber ?? ""} in draft. Use Edit Mod to continue the modification before starting any other changes.`
+                        : `This authorization has Mod ${draftMod.modNumber ?? ""} in draft, started by ${draftModOwnerName}. Base authorization editing is unavailable until that draft mod is submitted or discarded.`}
+                </Alert>
+            )}
 
             <Paper sx={{ p: { xs: 2, md: 2.5 } }}>
                 <Grid container spacing={2} alignItems="center">
@@ -1367,14 +813,59 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             </Paper>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
-                {selectedTab === "summary" && summaryTab}
-                {selectedTab === "resources" && resourcesTab}
-                {selectedTab === "travel" && travelTab}
-                {selectedTab === "workflow" && workflowTab}
-                {selectedTab === "mods" && (
-                    <Typography color="text.secondary">{mods.length ? `${mods.length} mod(s) loaded. Mod drill-in is next.` : "No mods found for this authorization."}</Typography>
+                {selectedTab === "summary" && <IwaSummaryTab authorization={authorization} />}
+                {selectedTab === "resources" && (
+                    <IwaResourcesLaborTab
+                        canEditCompInHrReview={canEditCompInHrReview}
+                        canEditCompLine={canEditCompLine}
+                        compDrafts={compDrafts}
+                        editingCompLineIds={editingCompLineIds}
+                        handleAnnualSalaryChange={handleAnnualSalaryChange}
+                        handleCancelCompEdit={handleCancelCompEdit}
+                        handleCurrencyDraftBlur={handleCurrencyDraftBlur}
+                        handleOvertimeRateChange={handleOvertimeRateChange}
+                        handleRecalculateCompRates={handleRecalculateCompRates}
+                        handleSaveComp={handleSaveComp}
+                        handleStandardRateChange={handleStandardRateChange}
+                        handleStartCompEdit={handleStartCompEdit}
+                        handleUpdateDraft={handleUpdateDraft}
+                        isFfpAuthorization={isFfpAuthorization}
+                        laborDeltaTotal={laborDeltaTotal}
+                        laborLines={laborLines}
+                        laborTotals={laborTotals}
+                        mayViewComp={mayViewComp}
+                        resourceRosterRows={resourceRosterRows}
+                        resources={resources}
+                    />
                 )}
-                {selectedTab === "history" && historyTab}
+                {selectedTab === "travel" && (
+                    <IwaTravelOdcTab
+                        travelDeltaTotal={travelDeltaTotal}
+                        travelOdcs={travelOdcs}
+                        travelTotal={travelTotal}
+                    />
+                )}
+                {selectedTab === "workflow" && (
+                    <IwaWorkflowTab
+                        actions={actions}
+                        authorization={authorization}
+                        expandedRunId={expandedRunId}
+                        isFfpAuthorization={isFfpAuthorization}
+                        onExpandedRunChange={setExpandedRunId}
+                        onOpenChangeDialog={setChangeDialog}
+                        onOpenCommentDialog={setCommentDialog}
+                        workflowRuns={workflowRuns}
+                    />
+                )}
+                {selectedTab === "mods" && (
+                    <IwaModsTab
+                        laborLines={laborLines}
+                        mods={mods}
+                        resources={resources}
+                        travelOdcs={travelOdcs}
+                    />
+                )}
+                {selectedTab === "history" && <IwaHistoryTab actions={actions} />}
             </Paper>
 
             <AlertDialog open={dialogOpen} title={dialogTitle} message={dialogMessage} onClose={() => setDialogOpen(false)} />
@@ -1459,7 +950,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 <DialogTitle>Workflow Changes</DialogTitle>
                 <DialogContent>
                     <Stack spacing={2} sx={{ pt: 1 }}>
-                        {formattedChangeSections.length === 0 ? (
+                        {changeDialogRun?.runType === "mod" ? (
+                            <Alert severity="info">
+                                {`An authorization Mod${changeDialogMod?.modNumber ? ` ${changeDialogMod.modNumber}` : ""} initiated this workflow run. To see the official modification details, open the Mods tab.`}
+                            </Alert>
+                        ) : formattedChangeSections.length === 0 ? (
                             <Typography color="text.secondary">No change details were captured.</Typography>
                         ) : formattedChangeSections.map((section) => (
                             <Box key={section.title}>
@@ -1488,6 +983,19 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Stack>
                 </DialogContent>
                 <DialogActions>
+                    {changeDialogRun?.runType === "mod" && (
+                        <Button
+                            variant="contained"
+                            color="secondary"
+                            startIcon={<AccountTreeOutlinedIcon />}
+                            onClick={() => {
+                                setChangeDialog(undefined);
+                                setSelectedTab("mods");
+                            }}
+                        >
+                            View Mods
+                        </Button>
+                    )}
                     <Button onClick={() => setChangeDialog(undefined)}>Close</Button>
                 </DialogActions>
             </Dialog>

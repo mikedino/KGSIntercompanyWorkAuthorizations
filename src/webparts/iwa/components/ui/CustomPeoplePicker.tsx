@@ -3,7 +3,7 @@ import { IPersonaProps } from "@fluentui/react";
 import { SxProps, Theme } from "@mui/material";
 import { FormControl, FormHelperText, FormLabel, useTheme } from "@mui/material";
 import { PeoplePicker, PrincipalType, IPeoplePickerContext } from "@pnp/spfx-controls-react/lib/PeoplePicker";
-import { minInputHeight } from "../styles/theme.base";
+import { fontSizeDefault, minInputHeight } from "../styles/theme.base";
 
 export interface MuiPeoplePickerProps {
   label: string;
@@ -62,7 +62,7 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
           transformOrigin: "top left",
           color: focused ? theme.palette.info.main : theme.palette.text.secondary,
           fontWeight: 400,
-          fontSize: theme.typography.body1.fontSize,
+          fontSize: fontSizeDefault,
           backgroundColor: theme.palette.background.paper,
           lineHeight: "1.4375em",
           px: "4px",
@@ -86,6 +86,7 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
           borderRadius: theme.shape.borderRadius,          
           padding: "5px 10px",
           minHeight: minInputHeight,
+          maxHeight: minInputHeight,
           boxSizing: "border-box",
           width: "100%",
           minWidth: 0
@@ -119,7 +120,9 @@ export const MuiPeoplePicker: React.FC<MuiPeoplePickerProps> = ({
                 ".ms-Persona-primaryText": { color: theme.palette.text.primary },
                 ".ms-BasePicker-input": { 
                   color: theme.palette.text.primary,
-                  border: "0 !important"
+                  border: "0 !important",
+                  fontSize: fontSizeDefault,
+                  height: minInputHeight - 10
                 },
                 "input::placeholder": {
                   color: theme.palette.text.secondary,

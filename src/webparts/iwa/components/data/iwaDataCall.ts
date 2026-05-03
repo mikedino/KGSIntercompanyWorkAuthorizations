@@ -5,6 +5,7 @@ import { formatError } from "../common/utils";
 import {
     IAuthorizationItem,
     IAppUserItem,
+    IModItem,
     IWorkflowRunItem
 } from "./props";
 
@@ -13,6 +14,7 @@ export type RefreshMode = "boot" | "refresh";
 export interface IIwaDataState {
     authorizations: IAuthorizationItem[];
     draftAuthorizations: IAuthorizationItem[];
+    draftModsByAuthorizationId: Map<number, IModItem>;
     runByAuthorizationId: Map<number, IWorkflowRunItem>;
     isBootLoading: boolean;
     isRefreshing: boolean;
@@ -28,6 +30,7 @@ export const useIwaData = (
 ): IIwaDataState => {
     const [authorizations, setAuthorizations] = useState<IAuthorizationItem[]>([]);
     const [draftAuthorizations, setDraftAuthorizations] = useState<IAuthorizationItem[]>([]);
+    const [draftModsByAuthorizationId, setDraftModsByAuthorizationId] = useState<Map<number, IModItem>>(new Map());
     const [runByAuthorizationId, setRunByAuthorizationId] = useState<Map<number, IWorkflowRunItem>>(new Map());
 
     const [isBootLoading, setIsBootLoading] = useState<boolean>(enabled);
@@ -113,6 +116,38 @@ export const useIwaData = (
                 return false;
             }
 
+            // STEP 3C: Draft mods for My Work / resume flow
+            try {
+                const nextDraftMods = await DataSource.getDraftModsByAuthor();
+                const nextDraftModMap = new Map<number, IModItem>();
+
+                (nextDraftMods ?? []).forEach((mod: IModItem): undefined => {
+                    const authorizationId = mod.authorization?.Id;
+
+                    if (typeof authorizationId !== "number" || authorizationId <= 0) {
+                        return undefined;
+                    }
+
+                    const existing = nextDraftModMap.get(authorizationId);
+                    const existingModified = new Date(existing?.Modified ?? existing?.Created ?? 0).getTime();
+                    const modModified = new Date(mod.Modified ?? mod.Created ?? 0).getTime();
+
+                    if (!existing || modModified > existingModified) {
+                        nextDraftModMap.set(authorizationId, mod);
+                    }
+
+                    return undefined;
+                });
+
+                setDraftModsByAuthorizationId(nextDraftModMap);
+            } catch (error) {
+                const message = `Error loading draft mods: ${formatError(error)}`;
+                console.error("Error loading draft mods", error);
+                setFatalError(message);
+                onError?.("Draft Mod Load Error", message);
+                return false;
+            }
+
             // STEP 4: Current workflow runs
             try {
                 const runs: IWorkflowRunItem[] = await DataSource.getCurrentWorkflowRuns();
@@ -187,6 +222,7 @@ export const useIwaData = (
     return {
         authorizations,
         draftAuthorizations,
+        draftModsByAuthorizationId,
         runByAuthorizationId,
         isBootLoading,
         isRefreshing,

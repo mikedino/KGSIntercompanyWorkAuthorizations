@@ -23,7 +23,7 @@ export const darkTheme = createTheme({
       main: "#ec66ff"
     },
     success: {
-      main: "#28A70C",
+      main: "#2ec20e",
     },
     accent: {
       main: "#ff6900",

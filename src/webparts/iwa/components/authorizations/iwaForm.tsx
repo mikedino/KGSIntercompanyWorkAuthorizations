@@ -46,10 +46,8 @@ import { WorkflowActionService } from "../workflow/actionService";
 import { captureIwaChangeSet } from "../workflow/changeCapture";
 import { IwaReviewSection } from "./IwaReviewSection";
 import { IwaAttachmentsPanel } from "./IwaAttachmentsPanel";
+import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow, IPriorResourceRow } from "./workPackage/workPackageTypes";
 import {
-    IEditableFfpLaborRow,
-    IEditableResourceRow,
-    IEditableTravelRow,
     IwaWorkPackageStep
 } from "./IwaWorkPackageStep";
 import { ResourceService } from "../resources/resourceService";
@@ -278,6 +276,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [resourceRows, setResourceRows] = React.useState<IEditableResourceRow[]>([]);
     const [travelRows, setTravelRows] = React.useState<IEditableTravelRow[]>([]);
     const [ffpLaborRows, setFfpLaborRows] = React.useState<IEditableFfpLaborRow[]>([]);
+    const [priorResourceRows, setPriorResourceRows] = React.useState<IPriorResourceRow[]>([]);
     const [currentMod, setCurrentMod] = React.useState<IModItem | undefined>(undefined);
     const [modReason, setModReason] = React.useState<string>("");
     const stateOptions = React.useMemo<string[]>(() => [...DataSource.States], []);
@@ -467,6 +466,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         const sortedResources = [...resourceScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
         const sortedLaborLines = [...laborScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
         const sortedTravelOdcs = [...travelScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const baseResources = [...(resources ?? [])]
+            .filter((resource) => resource.lineScope !== "mod")
+            .sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
+        const baseLaborLines = (laborLines ?? []).filter((line) => line.lineScope !== "mod");
 
         const tmLaborByResourceId = new Map<number, typeof sortedLaborLines[number]>();
 
@@ -501,6 +504,21 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         });
 
         setResourceRows(nextResources);
+        setPriorResourceRows(baseResources
+            .filter((resource) => !!resource.employee?.Id)
+            .map((resource) => {
+                const labor = baseLaborLines.find((line) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
+
+                return {
+                    id: String(resource.Id),
+                    employee: resource.employee,
+                    state: resource.state ?? "",
+                    jobId: labor?.jobId ?? "",
+                    laborCategory: resource.laborCategory ?? "",
+                    approvedStandardHours: Number(labor?.standardHours ?? 0),
+                    approvedOvertimeHours: Number(labor?.overtimeHours ?? 0)
+                };
+            }));
 
         setFfpLaborRows(sortedLaborLines
             .filter((line) => line.pricingType === "ffp")
@@ -802,10 +820,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             if (form.contractType === "tm") {
                 const standardHours = row.standardHours.trim();
                 const overtimeHours = row.overtimeHours.trim();
-                const hasHours = standardHours || overtimeHours;
+                const totalHours = Number(standardHours || 0) + Number(overtimeHours || 0);
 
                 return !!row.jobId.trim() &&
-                    !!hasHours &&
+                    totalHours > 0 &&
                     (!standardHours || !Number.isNaN(Number(standardHours))) &&
                     (!overtimeHours || !Number.isNaN(Number(overtimeHours)));
             }
@@ -950,6 +968,23 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<Pick<IAuthorizationItem, "baseLaborAmount" | "baseTravelAmount" | "baseGrandTotal">> => {
         if (isModDraftMode && !activeModId) {
             throw new Error("The modification draft is still loading. Please wait a moment and try again.");
+        }
+
+        if (form.contractType === "tm") {
+            const zeroHourRow = resourceRows.find((row) => {
+                if (!row.employee?.Id) {
+                    return false;
+                }
+
+                const standardHours = Number(row.standardHours || 0);
+                const overtimeHours = Number(row.overtimeHours || 0);
+
+                return Number.isNaN(standardHours) || Number.isNaN(overtimeHours) || standardHours + overtimeHours <= 0;
+            });
+
+            if (zeroHourRow) {
+                throw new Error(`Enter hours greater than zero for ${zeroHourRow.employee?.Title ?? "each resource"} before saving.`);
+            }
         }
 
         const lineOptions = isModDraftMode && activeModId
@@ -1356,18 +1391,26 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setDiscardDraftDialogOpen(false);
 
         try {
-            showBusy("Discarding draft...");
-            await AuthorizationService.delete(authorizationId);
+            showBusy(isModDraftMode ? "Discarding modification draft..." : "Discarding draft...");
+
+            if (isModDraftMode && activeModId) {
+                await ModService.discardDraft(authorizationId, activeModId);
+                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (form.modCount ?? 1) - 1));
+                sessionStorage.removeItem(getActiveModDraftSessionKey(authorizationId));
+            } else {
+                await AuthorizationService.delete(authorizationId);
+            }
+
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess("Draft discarded.");
+            showSuccess(isModDraftMode ? "Modification draft discarded." : "Draft discarded.");
             history.push(returnTo);
         } catch (error) {
             hideBusy();
             showDialog("Discard Draft Error", formatError(error));
         }
-    }, [clearAuthorizationDetailCache, draftId, form.Id, hideBusy, history, refresh, returnTo, showBusy, showDialog, showSuccess]);
+    }, [activeModId, clearAuthorizationDetailCache, draftId, form.Id, form.modCount, hideBusy, history, isModDraftMode, refresh, returnTo, showBusy, showDialog, showSuccess]);
 
     const handleViewDuplicate = React.useCallback(async (): Promise<void> => {
         if (!duplicateMatch) {
@@ -1745,6 +1788,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             resourceRows={resourceRows}
             travelRows={travelRows}
             ffpLaborRows={ffpLaborRows}
+            priorResourceRows={priorResourceRows}
+            showPriorResources={isModDraftMode}
             submitted={submitted}
             onAddResource={addResourceRow}
             onRemoveResource={removeResourceRow}
@@ -1817,7 +1862,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     />
 
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
-                        {isDraftAuthorization && (
+                        <Chip label={`IWA STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="filled" />
+                        {isModDraftMode && (
+                            <Chip label={`MOD ${currentMod?.modNumber ?? ""}: DRAFT`} color="secondary" size="small" />
+                        )}
+                        {(isDraftAuthorization || isModDraftMode) && (
                             <Button
                                 variant="outlined"
                                 color="error"
@@ -1825,13 +1874,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 disabled={isSaving || isBootstrapping}
                                 onClick={() => setDiscardDraftDialogOpen(true)}
                             >
-                                Discard Draft
+                                {isModDraftMode ? "Discard Mod" : "Discard Draft"}
                             </Button>
                         )}
-                        {isModDraftMode && (
-                            <Chip label={`MOD ${currentMod?.modNumber ?? ""}: DRAFT`} color="secondary" size="small" />
-                        )}
-                        <Chip label={`STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="outlined" />
                         {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
                     </Stack>
                 </Stack>
@@ -1980,16 +2025,18 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 )}
 
                 <Dialog open={discardDraftDialogOpen} onClose={() => setDiscardDraftDialogOpen(false)} fullWidth maxWidth="sm">
-                    <DialogTitle>Discard Draft?</DialogTitle>
+                    <DialogTitle>{isModDraftMode ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>
                     <DialogContent>
                         <Typography color="text.secondary">
-                            This will permanently discard this draft authorization and remove it from your draft list.
+                            {isModDraftMode
+                                ? "This will permanently discard this modification draft and remove linked mod resources, labor, and travel."
+                                : "This will permanently discard this draft authorization and remove it from your draft list."}
                         </Typography>
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setDiscardDraftDialogOpen(false)}>Cancel</Button>
                         <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={handleDiscardDraft}>
-                            Discard Draft
+                            {isModDraftMode ? "Discard Mod" : "Discard Draft"}
                         </Button>
                     </DialogActions>
                 </Dialog>
