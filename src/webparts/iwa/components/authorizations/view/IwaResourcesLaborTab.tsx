@@ -1,10 +1,10 @@
 import * as React from "react";
-import { Alert, Box, Button, Chip, Grid, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Grid, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
-import { ILaborLineItem, IResourceItem } from "../../data/props";
+import { ILaborLineItem, IModItem, IResourceItem } from "../../data/props";
 import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput, parseNumberOrUndefined } from "../../common/utils";
 import { resolveLaborCompensation } from "../../resources/laborMath";
 import {
@@ -45,6 +45,7 @@ interface IIwaResourcesLaborTabProps {
     laborLines: ILaborLineItem[];
     laborTotals: ILaborTotals;
     mayViewComp: boolean;
+    mods: IModItem[];
     resourceRosterRows: IResourceRosterRow[];
     resources: IResourceItem[];
 }
@@ -68,9 +69,63 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
     laborLines,
     laborTotals,
     mayViewComp,
+    mods,
     resourceRosterRows,
     resources
-}): JSX.Element => (
+}): JSX.Element => {
+    const latestMod = React.useMemo(() => {
+        return [...mods].sort((left, right) => {
+            if ((right.modNumber ?? 0) !== (left.modNumber ?? 0)) {
+                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
+            }
+
+            return Date.parse(right.Created ?? "") - Date.parse(left.Created ?? "");
+        })[0];
+    }, [mods]);
+    const latestModLabel = latestMod ? getModScopeLabel({ lineScope: "mod", mod: latestMod }) : "this Mod";
+    const latestModId = latestMod?.Id;
+    const [resourceScope, setResourceScope] = React.useState<"mod" | "all">("all");
+
+    React.useEffect(() => {
+        if (!latestModId) {
+            setResourceScope("all");
+        }
+    }, [latestModId]);
+
+    const visibleLaborLines = React.useMemo(() => {
+        if (resourceScope !== "mod" || !latestModId) {
+            return laborLines;
+        }
+
+        return laborLines.filter((line) => line.lineScope === "mod" && line.mod?.Id === latestModId);
+    }, [laborLines, latestModId, resourceScope]);
+    const visibleResourceRosterRows = React.useMemo(() => {
+        if (resourceScope !== "mod" || !latestModId) {
+            return resourceRosterRows;
+        }
+
+        return resourceRosterRows.filter((resource) => resource.labels.includes(latestModLabel));
+    }, [latestModId, latestModLabel, resourceRosterRows, resourceScope]);
+    const visibleLaborTotals = React.useMemo(() => {
+        if (resourceScope !== "mod") {
+            return laborTotals;
+        }
+
+        return visibleLaborLines.reduce((totals, line) => ({
+            standardHours: totals.standardHours + Number(line.standardHours ?? 0),
+            overtimeHours: totals.overtimeHours + Number(line.overtimeHours ?? 0),
+            totalAmount: totals.totalAmount + Number(line.totalAmount ?? 0)
+        }), { standardHours: 0, overtimeHours: 0, totalAmount: 0 });
+    }, [laborTotals, resourceScope, visibleLaborLines]);
+    const visibleLaborDeltaTotal = React.useMemo(() => {
+        if (resourceScope !== "mod") {
+            return laborDeltaTotal;
+        }
+
+        return visibleLaborLines.reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    }, [laborDeltaTotal, resourceScope, visibleLaborLines]);
+
+    return (
     <Stack spacing={2}>
         {!isFfpAuthorization && (
             <Stack spacing={1}>
@@ -82,6 +137,28 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                         Std rate is derived from salary / 2080 unless HR/Admin overrides the rate fields.
                     </Alert>
                 )}
+            </Stack>
+        )}
+        {latestModId && (
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
+                <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={resourceScope}
+                    onChange={(_event, value: "mod" | "all" | null) => {
+                        if (value) {
+                            setResourceScope(value);
+                        }
+                    }}
+                >
+                    <ToggleButton value="mod">Show latest Mod</ToggleButton>
+                    <ToggleButton value="all">Show all</ToggleButton>
+                </ToggleButtonGroup>
+                <Typography variant="caption" color="text.secondary">
+                    {resourceScope === "mod"
+                        ? `Only show the resources added or changed on ${latestModLabel}.`
+                        : "Show all resources for all Mods."}
+                </Typography>
             </Stack>
         )}
         <TableContainer>
@@ -114,13 +191,13 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {laborLines.length === 0 ? (
+                    {visibleLaborLines.length === 0 ? (
                         <TableRow>
                             <TableCell colSpan={isFfpAuthorization ? 6 : canEditCompInHrReview ? 11 : mayViewComp ? 10 : 7}>No labor lines found.</TableCell>
                         </TableRow>
                     ) : (
                         <>
-                            {laborLines.map((line) => {
+                            {visibleLaborLines.map((line) => {
                                 if (isFfpAuthorization) {
                                     return (
                                         <TableRow key={line.Id} hover>
@@ -254,20 +331,20 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                     </TableRow>
                                 );
                             })}
-                            {laborLines.length > 1 && (
+                            {visibleLaborLines.length > 1 && (
                                 <TableRow sx={totalsRowSx}>
                                     <TableCell colSpan={isFfpAuthorization ? 5 : 4}>Totals</TableCell>
-                                    {!isFfpAuthorization && <TableCell align="right">{laborTotals.standardHours || "-"}</TableCell>}
-                                    {!isFfpAuthorization && <TableCell align="right">{laborTotals.overtimeHours || "-"}</TableCell>}
+                                    {!isFfpAuthorization && <TableCell align="right">{visibleLaborTotals.standardHours || "-"}</TableCell>}
+                                    {!isFfpAuthorization && <TableCell align="right">{visibleLaborTotals.overtimeHours || "-"}</TableCell>}
                                     {!isFfpAuthorization && mayViewComp && <TableCell />}
                                     {!isFfpAuthorization && mayViewComp && <TableCell />}
                                     {!isFfpAuthorization && mayViewComp && <TableCell />}
                                     <TableCell align="right">
                                         <Stack spacing={0.25} alignItems="flex-end">
-                                            <Typography variant="body2" fontWeight={600}>{formatCurrency(laborTotals.totalAmount)}</Typography>
-                                            {laborDeltaTotal !== 0 && (
-                                                <Typography variant="caption" color={laborDeltaTotal > 0 ? "success.main" : "error.main"}>
-                                                    {laborDeltaTotal > 0 ? "+" : ""}{formatCurrency(laborDeltaTotal)} mod
+                                            <Typography variant="body2" fontWeight={600}>{formatCurrency(visibleLaborTotals.totalAmount)}</Typography>
+                                            {visibleLaborDeltaTotal !== 0 && (
+                                                <Typography variant="caption" color={visibleLaborDeltaTotal > 0 ? "success.main" : "error.main"}>
+                                                    {visibleLaborDeltaTotal > 0 ? "+" : ""}{formatCurrency(visibleLaborDeltaTotal)} mod
                                                 </Typography>
                                             )}
                                         </Stack>
@@ -283,7 +360,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
         <Box>
             <Typography variant="subtitle2" fontWeight={600}>Resource Roster</Typography>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-                {resourceRosterRows.map((resource) => (
+                {visibleResourceRosterRows.map((resource) => (
                     <Grid key={resource.key} size={{ xs: 12, md: 6, xl: 4 }}>
                         <Paper sx={{ p: 1.5, height: "100%" }}>
                             <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
@@ -304,7 +381,13 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                         </Paper>
                     </Grid>
                 ))}
+                {visibleResourceRosterRows.length === 0 && (
+                    <Grid size={{ xs: 12 }}>
+                        <Typography variant="body2" color="text.secondary">No resources were added or changed on {latestModLabel}.</Typography>
+                    </Grid>
+                )}
             </Grid>
         </Box>
     </Stack>
-);
+    );
+};

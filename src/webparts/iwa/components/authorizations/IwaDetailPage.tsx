@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-    Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, useTheme,
+    Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, Tooltip, useTheme,
     Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -38,6 +38,7 @@ import {
     getCompOverrideDraft,
     getCurrentStepIndex,
     getDerivedRatesFromSalary,
+    formatModLabel,
     getLaborDisplayName,
     getMissingCompensationMessage,
     getModScopeLabel,
@@ -149,6 +150,30 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             });
     }, [authorizationId, travelOdcsByAuthorizationId]);
     const mods = modsByAuthorizationId.get(authorizationId) ?? [];
+    const latestMod = React.useMemo(() => {
+        return [...mods].sort((left, right) => {
+            if ((right.modNumber ?? 0) !== (left.modNumber ?? 0)) {
+                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
+            }
+
+            return Date.parse(right.Created ?? "") - Date.parse(left.Created ?? "");
+        })[0];
+    }, [mods]);
+    const headerModLabel = latestMod || (authorization?.modCount ?? 0) > 0
+        ? formatModLabel(latestMod?.modNumber ?? authorization?.modCount)
+        : undefined;
+    const pendingModCount = React.useMemo(() => {
+        return mods.filter((mod) => mod.modStatus === "draft" || mod.modStatus === "submitted" || mod.modStatus === "underReview").length;
+    }, [mods]);
+    const modsBadgeTooltip = React.useMemo(() => {
+        if (mods.length === 0) {
+            return "No Mods have been created for this authorization.";
+        }
+
+        return pendingModCount > 0
+            ? `${mods.length} Mod${mods.length === 1 ? "" : "s"} on this authorization; ${pendingModCount} pending.`
+            : `${mods.length} Mod${mods.length === 1 ? "" : "s"} on this authorization; none pending.`;
+    }, [mods.length, pendingModCount]);
     const draftMod = React.useMemo<IModItem | undefined>(() => {
         return mods.find((mod) => mod.modStatus === "draft") ?? draftModsByAuthorizationId.get(authorizationId);
     }, [authorizationId, draftModsByAuthorizationId, mods]);
@@ -642,6 +667,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Button>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                         <Typography variant="h4" fontWeight={600}>{authorization.Title}</Typography>
+                        {headerModLabel && (
+                            <Tooltip title={`${headerModLabel} is the latest Mod on this authorization.`}>
+                                <Chip icon={<AccountTreeOutlinedIcon />} label={headerModLabel} variant="outlined" />
+                            </Tooltip>
+                        )}
                         <Chip label={authorizationStatusLabels[authorization.authorizationStatus]} color={getStatusChipColor(authorization.authorizationStatus)} />
                         {draftMod && <Chip label={`Mod ${draftMod.modNumber ?? ""} Draft`} color="secondary" />}
                         <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
@@ -771,7 +801,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         backgroundColor: "transparent",
                         "& .MuiBottomNavigationAction-root": {
                             flex: "0 0 auto",
-                            minWidth: "auto",
+                            minWidth: 80,
                             width: "auto",
                             maxWidth: 220,
                             px: 2,
@@ -806,9 +836,45 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         }
                     })}
                 >
-                    {detailTabs.map((tab) => (
-                        <BottomNavigationAction key={tab.value} value={tab.value} label={tab.label} />
-                    ))}
+                    {detailTabs.map((tab) => {
+                        const label = tab.value === "mods" && mods.length > 0 ? (
+                            <Tooltip title={modsBadgeTooltip}>
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: 0.5,
+                                        minWidth: 54
+                                    }}
+                                >
+                                    <span>{tab.label}</span>
+                                    <Box
+                                        component="span"
+                                        sx={(theme) => ({
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            minWidth: 17,
+                                            height: 17,
+                                            px: 0.45,
+                                            borderRadius: 999,
+                                            bgcolor: pendingModCount > 0 ? theme.palette.error.main : theme.palette.accent.main,
+                                            color: pendingModCount > 0 ? theme.palette.error.contrastText : theme.palette.accent.contrastText,
+                                            fontSize: "0.65rem",
+                                            fontWeight: 700,
+                                            lineHeight: 1
+                                        })}
+                                    >
+                                        {mods.length}
+                                    </Box>
+                                </Box>
+                            </Tooltip>
+                        ) : tab.label;
+
+                        return <BottomNavigationAction key={tab.value} value={tab.value} label={label} />;
+                    })}
                 </BottomNavigation>
             </Paper>
 
@@ -834,6 +900,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         laborLines={laborLines}
                         laborTotals={laborTotals}
                         mayViewComp={mayViewComp}
+                        mods={mods}
                         resourceRosterRows={resourceRosterRows}
                         resources={resources}
                     />
@@ -859,6 +926,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 )}
                 {selectedTab === "mods" && (
                     <IwaModsTab
+                        actions={actions}
                         laborLines={laborLines}
                         mods={mods}
                         resources={resources}

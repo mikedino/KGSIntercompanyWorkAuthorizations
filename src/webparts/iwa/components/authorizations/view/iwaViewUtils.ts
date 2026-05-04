@@ -161,6 +161,8 @@ export const getModScopeLabel = (lineOrResource: { lineScope?: string; mod?: { T
     return "BASE";
 };
 
+export const formatModLabel = (modNumber?: number): string => `M${String(modNumber ?? 0).padStart(2, "0")}`;
+
 export const getModScopeChipColor = (lineOrResource: { lineScope?: string }): "default" | "secondary" => {
     return lineOrResource.lineScope === "mod" ? "secondary" : "default";
 };

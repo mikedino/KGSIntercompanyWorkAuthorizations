@@ -62,6 +62,7 @@ import {
     workflowRunStatusLabels,
     authorizationStatusLabels
 } from "./allAuthorizationsUtils";
+import { formatModLabel } from "../authorizations/view/iwaViewUtils";
 
 type ColumnKey =
     | "title"
@@ -693,9 +694,9 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                             {row.hasMods && (
                                                                 <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
-                                                                    <Chip
-                                                                        icon={<AccountTreeOutlinedIcon />}
-                                                                        label={`M${row.authorization.modCount ?? 0}`}
+                                                                        <Chip
+                                                                            icon={<AccountTreeOutlinedIcon />}
+                                                                        label={formatModLabel(row.authorization.modCount)}
                                                                         size="small"
                                                                         variant="outlined"
                                                                         sx={{ height: 22 }}

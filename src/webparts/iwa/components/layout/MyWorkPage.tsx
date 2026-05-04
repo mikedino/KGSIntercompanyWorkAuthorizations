@@ -32,6 +32,7 @@ import {
     IMyWorkRow,
     MyWorkPresetView
 } from "./myWorkUtils";
+import { formatModLabel } from "../authorizations/view/iwaViewUtils";
 
 interface IMyWorkSummaryCardProps {
     title: string;
@@ -136,14 +137,14 @@ const hasModIndicator = (row: IMyWorkRow): boolean => {
 
 const getModIndicatorLabel = (row: IMyWorkRow): string => {
     if (row.isModDraft && row.draftMod?.modNumber) {
-        return `M${row.draftMod.modNumber}`;
+        return formatModLabel(row.draftMod.modNumber);
     }
 
     if (row.currentRun?.runType === "mod" && row.currentRun.mod?.Title) {
         return row.currentRun.mod.Title.replace(/^.*MOD-/i, "M");
     }
 
-    return `M${row.authorization.modCount ?? 0}`;
+    return formatModLabel(row.authorization.modCount);
 };
 
 const getMyWorkStatusLabel = (row: IMyWorkRow): string => {

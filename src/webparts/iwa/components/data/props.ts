@@ -442,7 +442,7 @@ export const workflowStepLabels: Record<WorkflowStepKey, string> = {
   submit: "Submitted",
   pm: "PM Review",
   hr: "HR Review",
-  ogPresident: "OG President Review",
+  ogPresident: "OGP Review",
   cfo: "CFO Review",
   submitter: "Returned to Submitter",
 };

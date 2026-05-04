@@ -1,7 +1,8 @@
 import * as React from "react";
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Chip, Divider, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import ExpandMoreOutlinedIcon from "@mui/icons-material/ExpandMoreOutlined";
-import { ILaborLineItem, IModItem, IResourceItem, ITravelOdcItem } from "../../data/props";
+import { ILaborLineItem, IModItem, IResourceItem, ITravelOdcItem, IWorkflowActionItem } from "../../data/props";
 import { formatCurrency, formatDate } from "../../common/utils";
 import { quietTableSx, totalsRowSx } from "./iwaViewUtils";
 
@@ -27,10 +28,18 @@ interface IModTravelSummaryRow {
 }
 
 interface IIwaModsTabProps {
+    actions: IWorkflowActionItem[];
     laborLines: ILaborLineItem[];
     mods: IModItem[];
     resources: IResourceItem[];
     travelOdcs: ITravelOdcItem[];
+}
+
+interface IModPeriodChange {
+    periodStartBefore?: string;
+    periodStartAfter?: string;
+    periodEndBefore?: string;
+    periodEndAfter?: string;
 }
 
 const modStatusLabels: Record<IModItem["modStatus"], string> = {
@@ -124,7 +133,57 @@ const buildTravelRows = (mod: IModItem, travelOdcs: ITravelOdcItem[]): IModTrave
 
 const sum = <T,>(items: T[], selector: (item: T) => number): number => items.reduce((total, item) => total + selector(item), 0);
 
+const asRecord = (value: unknown): Record<string, unknown> => {
+    return value && typeof value === "object" ? value as Record<string, unknown> : {};
+};
+
+const getModSubmitAction = (mod: IModItem, actions: IWorkflowActionItem[]): IWorkflowActionItem | undefined => {
+    return actions.find((action) =>
+        action.mod?.Id === mod.Id &&
+        (action.actionType === "submitted" || action.actionType === "modified") &&
+        !!action.changePayloadJson
+    );
+};
+
+const valuesEqual = (left: unknown, right: unknown): boolean => {
+    return String(left ?? "") === String(right ?? "");
+};
+
+const getModPeriodChange = (mod: IModItem, actions: IWorkflowActionItem[]): IModPeriodChange | undefined => {
+    const action = getModSubmitAction(mod, actions);
+
+    if (!action?.changePayloadJson) {
+        return undefined;
+    }
+
+    try {
+        const payload = asRecord(JSON.parse(action.changePayloadJson));
+        const beforeAuthorization = asRecord(asRecord(payload.before).authorization);
+        const afterAuthorization = asRecord(asRecord(payload.after).authorization);
+        const periodStartBefore = beforeAuthorization.periodStart;
+        const periodStartAfter = afterAuthorization.periodStart;
+        const periodEndBefore = beforeAuthorization.periodEnd;
+        const periodEndAfter = afterAuthorization.periodEnd;
+        const hasPeriodStartChange = !valuesEqual(periodStartBefore, periodStartAfter);
+        const hasPeriodEndChange = !valuesEqual(periodEndBefore, periodEndAfter);
+
+        if (!hasPeriodStartChange && !hasPeriodEndChange) {
+            return undefined;
+        }
+
+        return {
+            periodStartBefore: hasPeriodStartChange ? String(periodStartBefore ?? "") : undefined,
+            periodStartAfter: hasPeriodStartChange ? String(periodStartAfter ?? "") : undefined,
+            periodEndBefore: hasPeriodEndChange ? String(periodEndBefore ?? "") : undefined,
+            periodEndAfter: hasPeriodEndChange ? String(periodEndAfter ?? "") : undefined
+        };
+    } catch {
+        return undefined;
+    }
+};
+
 export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
+    actions,
     laborLines,
     mods,
     resources,
@@ -167,6 +226,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                 const laborCostTotal = sum(laborRows, (row) => row.totalAmount);
                 const travelCostTotal = sum(travelRows, (row) => row.amount);
                 const grandDelta = laborCostTotal + travelCostTotal;
+                const periodChange = getModPeriodChange(mod, actions);
 
                 return (
                     <Accordion
@@ -176,13 +236,29 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                         disableGutters
                         sx={{
                             border: "1px solid",
-                            borderColor: "divider",
+                            borderColor: "accent.main",
+                            borderLeft: "5px solid",
+                            borderLeftColor: "accent.main",
                             borderRadius: "8px !important",
                             bgcolor: "background.paper",
+                            overflow: "hidden",
                             "&:before": { display: "none" }
                         }}
                     >
-                        <AccordionSummary expandIcon={<ExpandMoreOutlinedIcon />}>
+                        <AccordionSummary
+                            expandIcon={<ExpandMoreOutlinedIcon />}
+                            sx={(theme) => ({
+                                bgcolor: alpha(theme.palette.accent.main, theme.palette.mode === "dark" ? 0.1 : 0.08),
+                                borderBottom: expandedModId === mod.Id ? "1px solid" : 0,
+                                borderColor: alpha(theme.palette.accent.main, 0.3),
+                                "& .MuiAccordionSummary-expandIconWrapper": {
+                                    color: "accent.main"
+                                },
+                                "&:hover": {
+                                    bgcolor: alpha(theme.palette.accent.main, theme.palette.mode === "dark" ? 0.15 : 0.12)
+                                }
+                            })}
+                        >
                             <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between" sx={{ width: "100%", pr: 1 }}>
                                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
                                     <Typography variant="h6" fontWeight={700}>{getModLabel(mod)}</Typography>
@@ -198,7 +274,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                 </Stack>
                             </Stack>
                         </AccordionSummary>
-                        <AccordionDetails sx={{ pt: 0 }}>
+                        <AccordionDetails sx={{ pt: 2 }}>
                             <Stack spacing={2}>
                                 <Paper variant="outlined" sx={{ p: 1.75 }}>
                                     <Stack spacing={1}>
@@ -212,9 +288,27 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                     </Stack>
                                 </Paper>
 
-                                <Alert severity="info">
-                                    No date extension is captured on this Mod record. This section will show period changes after the Mod stores the extended dates.
-                                </Alert>
+                                {periodChange ? (
+                                    <Paper variant="outlined" sx={{ p: 1.75 }}>
+                                        <Stack spacing={1}>
+                                            <Typography variant="subtitle2" fontWeight={700}>Period Changes</Typography>
+                                            {periodChange.periodStartBefore && periodChange.periodStartAfter && (
+                                                <Typography variant="body2">
+                                                    Period start changed from {formatDate(periodChange.periodStartBefore, false)} to {formatDate(periodChange.periodStartAfter, false)}.
+                                                </Typography>
+                                            )}
+                                            {periodChange.periodEndBefore && periodChange.periodEndAfter && (
+                                                <Typography variant="body2">
+                                                    Period end changed from {formatDate(periodChange.periodEndBefore, false)} to {formatDate(periodChange.periodEndAfter, false)}.
+                                                </Typography>
+                                            )}
+                                        </Stack>
+                                    </Paper>
+                                ) : (
+                                    <Alert severity="info">
+                                        No period date changes were captured on this Mod.
+                                    </Alert>
+                                )}
 
                                 <Box>
                                     <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>Labor and Resources</Typography>
