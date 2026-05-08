@@ -53,14 +53,14 @@ import {
     buildAllAuthorizationRows,
     exportAllAuthorizationRows,
     filterAllAuthorizationRows,
-    getStatusChipColor,
     getUniqueFilterValues,
-    getWorkflowStatusChipColor,
+    getRowAuthorizationStatusColor,
+    getRowAuthorizationStatusLabel,
+    getRowWorkflowStatusColor,
+    getRowWorkflowStatusLabel,
     IAllAuthorizationsFilters,
     IAllAuthorizationsRow,
-    sortAllAuthorizationRows,
-    workflowRunStatusLabels,
-    authorizationStatusLabels
+    sortAllAuthorizationRows
 } from "./allAuthorizationsUtils";
 import { formatModLabel } from "../authorizations/view/iwaViewUtils";
 
@@ -718,8 +718,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
                                                 <TableCell sx={{ width: columnWidths.authorizationStatus, verticalAlign: "top" }}>
                                                     <Chip
-                                                        label={row.isModDraft ? "Mod Draft" : authorizationStatusLabels[row.authorization.authorizationStatus]}
-                                                        color={getStatusChipColor(row.authorization.authorizationStatus)}
+                                                        label={getRowAuthorizationStatusLabel(row)}
+                                                        color={getRowAuthorizationStatusColor(row)}
                                                         size="small"
                                                     />
                                                 </TableCell>
@@ -727,8 +727,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                 <TableCell sx={{ width: columnWidths.workflowStatus, verticalAlign: "top" }}>
                                                     {row.currentRun ? (
                                                         <Chip
-                                                            label={workflowRunStatusLabels[row.currentRun.runStatus]}
-                                                            color={getWorkflowStatusChipColor(row.currentRun.runStatus)}
+                                                            label={getRowWorkflowStatusLabel(row)}
+                                                            color={getRowWorkflowStatusColor(row)}
                                                             size="small"
                                                         />
                                                     ) : (
@@ -870,19 +870,11 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
-                        if (selectedMenuRow?.authorization.pdfUrl) {
-                            window.open(selectedMenuRow.authorization.pdfUrl, "_blank", "noopener,noreferrer");
-                            return;
-                        }
-
-                        showFeatureDialog(
-                            "Authorization PDF",
-                            "This authorization does not have a generated PDF yet."
-                        );
+                        history.push(`/authorizations/export/${selectedMenuRow!.authorization.Id}`);
                     }}
                 >
                     <PictureAsPdfOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
-                    View PDF
+                    Export Preview
                 </MenuItem>
 
                 {(selectedMenuRow?.authorization.authorizationStatus === "draft" || selectedMenuRow?.isModDraft) && (

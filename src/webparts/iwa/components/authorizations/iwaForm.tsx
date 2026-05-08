@@ -70,6 +70,12 @@ type IwaFormStep = 0 | 1 | 2 | 3;
 
 const stepLabels: string[] = ["Basic Information", "Resources & Travel", "Details & Attachments", "Review & Submit"];
 
+interface IPersistAuthorizationOptions {
+    quiet?: boolean;
+    successMessage?: string;
+    navigateOnSuccess?: boolean;
+}
+
 const normalizeAuthorizationStatus = (status: AuthorizationStatus | string | undefined): AuthorizationStatus => {
     const rawStatus = String(status ?? "draft").trim();
     const lowerStatus = rawStatus.toLowerCase();
@@ -209,6 +215,25 @@ const readSessionModId = (authorizationId?: number): number | undefined => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
+const editableModStatuses: IModItem["modStatus"][] = ["draft", "submitted", "underReview", "rejected"];
+
+const sortModsNewestFirst = (left: IModItem, right: IModItem): number => {
+    const leftModified = Date.parse(left.Modified ?? left.Created ?? "");
+    const rightModified = Date.parse(right.Modified ?? right.Created ?? "");
+
+    if (Number.isFinite(leftModified) && Number.isFinite(rightModified) && leftModified !== rightModified) {
+        return rightModified - leftModified;
+    }
+
+    return (right.modNumber ?? 0) - (left.modNumber ?? 0);
+};
+
+const getEditableModId = (mods: IModItem[]): number | undefined => {
+    return [...mods]
+        .filter((mod: IModItem) => editableModStatuses.includes(mod.modStatus))
+        .sort(sortModsNewestFirst)[0]?.Id;
+};
+
 /**
  * First pass of the authorization create/edit form. The goal is to stand up
  * the header workflow and draft record immediately so attachments and related
@@ -234,34 +259,31 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         runsByAuthorizationId,
         travelOdcsByAuthorizationId
     } = useIwa();
-    const { showBusy, hideBusy, showSuccess, hideSuccess } = useShellUi();
+    const { showBusy, hideBusy, showSuccess, showBackdropSuccess, hideSuccess } = useShellUi();
     const successTimeoutRef = React.useRef<number | undefined>(undefined);
     const initialAuthorizationRef = React.useRef<IAuthorizationItem | undefined>(item);
     const lastSyncedContractIdRef = React.useRef<string | undefined>(item?.contractId);
     const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/all";
     const routeModId = location.state?.modId;
     const storedModId = readSessionModId(item?.Id);
-    const latestDraftModId = React.useMemo<number | undefined>(() => {
+    const activeRunModId = React.useMemo<number | undefined>(() => {
         if (!item?.Id) {
             return undefined;
         }
 
-        const draftMods = (modsByAuthorizationId.get(item.Id) ?? [])
-            .filter((mod: IModItem) => mod.modStatus === "draft")
-            .sort((left: IModItem, right: IModItem) => {
-                const leftModified = Date.parse(left.Modified ?? left.Created ?? "");
-                const rightModified = Date.parse(right.Modified ?? right.Created ?? "");
+        const currentRun = runByAuthorizationId.get(item.Id) ??
+            (runsByAuthorizationId.get(item.Id) ?? []).find((run) => run.runStatus === "active");
 
-                if (Number.isFinite(leftModified) && Number.isFinite(rightModified) && leftModified !== rightModified) {
-                    return rightModified - leftModified;
-                }
+        return currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined;
+    }, [item?.Id, runByAuthorizationId, runsByAuthorizationId]);
+    const latestEditableModId = React.useMemo<number | undefined>(() => {
+        if (!item?.Id) {
+            return undefined;
+        }
 
-                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
-            });
-
-        return draftMods[0]?.Id;
+        return getEditableModId(modsByAuthorizationId.get(item.Id) ?? []);
     }, [item?.Id, modsByAuthorizationId]);
-    const activeModDraftId = routeModId ?? storedModId ?? latestDraftModId;
+    const activeModDraftId = routeModId ?? activeRunModId ?? storedModId ?? latestEditableModId;
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -287,7 +309,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [navigateAfterDialog, setNavigateAfterDialog] = React.useState<boolean>(false);
     const [discardDraftDialogOpen, setDiscardDraftDialogOpen] = React.useState<boolean>(false);
+    const [cancelDialogOpen, setCancelDialogOpen] = React.useState<boolean>(false);
+    const [userHasInteracted, setUserHasInteracted] = React.useState<boolean>(false);
+    const [hasSavedDraft, setHasSavedDraft] = React.useState<boolean>(mode === "edit" && isDraftStatus(item?.authorizationStatus));
     const [duplicateMatch, setDuplicateMatch] = React.useState<IAuthorizationItem | undefined>(undefined);
+    const savedSnapshotRef = React.useRef<string>("");
 
     const [form, setForm] = React.useState<IAuthorizationItem>(() => ({
         ...createEmptyAuthorization(),
@@ -300,8 +326,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const isDraftAuthorization = isDraftStatus(form.authorizationStatus);
     const isModEditIntent = mode === "edit" && typeof activeModDraftId === "number" && activeModDraftId > 0;
     const activeModId = currentMod?.Id ?? (isModEditIntent ? activeModDraftId : undefined);
+    const isModEditMode = isModEditIntent && !!activeModId;
     const isModDraftMode = isModEditIntent && (currentMod?.modStatus ?? "draft") === "draft";
-    const isBaselineLocked = isModDraftMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
+    const canSaveProgress = !isExistingSubmittedEdit && !isModDraftMode;
+    const isBaselineLocked = isModEditMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
     const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
 
     React.useEffect(() => {
@@ -360,11 +388,81 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         return contractTypeOptions.find((option) => option.value === form.contractType) ?? contractTypeOptions[0];
     }, [form.contractType]);
 
+    const currentFormSnapshot = React.useMemo((): string => {
+        const toPersonId = (person?: IPeoplePicker): number | null => person?.Id ?? null;
+
+        return JSON.stringify({
+            form: {
+                donorEntity: form.donorEntity ?? "",
+                receivingEntity: form.receivingEntity ?? "",
+                contractName: form.contractName ?? "",
+                contractId: form.contractId ?? "",
+                invoice: form.invoice ?? "",
+                contractType: form.contractType ?? "tm",
+                pmId: toPersonId(form.pm),
+                backupRequestorId: toPersonId(form.backupRequestor),
+                og: form.og ?? "",
+                lob: form.lob ?? "",
+                scopeOfWork: form.scopeOfWork ?? "",
+                justification: form.justification ?? "",
+                notes: form.notes ?? "",
+                periodStart: toIsoDate(periodStart) ?? "",
+                periodEnd: toIsoDate(periodEnd) ?? ""
+            },
+            modReason: modReason.trim(),
+            resourceRows: resourceRows.map((row) => ({
+                id: row.id,
+                employeeId: row.employee?.Id ?? null,
+                state: row.state,
+                comments: row.comments,
+                jobId: row.jobId,
+                laborCategory: row.laborCategory,
+                standardHours: row.standardHours,
+                overtimeHours: row.overtimeHours,
+                annualSalary: row.annualSalary,
+                standardRate: row.standardRate,
+                overtimeRate: row.overtimeRate
+            })),
+            travelRows: travelRows.map((row) => ({
+                id: row.id,
+                lineType: row.lineType,
+                jobId: row.jobId,
+                description: row.description,
+                amount: row.amount,
+                comments: row.comments
+            })),
+            ffpLaborRows: ffpLaborRows.map((row) => ({
+                id: row.id,
+                jobId: row.jobId,
+                chargingPeriod: row.chargingPeriod,
+                periodQty: row.periodQty,
+                lumpSumAmount: row.lumpSumAmount,
+                resourceRowIds: row.resourceRowIds,
+                comments: row.comments
+            })),
+            attachments: attachments.map((attachment) => attachment.FileName).sort()
+        });
+    }, [attachments, ffpLaborRows, form, modReason, periodEnd, periodStart, resourceRows, travelRows]);
+
+    const hasUncommittedChanges = userHasInteracted && savedSnapshotRef.current !== currentFormSnapshot;
+
+    React.useEffect((): void => {
+        if (isBootstrapping || isInvoicesLoading || userHasInteracted) {
+            return;
+        }
+
+        savedSnapshotRef.current = currentFormSnapshot;
+    }, [currentFormSnapshot, isBootstrapping, isInvoicesLoading, userHasInteracted]);
+
     const showDialog = React.useCallback((title: string, message: string, navigateOnClose: boolean = false): void => {
         setDialogTitle(title);
         setDialogMessage(message);
         setDialogOpen(true);
         setNavigateAfterDialog(navigateOnClose);
+    }, []);
+
+    const markUserInteracted = React.useCallback((): void => {
+        setUserHasInteracted(true);
     }, []);
 
     const findMatchingAuthorization = React.useCallback((): IAuthorizationItem | undefined => {
@@ -417,7 +515,13 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }));
     }, []);
 
+    const updateUserField = React.useCallback(<K extends keyof IAuthorizationItem>(key: K, value: IAuthorizationItem[K]): void => {
+        markUserInteracted();
+        updateField(key, value);
+    }, [markUserInteracted, updateField]);
+
     const handlePeoplePicker = React.useCallback((items: IPersonaProps[], field: keyof Pick<IAuthorizationItem, "pm" | "backupRequestor">): void => {
+        markUserInteracted();
         const first = items[0];
 
         if (!first?.id || !first.text || !first.secondaryText) {
@@ -433,7 +537,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             text: first.text,
             secondaryText: first.secondaryText
         });
-    }, [updateField]);
+    }, [markUserInteracted, updateField]);
 
     const loadAttachments = React.useCallback(async (authorizationId: number): Promise<void> => {
         const files = await Web()
@@ -625,7 +729,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             try {
-                const mod = activeModDraftId ? await ModService.getById(activeModDraftId) : undefined;
+                const modId = activeModDraftId ?? getEditableModId(await ModService.getByAuthorization(item.Id));
+                const mod = modId ? await ModService.getById(modId) : undefined;
 
                 if (mod?.Id && item.Id) {
                     sessionStorage.setItem(getActiveModDraftSessionKey(item.Id), String(mod.Id));
@@ -735,10 +840,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const periodEndBeforeStart = !!periodStart && !!periodEnd && periodEnd.isBefore(periodStart, "day");
 
     const addResourceRow = React.useCallback((row?: IEditableResourceRow): void => {
+        markUserInteracted();
         setResourceRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyResourceRow()]);
-    }, []);
+    }, [markUserInteracted]);
 
     const removeResourceRow = React.useCallback((id: string): void => {
+        markUserInteracted();
         setResourceRows((prev) => {
             const next = prev.filter((row) => row.id !== id);
             return next;
@@ -747,92 +854,126 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             ...line,
             resourceRowIds: line.resourceRowIds.filter((resourceRowId) => resourceRowId !== id)
         })));
-    }, []);
+    }, [markUserInteracted]);
 
     const updateResourceRow = React.useCallback((id: string, patch: Partial<IEditableResourceRow>): void => {
+        markUserInteracted();
         setResourceRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
-    }, []);
+    }, [markUserInteracted]);
 
     const addTravelRow = React.useCallback((row?: IEditableTravelRow): void => {
+        markUserInteracted();
         setTravelRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyTravelRow()]);
-    }, []);
+    }, [markUserInteracted]);
 
     const removeTravelRow = React.useCallback((id: string): void => {
+        markUserInteracted();
         setTravelRows((prev) => prev.filter((row) => row.id !== id));
-    }, []);
+    }, [markUserInteracted]);
 
     const updateTravelRow = React.useCallback((id: string, patch: Partial<IEditableTravelRow>): void => {
+        markUserInteracted();
         setTravelRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
-    }, []);
+    }, [markUserInteracted]);
 
     const addFfpLaborRow = React.useCallback((row?: IEditableFfpLaborRow): void => {
+        markUserInteracted();
         setFfpLaborRows((prev) => [...prev, row ? { ...row, id: createLocalRowId() } : createEmptyFfpLaborRow()]);
-    }, []);
+    }, [markUserInteracted]);
 
     const removeFfpLaborRow = React.useCallback((id: string): void => {
+        markUserInteracted();
         setFfpLaborRows((prev) => prev.filter((row) => row.id !== id));
-    }, []);
+    }, [markUserInteracted]);
 
     const updateFfpLaborRow = React.useCallback((id: string, patch: Partial<IEditableFfpLaborRow>): void => {
+        markUserInteracted();
         setFfpLaborRows((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
-    }, []);
+    }, [markUserInteracted]);
 
-    const resourceStepIsValid = React.useMemo((): boolean => {
-        const travelValid = travelRows.every((row) => {
+    const getResourceStepValidationMessage = React.useCallback((): string | undefined => {
+        const firstIncompleteTravelRow = travelRows.find((row) => {
             if (!row.jobId.trim()) {
-                return false;
+                return true;
             }
 
             if (!row.amount.trim()) {
-                return false;
+                return true;
             }
 
-            return !Number.isNaN(Number(row.amount));
+            return Number.isNaN(Number(row.amount));
         });
 
-        if (isModDraftMode && resourceRows.length === 0) {
-            return travelValid;
+        const travelMessage = firstIncompleteTravelRow
+            ? "Complete each Travel / ODC row with a Job ID and numeric amount before continuing."
+            : undefined;
+
+        if (isModEditMode && resourceRows.length === 0) {
+            return travelMessage;
         }
 
         if (resourceRows.length === 0) {
-            return false;
+            return "Add at least one resource before continuing.";
         }
 
         const hasAtLeastOneAssignedResource = resourceRows.some((row) => !!row.employee?.Id);
 
         if (!hasAtLeastOneAssignedResource) {
-            return false;
+            return "Select at least one employee before continuing.";
         }
 
-        const resourcesValid = resourceRows.every((row) => {
+        const firstIncompleteResourceRow = resourceRows.find((row) => {
             if (!row.employee?.Id) {
-                return false;
+                return true;
             }
 
             if (!row.state.trim()) {
-                return false;
+                return true;
             }
 
             if (!row.laborCategory.trim()) {
-                return false;
+                return true;
             }
 
-            if (form.contractType === "tm") {
+            return false;
+        });
+
+        if (firstIncompleteResourceRow) {
+            return "Complete each resource row with an employee, state, and labor category before continuing.";
+        }
+
+        if (form.contractType === "tm") {
+            const firstMissingJobRow = resourceRows.find((row) => !row.jobId.trim());
+
+            if (firstMissingJobRow) {
+                return "Select a Job ID for each T&M resource row before continuing.";
+            }
+
+            const firstInvalidHoursRow = resourceRows.find((row) => {
+                const standardHours = row.standardHours.trim();
+                const overtimeHours = row.overtimeHours.trim();
+
+                return (standardHours && Number.isNaN(Number(standardHours))) ||
+                    (overtimeHours && Number.isNaN(Number(overtimeHours)));
+            });
+
+            if (firstInvalidHoursRow) {
+                return "Enter numeric standard and overtime hours for each T&M resource row before continuing.";
+            }
+
+            const firstMissingHoursRow = resourceRows.find((row) => {
                 const standardHours = row.standardHours.trim();
                 const overtimeHours = row.overtimeHours.trim();
                 const totalHours = Number(standardHours || 0) + Number(overtimeHours || 0);
 
-                return !!row.jobId.trim() &&
-                    totalHours > 0 &&
-                    (!standardHours || !Number.isNaN(Number(standardHours))) &&
-                    (!overtimeHours || !Number.isNaN(Number(overtimeHours)));
+                return totalHours <= 0;
+            });
+
+            if (firstMissingHoursRow) {
+                return isModEditMode
+                    ? "Enter standard or overtime hours for each copied resource row before continuing. Copied mod resources start with blank hours so you can enter only the hours being requested."
+                    : "Enter standard or overtime hours for each T&M resource row before continuing.";
             }
-
-            return true;
-        });
-
-        if (!resourcesValid) {
-            return false;
         }
 
         if (form.contractType === "ffp") {
@@ -849,13 +990,20 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     row.resourceRowIds.length > 0;
             });
 
-            if (!ffpLinesValid || !everyResourceLinked) {
-                return false;
+            if (!ffpLinesValid) {
+                return "Complete each FFP labor / CLIN row with a Job ID, period quantity, total amount, and assigned resources before continuing.";
+            }
+
+            if (!everyResourceLinked) {
+                return "Assign each resource to an FFP labor / CLIN row before continuing.";
             }
         }
 
-        return travelValid;
-    }, [ffpLaborRows, form.contractType, isModDraftMode, resourceRows, travelRows]);
+        return travelMessage;
+    }, [ffpLaborRows, form.contractType, isModEditMode, resourceRows, travelRows]);
+    const resourceStepIsValid = React.useMemo((): boolean => {
+        return !getResourceStepValidationMessage();
+    }, [getResourceStepValidationMessage]);
 
     const validateStep = React.useCallback((step: IwaFormStep): boolean => {
         if (step === 0) {
@@ -886,6 +1034,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         return true;
     }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart, resourceStepIsValid]);
 
+    const getStepValidationMessage = React.useCallback((step: IwaFormStep): string => {
+        if (step === 1) {
+            return getResourceStepValidationMessage() ?? "Complete the Resources & Travel step before moving to the next step.";
+        }
+
+        return "Please correct the highlighted fields before moving to the next step.";
+    }, [getResourceStepValidationMessage]);
+
     const handleStepButtonClick = React.useCallback((targetStep: number): void => {
         if (targetStep > activeStep && activeStep === 0 && !ensureUniqueAuthorizationCombination()) {
             return;
@@ -893,26 +1049,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         if (targetStep > activeStep && !validateStep(activeStep)) {
             setSubmitted(true);
-            showDialog("Missing Required Information", "Please correct the highlighted fields before moving to the next step.");
+            showDialog("Missing Required Information", getStepValidationMessage(activeStep));
             return;
         }
 
         setActiveStep(targetStep as IwaFormStep);
-    }, [activeStep, ensureUniqueAuthorizationCombination, showDialog, validateStep]);
-
-    const handleNext = React.useCallback((): void => {
-        if (activeStep === 0 && !ensureUniqueAuthorizationCombination()) {
-            return;
-        }
-
-        if (!validateStep(activeStep)) {
-            setSubmitted(true);
-            showDialog("Missing Required Information", "Please correct the highlighted fields before moving to the next step.");
-            return;
-        }
-
-        setActiveStep((prev: IwaFormStep) => Math.min(prev + 1, 3) as IwaFormStep);
-    }, [activeStep, ensureUniqueAuthorizationCombination, showDialog, validateStep]);
+    }, [activeStep, ensureUniqueAuthorizationCombination, getStepValidationMessage, showDialog, validateStep]);
 
     const handlePrevious = React.useCallback((): void => {
         setActiveStep((prev: IwaFormStep) => Math.max(prev - 1, 0) as IwaFormStep);
@@ -927,6 +1069,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         try {
+            markUserInteracted();
             const buffer = await file.arrayBuffer();
             await Web()
                 .Lists(Strings.Sites.main.lists.Authorizations)
@@ -942,7 +1085,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             input.value = "";
         }
-    }, [draftId, loadAttachments, showDialog]);
+    }, [draftId, loadAttachments, markUserInteracted, showDialog]);
 
     const handleRemoveAttachment = React.useCallback(async (fileName: string): Promise<void> => {
         if (!draftId) {
@@ -950,6 +1093,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         try {
+            markUserInteracted();
             const file = await Web()
                 .Lists(Strings.Sites.main.lists.Authorizations)
                 .Items()
@@ -963,10 +1107,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } catch (error) {
             showDialog("Attachment Remove Error", formatError(error));
         }
-    }, [draftId, loadAttachments, showDialog]);
+    }, [draftId, loadAttachments, markUserInteracted, showDialog]);
 
     const syncWorkPackageData = React.useCallback(async (authorizationId: number): Promise<Pick<IAuthorizationItem, "baseLaborAmount" | "baseTravelAmount" | "baseGrandTotal">> => {
-        if (isModDraftMode && !activeModId) {
+        if (isModEditMode && !activeModId) {
             throw new Error("The modification draft is still loading. Please wait a moment and try again.");
         }
 
@@ -987,7 +1131,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
         }
 
-        const lineOptions = isModDraftMode && activeModId
+        const lineOptions = isModEditMode && activeModId
             ? { lineScope: "mod" as const, modId: activeModId }
             : undefined;
         const resourceLineNumberByRowId = new Map<string, number>();
@@ -1073,7 +1217,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         const baseTravelAmount = savedTravelRows.reduce((total, line) => total + Number(line.amount ?? 0), 0);
         const baseGrandTotal = baseLaborAmount + baseTravelAmount;
 
-        if (isModDraftMode && activeModId) {
+        if (isModEditMode && activeModId) {
             await ModService.updateDraft(activeModId, {
                 reason: modReason.trim(),
                 laborAmount: baseLaborAmount,
@@ -1097,56 +1241,59 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         await AuthorizationService.updateBaseAmounts(authorizationId, totals);
 
         return totals;
-    }, [activeModId, ffpLaborRows, form.baseGrandTotal, form.baseLaborAmount, form.baseTravelAmount, form.contractType, isModDraftMode, modReason, resourceRows, travelRows]);
+    }, [activeModId, ffpLaborRows, form.baseGrandTotal, form.baseLaborAmount, form.baseTravelAmount, form.contractType, isModEditMode, modReason, resourceRows, travelRows]);
 
-    const persistAuthorization = React.useCallback(async (status: AuthorizationStatus): Promise<void> => {
+    const persistAuthorization = React.useCallback(async (status: AuthorizationStatus, options: IPersistAuthorizationOptions = {}): Promise<boolean> => {
         const authorizationId = draftId ?? form.Id;
+        const navigateOnSuccess = options.navigateOnSuccess ?? true;
 
         if (!authorizationId) {
             showDialog("Save Error", "The draft authorization is not ready yet. Please wait a moment and try again.");
-            return;
+            return false;
         }
 
         if (!ensureUniqueAuthorizationCombination()) {
-            return;
+            return false;
         }
 
         setIsSaving(true);
         setSubmitted(true);
         const normalizedStatus = normalizeAuthorizationStatus(status);
-        const isSubmittingMod = isModDraftMode && normalizedStatus !== "draft";
+        const isSubmittingMod = isModEditMode && normalizedStatus !== "draft";
 
-        if (isModDraftMode && !activeModId) {
+        if (isModEditMode && !activeModId) {
             setIsSaving(false);
             showDialog("Mod Draft Loading", "The modification draft is still loading. Please wait a moment and try again.");
-            return;
+            return false;
         }
 
         if (isSubmittingMod && !currentMod?.Id) {
             setIsSaving(false);
             showDialog("Mod Draft Loading", "The modification draft is still loading. Please wait a moment and try again.");
-            return;
+            return false;
         }
 
         if (isSubmittingMod && !modReason.trim()) {
             setIsSaving(false);
             showDialog("Mod Reason Required", "Please enter a reason for this modification before submitting it for approval.");
-            return;
+            return false;
         }
 
-        showBusy(
-            isModDraftMode
-                ? normalizedStatus === "draft"
-                    ? "Saving modification draft..."
-                    : "Submitting modification..."
-                : normalizedStatus === "draft"
-                    ? "Saving authorization draft..."
-                    : isExistingSubmittedEdit
-                        ? "Saving authorization changes..."
-                        : "Submitting authorization..."
-        );
+        if (!options.quiet) {
+            showBusy(
+                isModEditMode
+                    ? normalizedStatus === "draft"
+                        ? "Saving modification draft..."
+                        : "Submitting modification..."
+                    : normalizedStatus === "draft"
+                        ? "Saving authorization draft..."
+                        : isExistingSubmittedEdit
+                            ? "Submitting authorization changes..."
+                            : "Submitting authorization..."
+            );
+        }
 
-        const authorizationStatusToSave = isModDraftMode
+        const authorizationStatusToSave = isModEditMode
             ? normalizeAuthorizationStatus(form.authorizationStatus)
             : normalizedStatus;
         const nextForm: IAuthorizationItem = {
@@ -1159,17 +1306,23 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         try {
             let saved: IAuthorizationItem;
-            const isFirstSubmit = !isModDraftMode && normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
+            const isFirstSubmit = !isModEditMode && normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
 
             if (isFirstSubmit) {
-                showBusy("Submitting authorization...");
+                if (!options.quiet) {
+                    showBusy("Submitting authorization...");
+                }
                 const approvers = await ApproverResolver.resolve(nextForm);
 
                 saved = await AuthorizationService.submitNew(nextForm, normalizedStatus);
 
-                showBusy("Creating new workflow...");
+                if (!options.quiet) {
+                    showBusy("Creating new workflow...");
+                }
                 const firstRun = await WorkflowRunService.createFirstRun(saved, approvers);
-                showBusy("Updating workflow linkages...");
+                if (!options.quiet) {
+                    showBusy("Updating workflow linkages...");
+                }
                 await AuthorizationService.updateRunId(saved.Id, firstRun.Id);
                 await WorkflowActionService.createSubmitted(saved, firstRun);
 
@@ -1193,7 +1346,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             const activeRun = runByAuthorizationId.get(saved.Id);
 
             if (isSubmittingMod && currentMod?.Id) {
-                showBusy("Capturing modification changes...");
+                if (!options.quiet) {
+                    showBusy("Capturing modification changes...");
+                }
                 const approvers = await ApproverResolver.resolve(saved);
                 const changeSet = captureIwaChangeSet({
                     beforeAuthorization: initialAuthorizationRef.current,
@@ -1207,7 +1362,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 });
                 const nextRunNumber = Math.max(0, ...(runsByAuthorizationId.get(saved.Id) ?? []).map((run) => run.runNumber ?? 0)) + 1;
 
-                showBusy("Creating new workflow...");
+                if (!options.quiet) {
+                    showBusy("Creating new workflow...");
+                }
                 const modRun = await WorkflowRunService.createModRun(
                     saved,
                     currentMod,
@@ -1217,7 +1374,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     changeSet.changeSummary
                 );
 
-                showBusy("Updating modification linkages...");
+                if (!options.quiet) {
+                    showBusy("Updating modification linkages...");
+                }
                 await ModService.updateDraft(currentMod.Id, {
                     reason: modReason.trim(),
                     changeSummary: changeSet.changeSummary,
@@ -1225,6 +1384,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     currentWorkflowRunId: modRun.Id
                 });
                 await AuthorizationService.updateRunId(saved.Id, modRun.Id);
+                if (activeRun?.Id && activeRun.runType === "mod" && activeRun.mod?.Id === currentMod.Id) {
+                    await WorkflowRunService.supersedeRun(activeRun.Id, "Submit modification", changeSet.changeSummary);
+                }
                 await WorkflowActionService.createSubmitted(saved, modRun, {
                     actionType: "modified",
                     comments: changeSet.changeSummary,
@@ -1241,134 +1403,176 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     }
                 };
             } else
-            if (
-                !isModDraftMode &&
-                normalizedStatus !== "draft" &&
-                isExistingSubmittedEdit &&
-                !isFirstSubmit &&
-                activeRun?.Id &&
-                activeRun.hasDecision
-            ) {
-                showBusy("Restarting workflow...");
-                const approvers = await ApproverResolver.resolve(saved);
-                const changeSet = captureIwaChangeSet({
-                    beforeAuthorization: initialAuthorizationRef.current,
-                    afterAuthorization: saved,
-                    beforeResources: resourcesByAuthorizationId.get(saved.Id) ?? [],
-                    beforeLaborLines: laborLinesByAuthorizationId.get(saved.Id) ?? [],
-                    beforeTravelOdcs: travelOdcsByAuthorizationId.get(saved.Id) ?? [],
-                    afterResourceRows: resourceRows,
-                    afterTravelRows: travelRows,
-                    afterFfpLaborRows: ffpLaborRows
-                });
-                const restartReason = "Modify and resubmit";
-                showBusy("Creating new workflow...");
-                const nextRun = await WorkflowRunService.createRestartRun(
-                    saved,
-                    (activeRun.runNumber ?? 0) + 1,
-                    approvers,
-                    restartReason,
-                    changeSet.changeSummary
-                );
-
-                showBusy("Updating workflow linkages...");
-                await AuthorizationService.updateRunId(saved.Id, nextRun.Id);
-                await WorkflowRunService.supersedeRun(activeRun.Id, restartReason, changeSet.changeSummary);
-                showBusy("Capturing change history...");
-                await WorkflowActionService.createRestarted(saved, activeRun, changeSet.changeSummary);
-                await WorkflowActionService.createSubmitted(saved, nextRun, {
-                    actionType: "modified",
-                    comments: changeSet.changeSummary,
-                    changeSummary: changeSet.changeSummary,
-                    changePayloadJson: changeSet.changePayloadJson
-                });
-
-                saved = {
-                    ...saved,
-                    currentWorkflowRun: {
-                        Id: nextRun.Id,
-                        Title: nextRun.Title
-                    }
-                };
-            } else {
-                const nextPmId = saved.pm?.Id ?? null;
-                const pendingPmApproverId = activeRun?.pendingApprover?.Id ?? null;
-
                 if (
+                    !isModEditMode &&
                     normalizedStatus !== "draft" &&
+                    isExistingSubmittedEdit &&
+                    !isFirstSubmit &&
                     activeRun?.Id &&
-                    activeRun.runStatus === "active" &&
-                    activeRun.currentStepKey === "pm" &&
-                    typeof nextPmId === "number" &&
-                    pendingPmApproverId !== nextPmId
+                    activeRun.hasDecision
                 ) {
-                    await WorkflowRunService.updatePendingApprover(activeRun.Id, nextPmId);
+                    if (!options.quiet) {
+                        showBusy("Restarting workflow...");
+                    }
+                    const approvers = await ApproverResolver.resolve(saved);
+                    const changeSet = captureIwaChangeSet({
+                        beforeAuthorization: initialAuthorizationRef.current,
+                        afterAuthorization: saved,
+                        beforeResources: resourcesByAuthorizationId.get(saved.Id) ?? [],
+                        beforeLaborLines: laborLinesByAuthorizationId.get(saved.Id) ?? [],
+                        beforeTravelOdcs: travelOdcsByAuthorizationId.get(saved.Id) ?? [],
+                        afterResourceRows: resourceRows,
+                        afterTravelRows: travelRows,
+                        afterFfpLaborRows: ffpLaborRows
+                    });
+                    const restartReason = "Modify and resubmit";
+                    if (!options.quiet) {
+                        showBusy("Creating new workflow...");
+                    }
+                    const nextRun = await WorkflowRunService.createRestartRun(
+                        saved,
+                        (activeRun.runNumber ?? 0) + 1,
+                        approvers,
+                        restartReason,
+                        changeSet.changeSummary
+                    );
+
+                    if (!options.quiet) {
+                        showBusy("Updating workflow linkages...");
+                    }
+                    await AuthorizationService.updateRunId(saved.Id, nextRun.Id);
+                    await WorkflowRunService.supersedeRun(activeRun.Id, restartReason, changeSet.changeSummary);
+                    if (!options.quiet) {
+                        showBusy("Capturing change history...");
+                    }
+                    await WorkflowActionService.createRestarted(saved, activeRun, changeSet.changeSummary);
+                    await WorkflowActionService.createSubmitted(saved, nextRun, {
+                        actionType: "modified",
+                        comments: changeSet.changeSummary,
+                        changeSummary: changeSet.changeSummary,
+                        changePayloadJson: changeSet.changePayloadJson
+                    });
+
+                    saved = {
+                        ...saved,
+                        currentWorkflowRun: {
+                            Id: nextRun.Id,
+                            Title: nextRun.Title
+                        }
+                    };
+                } else {
+                    const nextPmId = saved.pm?.Id ?? null;
+                    const pendingPmApproverId = activeRun?.pendingApprover?.Id ?? null;
+
+                    if (
+                        normalizedStatus !== "draft" &&
+                        activeRun?.Id &&
+                        activeRun.runStatus === "active" &&
+                        activeRun.currentStepKey === "pm" &&
+                        typeof nextPmId === "number" &&
+                        pendingPmApproverId !== nextPmId
+                    ) {
+                        await WorkflowRunService.updatePendingApprover(activeRun.Id, nextPmId);
+                    }
                 }
-            }
 
             setForm(saved);
             setDraftId(saved.Id);
-            clearAuthorizationDetailCache(saved.Id);
-            await Promise.all([
-                refresh(true),
-                loadAuthorizationDetail(saved.Id, true)
-            ]);
-
+            setUserHasInteracted(false);
             if (normalizedStatus === "draft") {
-                showSuccess(isModDraftMode ? "Modification draft saved successfully." : "Draft saved successfully.");
-                if (successTimeoutRef.current) {
-                    window.clearTimeout(successTimeoutRef.current);
-                }
-                successTimeoutRef.current = window.setTimeout(() => {
-                    hideSuccess();
-                }, 1500);
-                return;
+                setHasSavedDraft(true);
+            }
+            clearAuthorizationDetailCache(saved.Id);
+            const shouldRefreshListData = normalizedStatus !== "draft" || navigateOnSuccess;
+
+            if (shouldRefreshListData) {
+                await Promise.all([
+                    refresh(false),
+                    loadAuthorizationDetail(saved.Id, true)
+                ]);
+            } else {
+                await loadAuthorizationDetail(saved.Id, true);
             }
 
-            if (isSubmittingMod) {
-                showSuccess("Modification submitted for approval.");
+            if (normalizedStatus === "draft") {
+                showSuccess(options.successMessage ?? (isModDraftMode ? "Modification draft saved successfully." : "Draft saved successfully."));
                 if (successTimeoutRef.current) {
                     window.clearTimeout(successTimeoutRef.current);
                 }
                 successTimeoutRef.current = window.setTimeout(() => {
                     hideSuccess();
-                    sessionStorage.removeItem(getActiveModDraftSessionKey(saved.Id));
-                    history.push(returnTo);
                 }, 1500);
-                return;
+                return true;
+            }
+
+            const showFinalSuccess = (message: string, onBeforeNavigate?: () => void): void => {
+                showBackdropSuccess(message);
+
+                if (navigateOnSuccess) {
+                    onBeforeNavigate?.();
+                    history.push(returnTo);
+                }
+
+                window.setTimeout(() => {
+                    hideSuccess();
+                }, 1500);
+            };
+
+            if (isSubmittingMod) {
+                showFinalSuccess(
+                    options.successMessage ?? "Modification submitted for approval.",
+                    () => sessionStorage.removeItem(getActiveModDraftSessionKey(saved.Id))
+                );
+                return true;
             }
 
             if (isExistingSubmittedEdit && !isFirstSubmit) {
                 const activeRunBeforeSave = runByAuthorizationId.get(saved.Id);
-                showSuccess(activeRunBeforeSave?.hasDecision ? "Authorization changes saved and workflow restarted." : "Authorization changes saved successfully.");
-                if (successTimeoutRef.current) {
-                    window.clearTimeout(successTimeoutRef.current);
-                }
-                successTimeoutRef.current = window.setTimeout(() => {
-                    hideSuccess();
-                    history.push(returnTo);
-                }, 1500);
-                return;
+                showFinalSuccess(options.successMessage ?? (activeRunBeforeSave?.hasDecision ? "Authorization changes submitted and workflow restarted." : "Authorization changes submitted successfully."));
+                return true;
             }
 
-            showSuccess(`Authorization ${saved.Title} was submitted successfully.`);
-            if (successTimeoutRef.current) {
-                window.clearTimeout(successTimeoutRef.current);
-            }
-            successTimeoutRef.current = window.setTimeout(() => {
-                hideSuccess();
-                history.push(returnTo);
-            }, 1500);
+            showFinalSuccess(options.successMessage ?? `Authorization ${saved.Title} was submitted successfully.`);
+            return true;
         } catch (error) {
             hideBusy();
             showDialog("Authorization Save Error", formatError(error));
+            return false;
         } finally {
             setIsSaving(false);
         }
-    }, [activeModId, clearAuthorizationDetailCache, currentMod, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, laborLinesByAuthorizationId, loadAuthorizationDetail, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
+    }, [activeModId, clearAuthorizationDetailCache, currentMod, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
-    const handleCancel = React.useCallback(async (): Promise<void> => {
-        if (mode === "new" && draftId) {
+    const getProgressSaveStatus = React.useCallback((): AuthorizationStatus => {
+        if (isModDraftMode) {
+            return "draft";
+        }
+
+        if (isExistingSubmittedEdit) {
+            return normalizeAuthorizationStatus(form.authorizationStatus ?? "submitted");
+        }
+
+        return "draft";
+    }, [form.authorizationStatus, isExistingSubmittedEdit, isModDraftMode]);
+
+    const handleNext = React.useCallback(async (): Promise<void> => {
+        if (activeStep === 0 && !ensureUniqueAuthorizationCombination()) {
+            return;
+        }
+
+        if (!validateStep(activeStep)) {
+            setSubmitted(true);
+            showDialog("Missing Required Information", getStepValidationMessage(activeStep));
+            return;
+        }
+
+        setActiveStep((prev: IwaFormStep) => Math.min(prev + 1, 3) as IwaFormStep);
+    }, [activeStep, ensureUniqueAuthorizationCombination, getStepValidationMessage, showDialog, validateStep]);
+
+    const handleDiscardChangesAndCancel = React.useCallback(async (): Promise<void> => {
+        setCancelDialogOpen(false);
+
+        if (mode === "new" && draftId && !hasSavedDraft) {
             try {
                 await AuthorizationService.delete(draftId);
             } catch (error) {
@@ -1378,7 +1582,29 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         history.push(returnTo);
-    }, [draftId, history, mode, returnTo, showDialog]);
+    }, [draftId, hasSavedDraft, history, mode, returnTo, showDialog]);
+
+    const handleSaveAndCancel = React.useCallback(async (): Promise<void> => {
+        setCancelDialogOpen(false);
+        const saved = await persistAuthorization(getProgressSaveStatus(), {
+            quiet: true,
+            successMessage: "Progress saved",
+            navigateOnSuccess: false
+        });
+
+        if (saved) {
+            history.push(returnTo);
+        }
+    }, [getProgressSaveStatus, history, persistAuthorization, returnTo]);
+
+    const handleCancel = React.useCallback((): void => {
+        if (!hasUncommittedChanges) {
+            handleDiscardChangesAndCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
+            return;
+        }
+
+        setCancelDialogOpen(true);
+    }, [handleDiscardChangesAndCancel, hasUncommittedChanges, showDialog]);
 
     const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
         const authorizationId = draftId ?? form.Id;
@@ -1446,289 +1672,295 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
     const basicInfoSection = (
         <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
-                <Grid container spacing={2.5}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Autocomplete
-                            options={entityOptions}
-                            value={selectedDonorEntity}
-                            disabled={isBaselineLocked}
-                            onChange={(_, value: IEntityItem | null) => {
-                                updateField("donorEntity", value?.Title ?? "");
-                            }}
-                            getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Donor Entity"
-                                    required
-                                    error={stepOneHasError && !form.donorEntity}
-                                    helperText={stepOneHasError && !form.donorEntity ? "Donor entity is required." : "Entity providing employees or services."}
-                                />
-                            )}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Autocomplete
-                            options={entityOptions}
-                            value={selectedReceivingEntity}
-                            disabled={isBaselineLocked}
-                            onChange={(_, value: IEntityItem | null) => {
-                                updateField("receivingEntity", value?.Title ?? "");
-                            }}
-                            getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Receiving Entity"
-                                    required
-                                    error={(stepOneHasError && !form.receivingEntity) || donorEqualsReceiving}
-                                    helperText={
-                                        donorEqualsReceiving
-                                            ? "Donor and receiving entities must be different."
-                                            : stepOneHasError && !form.receivingEntity
-                                                ? "Receiving entity is required."
-                                                : "Entity receiving the work and cost."
-                                    }
-                                />
-                            )}
-                        />
-                    </Grid>
-
-                    <Grid size={{ xs: 12 }}>
-                        <Stack spacing={1}>
-                            <Typography variant="subtitle2" fontWeight={600}>
-                                Contract Type
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                Choose the billing model first so the related line editors can enforce the right rules later.
-                            </Typography>
-                            <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
-                                {contractTypeOptions.map((option) => {
-                                    const isSelected = form.contractType === option.value;
-
-                                    return (
-                                        <Paper
-                                            key={option.value}
-                                            onClick={() => {
-                                                if (!isBaselineLocked) {
-                                                    updateField("contractType", option.value);
-                                                }
-                                            }}
-                                            sx={{
-                                                p: 2,
-                                                flex: 1,
-                                                minWidth: { lg: 260 },
-                                                cursor: isBaselineLocked ? "default" : "pointer",
-                                                opacity: isBaselineLocked && !isSelected ? 0.58 : 1,
-                                                borderColor: isSelected ? "info.main" : undefined,
-                                                borderWidth: isSelected ? 2 : undefined,
-                                                backgroundColor: isSelected ? "rgba(3,169,244,0.08)" : "background.paper"
-                                            }}
-                                        >
-                                            <Stack spacing={0.5}>
-                                                <Typography variant="subtitle2" fontWeight={600}>
-                                                    {option.label}
-                                                </Typography>
-                                                <Typography variant="body2" color={isSelected ? "info.main" : "text.secondary"}>
-                                                    {option.helperText}
-                                                </Typography>
-                                            </Stack>
-                                        </Paper>
-                                    );
-                                })}
-                            </Stack>
-                        </Stack>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Autocomplete
-                            options={contractOptions}
-                            value={selectedContract}
-                            disabled={isBaselineLocked}
-                            autoHighlight
-                            onChange={(_, value: IContractItem | null) => {
-                                updateField("contractId", value?.field_19 ?? "");
-                                updateField("contractName", value?.field_20 ?? "");
-                            }}
-                            getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
-                            filterOptions={(options, state) => {
-                                const search = state.inputValue.trim().toLowerCase();
-
-                                if (!search) {
-                                    return options.slice(0, 20);
-                                }
-
-                                return options.filter((option: IContractItem) => {
-                                    return (
-                                        (option.field_20 ?? "").toLowerCase().includes(search) ||
-                                        (option.field_19 ?? "").toLowerCase().includes(search) ||
-                                        (option.field_35 ?? "").toLowerCase().includes(search)
-                                    );
-                                }).slice(0, 20);
-                            }}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Contract"
-                                    required
-                                    error={stepOneHasError && !form.contractId}
-                                    helperText={stepOneHasError && !form.contractId ? "Contract is required." : "Select the JAMIS contract that anchors this authorization."}
-                                />
-                            )}
-                            renderOption={(props, option: IContractItem) => (
-                                <li {...props} key={option.field_19}>
-                                    <Stack spacing={0.15}>
-                                        <Typography variant="body1" fontWeight={600}>
-                                            {option.field_20}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {option.field_35 || "No customer contract code"}
-                                        </Typography>
-                                    </Stack>
-                                </li>
-                            )}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Autocomplete
-                            options={sortedInvoiceOptions}
-                            value={selectedInvoice}
-                            disabled={isBaselineLocked}
-                            loading={isInvoicesLoading}
-                            autoHighlight
-                            onChange={(_, value: IInvoiceItem | null) => {
-                                updateField("invoice", value?.InvoiceID1 ?? "");
-                            }}
-                            getOptionLabel={(option: IInvoiceItem) => option.InvoiceID1 ?? ""}
-                            isOptionEqualToValue={(option: IInvoiceItem, value: IInvoiceItem) => option.InvoiceID1 === value.InvoiceID1}
-                            filterOptions={(options, state) => {
-                                const search = state.inputValue.trim().toLowerCase();
-
-                                if (!search) {
-                                    return options.slice(0, 50);
-                                }
-
-                                return options.filter((option: IInvoiceItem) => {
-                                    return (
-                                        (option.InvoiceID1 ?? "").toLowerCase().includes(search) ||
-                                        (option.field_14 ?? "").toLowerCase().includes(search) ||
-                                        (option.field_42 ?? "").toLowerCase().includes(search) ||
-                                        (option.field_28 ?? "").toLowerCase().includes(search)
-                                    );
-                                }).slice(0, 50);
-                            }}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Invoice / Task Order"
-                                    helperText={
-                                        !form.contractId
-                                            ? "Select a contract first."
-                                            : missingInvoiceHint
-                                                ? "Invoice is optional for now. Leave blank if not applicable."
-                                                : "Optional, but helpful when the work is tied to a specific invoice or task order."
-                                    }
-                                />
-                            )}
-                            renderOption={(props, option: IInvoiceItem) => (
-                                <li {...props} key={option.InvoiceID1}>
-                                    <Stack spacing={0.15}>
-                                        <Typography variant="body1" fontWeight={600}>
-                                            {option.InvoiceID1}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {option.field_42 || option.field_28 || "Invoice"}
-                                        </Typography>
-                                    </Stack>
-                                </li>
-                            )}
-                        />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <CompactDateField
-                            label="Period Start"
-                            value={periodStart}
-                            onChange={setPeriodStart}
-                            error={stepOneHasError && !periodStart}
-                            helperText={stepOneHasError && !periodStart ? "Period start is required." : undefined}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <CompactDateField
-                            label="Period End"
-                            value={periodEnd}
-                            onChange={setPeriodEnd}
-                            error={(stepOneHasError && !periodEnd) || periodEndBeforeStart}
-                            helperText={
-                                periodEndBeforeStart
-                                    ? "Period end must be on or after the start date."
-                                    : stepOneHasError && !periodEnd
-                                        ? "Period end is required."
-                                        : undefined
-                            }
-                        />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <MuiPeoplePicker
-                            label="Project Manager"
-                            context={peoplePickerContext}
-                            required
-                            value={form.pm?.EMail ? [form.pm.EMail] : undefined}
-                            onChange={(items) => handlePeoplePicker(items, "pm")}
-                            helperText="Auto-filled from the contract when possible, but still editable."
-                            error={stepOneHasError && !form.pm?.Id}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <MuiPeoplePicker
-                            label="Backup Requestor"
-                            context={peoplePickerContext}
-                            value={form.backupRequestor?.EMail ? [form.backupRequestor.EMail] : undefined}
-                            onChange={(items) => handlePeoplePicker(items, "backupRequestor")}
-                            helperText="Optional coverage when someone else may submit or restart workflow on your behalf."
-                        />
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Autocomplete
-                            options={ogOptions}
-                            value={selectedOg}
-                            disabled={isBaselineLocked}
-                            onChange={(_, value: IOgItem | null) => {
-                                updateField("og", value?.Title ?? "");
-                                updateField("lob", value?.lob?.Title ?? "");
-                                setContractOgWarning("");
-                            }}
-                            getOptionLabel={(option: IOgItem) => option.Title}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Operating Group"
-                                    required
-                                    error={stepOneHasError && !form.og}
-                                    helperText={
-                                        stepOneHasError && !form.og
-                                            ? "OG is required."
-                                            : contractOgWarning || "The contract default OG is applied when it matches an active/selectable OG."
-                                    }
-                                />
-                            )}
-                        />
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <TextField
-                            label="LOB"
-                            fullWidth
-                            value={form.lob ?? ""}
-                            required
-                            disabled
-                            error={stepOneHasError && !form.lob}
-                            helperText={stepOneHasError && !form.lob ? "LOB is required." : "Derived from the selected OG to keep routing/reporting aligned."}
-                        />
-                    </Grid>
+            <Grid container spacing={2.5}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                        options={entityOptions}
+                        value={selectedDonorEntity}
+                        disabled={isBaselineLocked}
+                        onChange={(_, value: IEntityItem | null) => {
+                            updateUserField("donorEntity", value?.Title ?? "");
+                        }}
+                        getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Donor Entity"
+                                required
+                                error={stepOneHasError && !form.donorEntity}
+                                helperText={stepOneHasError && !form.donorEntity ? "Donor entity is required." : "Entity providing employees or services."}
+                            />
+                        )}
+                    />
                 </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                        options={entityOptions}
+                        value={selectedReceivingEntity}
+                        disabled={isBaselineLocked}
+                        onChange={(_, value: IEntityItem | null) => {
+                            updateUserField("receivingEntity", value?.Title ?? "");
+                        }}
+                        getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Receiving Entity"
+                                required
+                                error={(stepOneHasError && !form.receivingEntity) || donorEqualsReceiving}
+                                helperText={
+                                    donorEqualsReceiving
+                                        ? "Donor and receiving entities must be different."
+                                        : stepOneHasError && !form.receivingEntity
+                                            ? "Receiving entity is required."
+                                            : "Entity receiving the work and cost."
+                                }
+                            />
+                        )}
+                    />
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                    <Stack spacing={1}>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                            Contract Type
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Choose the billing model first so the related line editors can enforce the right rules later.
+                        </Typography>
+                        <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5}>
+                            {contractTypeOptions.map((option) => {
+                                const isSelected = form.contractType === option.value;
+
+                                return (
+                                    <Paper
+                                        key={option.value}
+                                        onClick={() => {
+                                            if (!isBaselineLocked) {
+                                                updateUserField("contractType", option.value);
+                                            }
+                                        }}
+                                        sx={{
+                                            p: 2,
+                                            flex: 1,
+                                            minWidth: { lg: 260 },
+                                            cursor: isBaselineLocked ? "default" : "pointer",
+                                            opacity: isBaselineLocked && !isSelected ? 0.58 : 1,
+                                            borderColor: isSelected ? "info.main" : undefined,
+                                            borderWidth: isSelected ? 2 : undefined,
+                                            backgroundColor: isSelected ? "rgba(3,169,244,0.08)" : "background.paper"
+                                        }}
+                                    >
+                                        <Stack spacing={0.5}>
+                                            <Typography variant="subtitle2" fontWeight={600}>
+                                                {option.label}
+                                            </Typography>
+                                            <Typography variant="body2" color={isSelected ? "info.main" : "text.secondary"}>
+                                                {option.helperText}
+                                            </Typography>
+                                        </Stack>
+                                    </Paper>
+                                );
+                            })}
+                        </Stack>
+                    </Stack>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                        options={contractOptions}
+                        value={selectedContract}
+                        disabled={isBaselineLocked}
+                        autoHighlight
+                        onChange={(_, value: IContractItem | null) => {
+                            updateUserField("contractId", value?.field_19 ?? "");
+                            updateUserField("contractName", value?.field_20 ?? "");
+                        }}
+                        getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
+                        filterOptions={(options, state) => {
+                            const search = state.inputValue.trim().toLowerCase();
+
+                            if (!search) {
+                                return options.slice(0, 20);
+                            }
+
+                            return options.filter((option: IContractItem) => {
+                                return (
+                                    (option.field_20 ?? "").toLowerCase().includes(search) ||
+                                    (option.field_19 ?? "").toLowerCase().includes(search) ||
+                                    (option.field_35 ?? "").toLowerCase().includes(search)
+                                );
+                            }).slice(0, 20);
+                        }}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Contract"
+                                required
+                                error={stepOneHasError && !form.contractId}
+                                helperText={stepOneHasError && !form.contractId ? "Contract is required." : "Select the JAMIS contract that anchors this authorization."}
+                            />
+                        )}
+                        renderOption={(props, option: IContractItem) => (
+                            <li {...props} key={option.field_19}>
+                                <Stack spacing={0.15}>
+                                    <Typography variant="body1" fontWeight={600}>
+                                        {option.field_20}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {option.field_35 || "No customer contract code"}
+                                    </Typography>
+                                </Stack>
+                            </li>
+                        )}
+                    />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                        options={sortedInvoiceOptions}
+                        value={selectedInvoice}
+                        disabled={isBaselineLocked}
+                        loading={isInvoicesLoading}
+                        autoHighlight
+                        onChange={(_, value: IInvoiceItem | null) => {
+                            updateUserField("invoice", value?.InvoiceID1 ?? "");
+                        }}
+                        getOptionLabel={(option: IInvoiceItem) => option.InvoiceID1 ?? ""}
+                        isOptionEqualToValue={(option: IInvoiceItem, value: IInvoiceItem) => option.InvoiceID1 === value.InvoiceID1}
+                        filterOptions={(options, state) => {
+                            const search = state.inputValue.trim().toLowerCase();
+
+                            if (!search) {
+                                return options.slice(0, 50);
+                            }
+
+                            return options.filter((option: IInvoiceItem) => {
+                                return (
+                                    (option.InvoiceID1 ?? "").toLowerCase().includes(search) ||
+                                    (option.field_14 ?? "").toLowerCase().includes(search) ||
+                                    (option.field_42 ?? "").toLowerCase().includes(search) ||
+                                    (option.field_28 ?? "").toLowerCase().includes(search)
+                                );
+                            }).slice(0, 50);
+                        }}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Invoice / Task Order"
+                                helperText={
+                                    !form.contractId
+                                        ? "Select a contract first."
+                                        : missingInvoiceHint
+                                            ? "Invoice is optional for now. Leave blank if not applicable."
+                                            : "Optional, but helpful when the work is tied to a specific invoice or task order."
+                                }
+                            />
+                        )}
+                        renderOption={(props, option: IInvoiceItem) => (
+                            <li {...props} key={option.InvoiceID1}>
+                                <Stack spacing={0.15}>
+                                    <Typography variant="body1" fontWeight={600}>
+                                        {option.InvoiceID1}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {option.field_42 || option.field_28 || "Invoice"}
+                                    </Typography>
+                                </Stack>
+                            </li>
+                        )}
+                    />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <CompactDateField
+                        label="Period Start"
+                        value={periodStart}
+                        onChange={(value) => {
+                            markUserInteracted();
+                            setPeriodStart(value);
+                        }}
+                        error={stepOneHasError && !periodStart}
+                        helperText={stepOneHasError && !periodStart ? "Period start is required." : undefined}
+                    />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <CompactDateField
+                        label="Period End"
+                        value={periodEnd}
+                        onChange={(value) => {
+                            markUserInteracted();
+                            setPeriodEnd(value);
+                        }}
+                        error={(stepOneHasError && !periodEnd) || periodEndBeforeStart}
+                        helperText={
+                            periodEndBeforeStart
+                                ? "Period end must be on or after the start date."
+                                : stepOneHasError && !periodEnd
+                                    ? "Period end is required."
+                                    : undefined
+                        }
+                    />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <MuiPeoplePicker
+                        label="Project Manager"
+                        context={peoplePickerContext}
+                        required
+                        value={form.pm?.EMail ? [form.pm.EMail] : undefined}
+                        onChange={(items) => handlePeoplePicker(items, "pm")}
+                        helperText="Auto-filled from the contract when possible, but still editable."
+                        error={stepOneHasError && !form.pm?.Id}
+                    />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <MuiPeoplePicker
+                        label="Backup Requestor"
+                        context={peoplePickerContext}
+                        value={form.backupRequestor?.EMail ? [form.backupRequestor.EMail] : undefined}
+                        onChange={(items) => handlePeoplePicker(items, "backupRequestor")}
+                        helperText="Optional coverage when someone else may submit or restart workflow on your behalf."
+                    />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Autocomplete
+                        options={ogOptions}
+                        value={selectedOg}
+                        disabled={isBaselineLocked}
+                        onChange={(_, value: IOgItem | null) => {
+                            updateUserField("og", value?.Title ?? "");
+                            updateUserField("lob", value?.lob?.Title ?? "");
+                            setContractOgWarning("");
+                        }}
+                        getOptionLabel={(option: IOgItem) => option.Title}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Operating Group"
+                                required
+                                error={stepOneHasError && !form.og}
+                                helperText={
+                                    stepOneHasError && !form.og
+                                        ? "OG is required."
+                                        : contractOgWarning || "The contract default OG is applied when it matches an active/selectable OG."
+                                }
+                            />
+                        )}
+                    />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                        label="LOB"
+                        fullWidth
+                        value={form.lob ?? ""}
+                        required
+                        disabled
+                        error={stepOneHasError && !form.lob}
+                        helperText={stepOneHasError && !form.lob ? "LOB is required." : "Derived from the selected OG to keep routing/reporting aligned."}
+                    />
+                </Grid>
+            </Grid>
         </Paper>
     );
 
@@ -1744,7 +1976,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             multiline
                             minRows={3}
                             value={form.scopeOfWork ?? ""}
-                            onChange={(event) => updateField("scopeOfWork", event.target.value)}
+                            onChange={(event) => updateUserField("scopeOfWork", event.target.value)}
                             error={stepTwoHasError && !(form.scopeOfWork ?? "").trim()}
                             helperText={stepTwoHasError && !(form.scopeOfWork ?? "").trim() ? "Scope of work is required." : "Describe the work being authorized and what the donor entity is expected to deliver."}
                         />
@@ -1757,7 +1989,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             multiline
                             minRows={3}
                             value={form.justification ?? ""}
-                            onChange={(event) => updateField("justification", event.target.value)}
+                            onChange={(event) => updateUserField("justification", event.target.value)}
                             error={stepTwoHasError && !(form.justification ?? "").trim()}
                             helperText={stepTwoHasError && !(form.justification ?? "").trim() ? "Justification is required." : "Give approvers enough context to understand why the intercompany work is needed now."}
                         />
@@ -1769,7 +2001,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             multiline
                             minRows={3}
                             value={form.notes ?? ""}
-                            onChange={(event) => updateField("notes", event.target.value)}
+                            onChange={(event) => updateUserField("notes", event.target.value)}
                             helperText="Optional internal notes for admin, finance, or follow-up context."
                         />
                     </Grid>
@@ -1789,7 +2021,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             travelRows={travelRows}
             ffpLaborRows={ffpLaborRows}
             priorResourceRows={priorResourceRows}
-            showPriorResources={isModDraftMode}
+            showPriorResources={isModEditMode}
             submitted={submitted}
             onAddResource={addResourceRow}
             onRemoveResource={removeResourceRow}
@@ -1805,23 +2037,6 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
     const reviewSection = (
         <Stack spacing={2} sx={{ maxWidth: 1200, mx: "auto", width: "100%" }}>
-            {isModDraftMode && (
-                <Paper sx={{ p: 2 }}>
-                    <TextField
-                        label="Modification Reason"
-                        fullWidth
-                        required
-                        multiline
-                        minRows={2}
-                        value={modReason}
-                        onChange={(event) => setModReason(event.target.value)}
-                        error={submitted && !modReason.trim()}
-                        helperText={submitted && !modReason.trim()
-                            ? "A reason is required before submitting this Mod."
-                            : "Explain why this modification is needed. This will be stored with the Mod and included in workflow context."}
-                    />
-                </Paper>
-            )}
             <IwaReviewSection
                 attachmentsCount={attachments.length}
                 ffpLaborRows={ffpLaborRows}
@@ -1834,6 +2049,26 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 selectedInvoice={selectedInvoice ?? undefined}
                 travelRows={travelRows}
             />
+            {isModEditMode && (
+                <Paper sx={{ p: 2 }}>
+                    <TextField
+                        label="Modification Reason"
+                        fullWidth
+                        required
+                        multiline
+                        minRows={2}
+                        value={modReason}
+                        onChange={(event) => {
+                            markUserInteracted();
+                            setModReason(event.target.value);
+                        }}
+                        error={submitted && !modReason.trim()}
+                        helperText={submitted && !modReason.trim()
+                            ? "A reason is required before submitting this Mod."
+                            : "Explain why this modification is needed. This will be stored with the Mod and included in workflow context."}
+                    />
+                </Paper>
+            )}
         </Stack>
     );
 
@@ -1841,94 +2076,94 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         <Box sx={{ width: "100%", maxWidth: 1200, mx: "auto" }}>
             <Stack spacing={3} sx={{ width: "100%" }}>
                 <Stack spacing={1.25} sx={{ px: { xs: 0.25, md: 0.5 }, width: "100%" }}>
-                <Breadcrumbs separator={<NavigateNextOutlinedIcon fontSize="small" />} aria-label="breadcrumb">
-                    <Link component={RouterLink} color="inherit" to="/my-work" underline="hover">
-                        My Work
-                    </Link>
-                    <Typography color="text.primary">
-                        {isModDraftMode ? `Mod ${currentMod?.modNumber ?? ""}` : mode === "new" ? "New Authorization" : "Edit Authorization"}
-                    </Typography>
-                    <Typography color="text.primary">
-                        {stepLabels[activeStep]}
-                    </Typography>
-                </Breadcrumbs>
+                    <Breadcrumbs separator={<NavigateNextOutlinedIcon fontSize="small" />} aria-label="breadcrumb">
+                        <Link component={RouterLink} color="inherit" to="/my-work" underline="hover">
+                            My Work
+                        </Link>
+                        <Typography color="text.primary">
+                            {isModEditMode ? `Mod ${currentMod?.modNumber ?? ""}` : mode === "new" ? "New Authorization" : "Edit Authorization"}
+                        </Typography>
+                        <Typography color="text.primary">
+                            {stepLabels[activeStep]}
+                        </Typography>
+                    </Breadcrumbs>
 
-                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
-                    <PageHeader
-                        title={isModDraftMode ? `Edit Mod ${currentMod?.modNumber ?? ""} for ${form.Title || "Authorization"}` : mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
-                        subtitle={isModDraftMode
-                            ? "You are working in a Mod Draft. Approved baseline header fields and lines are locked; new work will be captured against this Mod."
-                            : "Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."}
-                    />
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={1}>
+                        <PageHeader
+                            title={isModEditMode ? `Edit Mod ${currentMod?.modNumber ?? ""} for ${form.Title || "Authorization"}` : mode === "new" ? "Create Authorization" : `Edit ${form.Title || "Authorization"}`}
+                            subtitle={isModEditMode
+                                ? "You are working in a Mod. Approved baseline header fields and lines are locked; new work will be captured against this Mod."
+                                : "Build the authorization header first, then layer in attachments, resources, labor, and travel from the same draft record."}
+                        />
 
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
-                        <Chip label={`IWA STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="filled" />
-                        {isModDraftMode && (
-                            <Chip label={`MOD ${currentMod?.modNumber ?? ""}: DRAFT`} color="secondary" size="small" />
-                        )}
-                        {(isDraftAuthorization || isModDraftMode) && (
-                            <Button
-                                variant="outlined"
-                                color="error"
-                                startIcon={<DeleteOutlineOutlinedIcon />}
-                                disabled={isSaving || isBootstrapping}
-                                onClick={() => setDiscardDraftDialogOpen(true)}
-                            >
-                                {isModDraftMode ? "Discard Mod" : "Discard Draft"}
-                            </Button>
-                        )}
-                        {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+                            <Chip label={`IWA STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="filled" />
+                            {isModEditMode && (
+                                <Chip label={`MOD ${currentMod?.modNumber ?? ""}: ${String(currentMod?.modStatus ?? "draft").toUpperCase()}`} color={currentMod?.modStatus === "rejected" ? "error" : "secondary"} size="small" />
+                            )}
+                            {(isDraftAuthorization || isModDraftMode) && (
+                                <Button
+                                    variant="outlined"
+                                    color="error"
+                                    startIcon={<DeleteOutlineOutlinedIcon />}
+                                    disabled={isSaving || isBootstrapping}
+                                    onClick={() => setDiscardDraftDialogOpen(true)}
+                                >
+                                    {isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                                </Button>
+                            )}
+                            {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
+                        </Stack>
                     </Stack>
-                </Stack>
                 </Stack>
 
                 <Paper sx={{ p: { xs: 1, md: 2 }, width: "100%" }}>
-                <Stack spacing={2}>
-                    <Stepper
-                        nonLinear
-                        activeStep={activeStep}
-                        alternativeLabel
-                        sx={{
-                            "& .MuiStepIcon-root": {
-                                fontSize: { xs: "1.6rem", md: "1.9rem" }
-                            },
-                            "& .MuiStepIcon-text": {
-                                fontSize: { xs: "0.9rem", md: "1rem" },
-                                fontWeight: 600
-                            },
-                            "& .MuiStepLabel-label": {
-                                fontSize: { xs: "0.95rem", md: "1rem" }
-                            },
-                            "& .MuiStepLabel-label.Mui-active": {
-                                color: "secondary.main",
-                                fontWeight: 700
-                            },
-                            "& .MuiStepIcon-root.Mui-active": {
-                                color: "secondary.main"
-                            }
-                        }}
-                    >
-                        {stepLabels.map((label: string, index: number) => (
-                            <Step key={label}>
-                                <StepButton color="inherit" onClick={() => handleStepButtonClick(index)}>
-                                    {label}
-                                </StepButton>
-                            </Step>
-                        ))}
-                    </Stepper>
-                </Stack>
+                    <Stack spacing={2}>
+                        <Stepper
+                            nonLinear
+                            activeStep={activeStep}
+                            alternativeLabel
+                            sx={{
+                                "& .MuiStepIcon-root": {
+                                    fontSize: { xs: "1.6rem", md: "1.9rem" }
+                                },
+                                "& .MuiStepIcon-text": {
+                                    fontSize: { xs: "0.9rem", md: "1rem" },
+                                    fontWeight: 600
+                                },
+                                "& .MuiStepLabel-label": {
+                                    fontSize: { xs: "0.95rem", md: "1rem" }
+                                },
+                                "& .MuiStepLabel-label.Mui-active": {
+                                    color: "secondary.main",
+                                    fontWeight: 700
+                                },
+                                "& .MuiStepIcon-root.Mui-active": {
+                                    color: "secondary.main"
+                                }
+                            }}
+                        >
+                            {stepLabels.map((label: string, index: number) => (
+                                <Step key={label}>
+                                    <StepButton color="inherit" onClick={() => handleStepButtonClick(index)}>
+                                        {label}
+                                    </StepButton>
+                                </Step>
+                            ))}
+                        </Stepper>
+                    </Stack>
                 </Paper>
 
                 {isBootstrapping ? (
                     <Paper sx={{ p: 4, textAlign: "center", width: "100%" }}>
-                    <Stack spacing={1}>
-                        <Typography variant="h6" fontWeight={700}>
-                            Creating Draft Authorization
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Setting up the header record now so attachments and related rows have somewhere to live.
-                        </Typography>
-                    </Stack>
+                        <Stack spacing={1}>
+                            <Typography variant="h6" fontWeight={700}>
+                                Creating Draft Authorization
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                Setting up the header record now so attachments and related rows have somewhere to live.
+                            </Typography>
+                        </Stack>
                     </Paper>
                 ) : (
                     <>
@@ -1939,11 +2174,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
                         {activeStep === 2 && (
                             <Box sx={{ width: "100%" }}>
-                            <IwaAttachmentsPanel
-                                attachments={attachments}
-                                onRemoveAttachment={handleRemoveAttachment}
-                                onUploadAttachment={handleUploadAttachment}
-                            />
+                                <IwaAttachmentsPanel
+                                    attachments={attachments}
+                                    onRemoveAttachment={handleRemoveAttachment}
+                                    onUploadAttachment={handleUploadAttachment}
+                                />
                             </Box>
                         )}
 
@@ -1967,62 +2202,102 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     <Button
                                         variant="text"
                                         color="inherit"
-                                        onClick={() => {
-                                            handleCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
-                                    }}
-                                >
-                                    Cancel
-                                </Button>
+                                        onClick={handleCancel}
+                                    >
+                                        Cancel
+                                    </Button>
                                 </Stack>
 
                                 <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                    <Button
-                                        variant="outlined"
-                                        startIcon={<SaveOutlinedIcon />}
-                                        disabled={isSaving}
-                                        onClick={() => {
-                                            persistAuthorization(isModDraftMode ? "draft" : isExistingSubmittedEdit ? normalizeAuthorizationStatus(form.authorizationStatus ?? "submitted") : "draft").catch((error) => showDialog("Save Error", formatError(error)));
-                                        }}
-                                    >
-                                        {isModDraftMode ? "Save Mod Draft" : isExistingSubmittedEdit ? "Save Changes" : "Save Draft"}
-                                    </Button>
+                                    {canSaveProgress && (
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<SaveOutlinedIcon />}
+                                            disabled={isSaving}
+                                            onClick={() => {
+                                                persistAuthorization("draft").catch((error) => showDialog("Save Error", formatError(error)));
+                                            }}
+                                        >
+                                            Save Draft
+                                        </Button>
+                                    )}
                                     {activeStep < 3 ? (
                                         <Button
                                             variant="contained"
-                                        endIcon={<ArrowForwardOutlinedIcon />}
-                                        disabled={isSaving}
-                                        onClick={handleNext}
-                                    >
-                                        Next
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        variant="contained"
-                                        color="secondary"
-                                        startIcon={<SendOutlinedIcon />}
-                                        disabled={isSaving}
-                                        onClick={() => {
-                                            if (!ensureUniqueAuthorizationCombination()) {
-                                                return;
-                                            }
+                                            endIcon={<ArrowForwardOutlinedIcon />}
+                                            disabled={isSaving}
+                                            onClick={() => {
+                                                handleNext().catch((error) => showDialog("Save Error", formatError(error)));
+                                            }}
+                                        >
+                                            Next
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="contained"
+                                            color="secondary"
+                                            startIcon={<SendOutlinedIcon />}
+                                            disabled={isSaving}
+                                            onClick={() => {
+                                                if (!ensureUniqueAuthorizationCombination()) {
+                                                    return;
+                                                }
 
-                                            if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
-                                                setSubmitted(true);
-                                                showDialog("Missing Required Information", "Complete the required fields on the earlier steps before submitting.");
-                                                return;
-                                            }
+                                                if (!validateStep(0) || !validateStep(1) || !validateStep(2)) {
+                                                    setSubmitted(true);
+                                                    showDialog("Missing Required Information", "Complete the required fields on the earlier steps before submitting.");
+                                                    return;
+                                                }
 
-                                            persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
-                                        }}
-                                    >
-                                        {isModDraftMode ? "Submit Mod" : isExistingSubmittedEdit ? "Save Updates" : "Submit Authorization"}
-                                    </Button>
-                                )}
+                                                persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
+                                            }}
+                                        >
+                                            {isModEditMode ? "Submit Mod" : isExistingSubmittedEdit ? "Submit Updates" : "Submit Authorization"}
+                                        </Button>
+                                    )}
+                                </Stack>
                             </Stack>
-                        </Stack>
                         </Paper>
                     </>
                 )}
+
+                <Dialog open={cancelDialogOpen} onClose={() => setCancelDialogOpen(false)} fullWidth maxWidth="sm">
+                    <DialogTitle>Unsaved Changes</DialogTitle>
+                    <DialogContent>
+                        <Typography color="text.secondary">
+                            You may have unsaved changes. Are you sure you want to cancel? Any changes that have not been saved will be lost.
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions sx={{ justifyContent: "space-between" }}>
+                        <Button onClick={() => setCancelDialogOpen(false)}>
+                            Go Back to Edit
+                        </Button>
+                        <Stack direction="row" spacing={1}>
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                disabled={isSaving}
+                                onClick={() => {
+                                    handleDiscardChangesAndCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
+                                }}
+                            >
+                                Discard Changes and Exit
+                            </Button>
+                            {canSaveProgress && (
+                                <Button
+                                    variant="contained"
+                                    startIcon={<SaveOutlinedIcon />}
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                        handleSaveAndCancel().catch((error) => showDialog("Save Error", formatError(error)));
+                                    }}
+                                >
+                                    Save Changes and Exit
+                                </Button>
+                            )}
+                        </Stack>
+                    </DialogActions>
+                </Dialog>
 
                 <Dialog open={discardDraftDialogOpen} onClose={() => setDiscardDraftDialogOpen(false)} fullWidth maxWidth="sm">
                     <DialogTitle>{isModDraftMode ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>

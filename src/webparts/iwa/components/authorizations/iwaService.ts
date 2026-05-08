@@ -7,12 +7,25 @@ import { DataSource } from "../data/ds";
 import { Base } from "gd-sprest/@types/intellisense";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
+import { ModService } from "../mods/modService";
 
 type IExecWithHeaders<T> = Base.IBaseExecution<T> & {
   headers?: { [key: string]: string };
 };
 
 export class AuthorizationService {
+
+  static getById(authorizationId: number): Promise<IAuthorizationItem> {
+    return new Promise<IAuthorizationItem>((resolve, reject) => {
+      Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(authorizationId).query({
+        Select: DataSource.authorizationSelectQuery,
+        Expand: DataSource.authorizationExpandQuery
+      }).execute(
+        (item) => resolve(item as unknown as IAuthorizationItem),
+        (error) => reject(new Error(`Error fetching Authorization ${authorizationId}: ${formatError(error)}`))
+      );
+    });
+  }
 
   // create the temp draft when NEW form opens to hold attachments
   static async createDraft(): Promise<number | undefined> {
@@ -285,8 +298,12 @@ export class AuthorizationService {
       TravelOdcService.getByAuthorization(itemId)
     ]);
 
-    const baseLaborAmount = (laborLines ?? []).reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
-    const baseTravelAmount = (travelOdcs ?? []).reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    const baseLaborAmount = (laborLines ?? [])
+      .filter((line) => line.isActive !== false && line.lineScope !== "mod")
+      .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    const baseTravelAmount = (travelOdcs ?? [])
+      .filter((line) => line.isActive !== false && line.lineScope !== "mod")
+      .reduce((total, line) => total + Number(line.amount ?? 0), 0);
     const baseGrandTotal = baseLaborAmount + baseTravelAmount;
 
     const amounts = {
@@ -296,6 +313,124 @@ export class AuthorizationService {
     };
 
     await this.updateBaseAmounts(itemId, amounts);
+
+    return amounts;
+  }
+
+  static async updateApprovedAmounts(
+    itemId: number,
+    amounts: {
+      approvedLaborAmount: number;
+      approvedTravelAmount: number;
+      approvedGrandTotal: number;
+    }
+  ): Promise<void> {
+
+    if (!itemId) {
+      throw new Error("Cannot update authorization approved totals: item.Id is missing.");
+    }
+
+    try {
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update({
+        __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+        approvedLaborAmount: amounts.approvedLaborAmount,
+        approvedTravelAmount: amounts.approvedTravelAmount,
+        approvedGrandTotal: amounts.approvedGrandTotal
+      }).executeAndWait();
+
+    } catch (error) {
+      const err = formatError(error);
+      console.error("Error updating IWA approved totals: ", error);
+      throw new Error(`Error updating IWA approved totals: ${err}`);
+    }
+  }
+
+  static async recalculateApprovedAmounts(itemId: number): Promise<{
+    approvedLaborAmount: number;
+    approvedTravelAmount: number;
+    approvedGrandTotal: number;
+  }> {
+    const [mods, laborLines, travelOdcs] = await Promise.all([
+      ModService.getByAuthorization(itemId),
+      LaborLineItemService.getByAuthorization(itemId),
+      TravelOdcService.getByAuthorization(itemId)
+    ]);
+    const approvedModIds = new Set((mods ?? [])
+      .filter((mod) => mod.modStatus === "approved")
+      .map((mod) => mod.Id));
+    const isApprovedLine = (line: { isActive?: boolean; lineScope?: string; mod?: { Id?: number } }): boolean => {
+      if (line.isActive === false) {
+        return false;
+      }
+
+      return line.lineScope !== "mod" || (!!line.mod?.Id && approvedModIds.has(line.mod.Id));
+    };
+    const approvedLaborAmount = (laborLines ?? [])
+      .filter(isApprovedLine)
+      .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    const approvedTravelAmount = (travelOdcs ?? [])
+      .filter(isApprovedLine)
+      .reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    const approvedGrandTotal = approvedLaborAmount + approvedTravelAmount;
+    const amounts = {
+      approvedLaborAmount,
+      approvedTravelAmount,
+      approvedGrandTotal
+    };
+
+    await this.updateApprovedAmounts(itemId, amounts);
+
+    return amounts;
+  }
+
+  static async recalculateAuthorizationAmounts(itemId: number): Promise<{
+    baseLaborAmount: number;
+    baseTravelAmount: number;
+    baseGrandTotal: number;
+    approvedLaborAmount: number;
+    approvedTravelAmount: number;
+    approvedGrandTotal: number;
+  }> {
+    const [mods, laborLines, travelOdcs] = await Promise.all([
+      ModService.getByAuthorization(itemId),
+      LaborLineItemService.getByAuthorization(itemId),
+      TravelOdcService.getByAuthorization(itemId)
+    ]);
+    const approvedModIds = new Set((mods ?? [])
+      .filter((mod) => mod.modStatus === "approved")
+      .map((mod) => mod.Id));
+    const activeLines = {
+      labor: (laborLines ?? []).filter((line) => line.isActive !== false),
+      travel: (travelOdcs ?? []).filter((line) => line.isActive !== false)
+    };
+    const baseLaborAmount = activeLines.labor
+      .filter((line) => line.lineScope !== "mod")
+      .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    const baseTravelAmount = activeLines.travel
+      .filter((line) => line.lineScope !== "mod")
+      .reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    const isApprovedLine = (line: { lineScope?: string; mod?: { Id?: number } }): boolean => {
+      return line.lineScope !== "mod" || (!!line.mod?.Id && approvedModIds.has(line.mod.Id));
+    };
+    const approvedLaborAmount = activeLines.labor
+      .filter(isApprovedLine)
+      .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    const approvedTravelAmount = activeLines.travel
+      .filter(isApprovedLine)
+      .reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    const amounts = {
+      baseLaborAmount,
+      baseTravelAmount,
+      baseGrandTotal: baseLaborAmount + baseTravelAmount,
+      approvedLaborAmount,
+      approvedTravelAmount,
+      approvedGrandTotal: approvedLaborAmount + approvedTravelAmount
+    };
+
+    await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(itemId).update({
+      __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+      ...amounts
+    }).executeAndWait();
 
     return amounts;
   }

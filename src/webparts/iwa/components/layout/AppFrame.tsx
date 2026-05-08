@@ -12,6 +12,7 @@ import AdminPage from "../admin/AdminPage";
 import { NotFoundPage } from "../ui/NotFoundPage";
 import { IwaForm } from "../authorizations/iwaForm";
 import { IwaDetailPage } from "../authorizations/IwaDetailPage";
+import { IwaExportPreviewPage } from "../authorizations/export/IwaExportPreviewPage";
 import { useIwa } from "../data/iwaContext";
 import Strings from "../common/strings";
 
@@ -43,6 +44,7 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
             />
 
             <Box
+                component="main"
                 sx={{
                     width: "100%",
                     px: { xs: 2, md: 3 },
@@ -83,6 +85,7 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                             );
                         }} />
                         <Route path="/authorizations/view/:id" component={IwaDetailPage} />
+                        <Route path="/authorizations/export/:id" component={IwaExportPreviewPage} />
                         <Route path="/dashboard" component={DashboardPage} />
                         <Route path="/admin" render={() => <AdminPage context={context} />} />
                         <Route component={NotFoundPage} />

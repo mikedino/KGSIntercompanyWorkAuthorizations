@@ -51,6 +51,7 @@ export type ModStatus =
   | "canceled";
 
 export type RunType = "base" | "mod";
+export type ExportType = "base" | "mod";
 
 export type WorkflowRunStatus =
   | "active"
@@ -267,14 +268,14 @@ export interface IAuthorizationItem extends ISystemFields {
   approvedLaborAmount?: number;
   approvedTravelAmount?: number;
   approvedGrandTotal?: number;
-  
+
   modCount?: number;
   currentWorkflowRun?: ILookupItem;
   effectiveApprovedRun?: ILookupItem;
-  
+
   pdfUrl?: string;
   pdfGeneratedOn?: string;
-  
+
   approvedOn?: string;
   rejectedOn?: string;
   canceledOn?: string;
@@ -300,10 +301,10 @@ export interface IModItem extends ISystemFields {
 
   currentWorkflowRun?: ILookupItem;
   effectiveApprovedRun?: ILookupItem;
-  
+
   pdfUrl?: string;
   pdfGeneratedOn?: string;
-  
+
   approvedOn?: string;
   rejectedOn?: string;
   canceledOn?: string;
@@ -395,7 +396,7 @@ export interface IWorkflowRunItem extends ISystemFields {
   runStatus: WorkflowRunStatus;
   hasDecision?: boolean;
   outcome?: WorkflowOutcome;
-  
+
   currentStepKey: WorkflowStepKey;
   pendingRole?: WorkflowRole;
   pendingApprover?: IPeoplePicker;
@@ -432,6 +433,41 @@ export interface IWorkflowActionItem extends ISystemFields {
   skipReason?: string;
   changeSummary?: string;
   changePayloadJson?: string;
+}
+
+/* =========================
+   IWA EXPORTS
+   ========================= */
+
+export interface IExportItem extends ISystemFields {
+  authorization: ILookupItem;
+  mod?: ILookupItem;
+  workflowRun?: ILookupItem;
+
+  exportType: ExportType;
+  exportLabel?: string;
+  modNumber?: number;
+
+  contractId?: string;
+  taskOrderNumber?: string;
+  donorEntity?: string;
+  receivingEntity?: string;
+
+  laborAmount?: number;
+  travelAmount?: number;
+  thisTotal?: number;
+  previousTotal?: number;
+  newTotal?: number;
+
+  approvedOn?: string;
+  generatedOn?: string;
+
+  readonly FileRef?: string;
+  readonly UniqueId: string;  //GUID
+  readonly FileLeafRef: string; //filename
+  readonly EncodedAbsUrl: string; //direct file path
+  readonly ServerRedirectedEmbedUrl: string;
+  readonly File_x0020_Type: string;
 }
 
 /* =========================

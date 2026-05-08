@@ -105,7 +105,8 @@ export class WorkflowDecisionService {
 
             if (run.runType === "mod" && run.mod?.Id) {
                 await ModService.updateWorkflowStatus(run.mod.Id, "approved", run.Id);
-                await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id);
+                const approvedAmounts = await AuthorizationService.recalculateAuthorizationAmounts(authorization.Id);
+                await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id, approvedAmounts);
             } else {
                 await AuthorizationService.updateWorkflowStatus(authorization.Id, "approved", run.Id, {
                     approvedLaborAmount: approvedAuthorization.baseLaborAmount ?? 0,

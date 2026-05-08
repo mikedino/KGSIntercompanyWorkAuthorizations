@@ -73,6 +73,10 @@ const getModStatusChipColor = (status: IModItem["modStatus"]): "default" | "info
 
 const getModLabel = (mod: IModItem): string => `Mod ${mod.modNumber ?? "-"}`;
 
+const isActiveModStatus = (status: IModItem["modStatus"]): boolean => {
+    return status === "draft" || status === "submitted" || status === "underReview";
+};
+
 const getResourceForLabor = (line: ILaborLineItem, resources: IResourceItem[]): IResourceItem | undefined => {
     const resourceIds = line.resources?.results?.map((resource) => resource.Id) ?? [];
     return resources.find((resource) => resourceIds.includes(resource.Id));
@@ -191,11 +195,11 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
 }): JSX.Element => {
     const orderedMods = React.useMemo(() => {
         return [...mods].sort((left, right) => {
-            if ((right.modNumber ?? 0) !== (left.modNumber ?? 0)) {
-                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
+            if ((left.modNumber ?? 0) !== (right.modNumber ?? 0)) {
+                return (left.modNumber ?? 0) - (right.modNumber ?? 0);
             }
 
-            return Date.parse(right.Created ?? "") - Date.parse(left.Created ?? "");
+            return Date.parse(left.Created ?? "") - Date.parse(right.Created ?? "");
         });
     }, [mods]);
 
@@ -207,7 +211,8 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                 return current;
             }
 
-            return orderedMods[0]?.Id ?? false;
+            const latestActiveMod = [...orderedMods].reverse().find((mod) => isActiveModStatus(mod.modStatus));
+            return latestActiveMod?.Id ?? orderedMods[orderedMods.length - 1]?.Id ?? false;
         });
     }, [orderedMods]);
 

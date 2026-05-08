@@ -47,7 +47,7 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization }):
         </Grid>
         <Grid size={{ xs: 12, xl: 4 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Labor Costs</Typography>
+                <Typography variant="subtitle2" fontWeight={600}>Cost Summary</Typography>
                 <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
                     {[
                         ["Base Labor", authorization.baseLaborAmount],

@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-    Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepLabel, Stepper, Tooltip, useTheme,
+    Alert, BottomNavigation, BottomNavigationAction, Box, Button, Chip, Grid, Paper, Stack, Step, StepIcon, StepLabel, Stepper, SvgIcon, Tooltip, useTheme,
     Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -9,20 +9,29 @@ import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
+import { pdf } from "@react-pdf/renderer";
 import { useHistory, useParams } from "react-router-dom";
 import { IAuthorizationItem, ILaborLineItem, IModItem, IWorkflowActionItem, IWorkflowRunItem, workflowStepLabels } from "../data/props";
 import { useIwa } from "../data/iwaContext";
+import { DataSource } from "../data/ds";
 import { formatCurrencyInputValue, formatDate, formatError, formatRelationship, normalizeDecimalInput, parseNumberOrUndefined } from "../common/utils";
-import { authorizationStatusLabels, getStatusChipColor, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
+import { authorizationStatusLabels, getStatusChipColor, modStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
 import { canEditCompensation, canViewCompensation } from "../resources/laborAccess";
+import { ResourceService } from "../resources/resourceService";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
+import { TravelOdcService } from "../travelodc/travelOdcService";
 import { useShellUi } from "../ui/ShellUiContext";
 import AlertDialog from "../ui/Alert";
 import { AuthorizationService } from "./iwaService";
 import { WorkflowDecisionService } from "../workflow/decisionService";
+import { WorkflowService } from "../workflow/workflowService";
 import { getWorkflowActionPermission } from "../workflow/workflowAccess";
 import { formatIwaChangePayload } from "../workflow/changeFormatter";
 import { ModService } from "../mods/modService";
+import { buildIwaExportViewModel } from "./export/exportViewModel";
+import { IwaExportPdfDocument } from "./export/IwaExportPdfDocument";
+import { IwaExportService } from "./export/iwaExportService";
 import { IwaHistoryTab } from "./view/IwaHistoryTab";
 import { IwaModsTab } from "./view/IwaModsTab";
 import { IwaResourcesLaborTab } from "./view/IwaResourcesLaborTab";
@@ -65,7 +74,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         lastRefreshed,
         loadAuthorizationDetail,
         modsByAuthorizationId,
-        refresh,
+        reloadAuthorizationDetailSections,
         resourcesByAuthorizationId,
         runByAuthorizationId,
         runsByAuthorizationId,
@@ -94,11 +103,16 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         return [...authorizations, ...draftAuthorizations].find((item) => item.Id === authorizationId);
     }, [authorizationId, authorizations, draftAuthorizations]);
 
-    const currentRun = runByAuthorizationId.get(authorizationId);
+    const detailRuns = React.useMemo<IWorkflowRunItem[]>(() => {
+        return runsByAuthorizationId.get(authorizationId) ?? [];
+    }, [authorizationId, runsByAuthorizationId]);
+    const currentRun = React.useMemo<IWorkflowRunItem | undefined>(() => {
+        return detailRuns.find((run) => run.runStatus === "active") ?? runByAuthorizationId.get(authorizationId);
+    }, [authorizationId, detailRuns, runByAuthorizationId]);
     const workflowRuns = React.useMemo<IWorkflowRunItem[]>(() => {
-        const runs = runsByAuthorizationId.get(authorizationId) ?? (currentRun ? [currentRun] : []);
+        const runs = detailRuns.length > 0 ? detailRuns : currentRun ? [currentRun] : [];
         return [...runs].sort((left, right) => (left.runNumber ?? 0) - (right.runNumber ?? 0));
-    }, [authorizationId, currentRun, runsByAuthorizationId]);
+    }, [currentRun, detailRuns]);
     const actions = actionsByAuthorizationId.get(authorizationId) ?? [];
     const currentRunActions = React.useMemo<IWorkflowActionItem[]>(() => {
         if (!currentRun?.Id) {
@@ -177,6 +191,53 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const draftMod = React.useMemo<IModItem | undefined>(() => {
         return mods.find((mod) => mod.modStatus === "draft") ?? draftModsByAuthorizationId.get(authorizationId);
     }, [authorizationId, draftModsByAuthorizationId, mods]);
+    const currentRunMod = React.useMemo<IModItem | undefined>(() => {
+        const modId = currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined;
+
+        if (!modId) {
+            return undefined;
+        }
+
+        return mods.find((mod) => mod.Id === modId);
+    }, [currentRun, mods]);
+    const displayedStatus = React.useMemo((): {
+        label: string;
+        color: "default" | "success" | "warning" | "error" | "info";
+    } => {
+        if (currentRun?.runType === "mod") {
+            const modStatus = currentRunMod?.modStatus ?? (currentRun.outcome === "rejected" ? "rejected" : undefined);
+
+            if (modStatus) {
+                return {
+                    label: `Mod ${modStatusLabels[modStatus]}`,
+                    color: getStatusChipColor(modStatus)
+                };
+            }
+
+            return {
+                label: currentRun.runStatus === "completed" ? "Mod Approved" : "Mod Submitted",
+                color: currentRun.runStatus === "completed" ? "success" : "warning"
+            };
+        }
+
+        return {
+            label: authorization ? authorizationStatusLabels[authorization.authorizationStatus] : "",
+            color: getStatusChipColor(authorization?.authorizationStatus)
+        };
+    }, [authorization, currentRun, currentRunMod]);
+    const displayedWorkflowStatus = React.useMemo((): {
+        label: string;
+        color: "default" | "success" | "warning" | "error" | "info";
+    } => {
+        if (currentRun?.runType === "mod" && currentRun.outcome === "rejected") {
+            return { label: "Workflow Rejected", color: "error" };
+        }
+
+        return {
+            label: currentRun ? `Workflow ${workflowRunStatusLabels[currentRun.runStatus]}` : "",
+            color: "info"
+        };
+    }, [currentRun]);
     const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
     const currentUserId = currentUser?.user?.Id;
     const canEditDraftMod = !!draftMod && !!currentUserId && draftMod.Author?.Id === currentUserId;
@@ -340,9 +401,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         }
 
         history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: `/authorizations/view/${authorization.Id}`
+            returnTo: `/authorizations/view/${authorization.Id}`,
+            modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, currentRun?.hasDecision, draftMod, history]);
+    }, [authorization, currentRun, draftMod, history]);
 
     const handleEditMod = React.useCallback((): void => {
         if (!authorization || !draftMod?.Id || !canEditDraftMod) {
@@ -363,9 +425,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         setModifyPromptOpen(false);
         history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: `/authorizations/view/${authorization.Id}`
+            returnTo: `/authorizations/view/${authorization.Id}`,
+            modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, history]);
+    }, [authorization, currentRun, history]);
 
     const handleOpenInitiateMod = React.useCallback((): void => {
         setModPromptOpen(true);
@@ -398,10 +461,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             await AuthorizationService.updateModCount(authorization.Id, nextModNumber);
 
             showBusy("Refreshing authorization...");
-            await Promise.all([
-                refresh(true),
-                loadAuthorizationDetail(authorization.Id, true)
-            ]);
+            await reloadAuthorizationDetailSections(authorization.Id, ["mods"]);
 
             sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(mod.Id));
             hideBusy();
@@ -415,7 +475,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, hideBusy, history, loadAuthorizationDetail, mods, refresh, showBusy]);
+    }, [authorization, hideBusy, history, mods, reloadAuthorizationDetailSections, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
@@ -439,6 +499,56 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         setWorkflowCommentError("");
     }, []);
 
+    const generateApprovedPdfExport = React.useCallback(async (run: IWorkflowRunItem): Promise<boolean> => {
+        const selectedExportKey = run.runType === "mod" && run.mod?.Id ? `mod-${run.mod.Id}` : "base";
+        const [
+            approvedAuthorization,
+            mods,
+            actions,
+            resources,
+            approvedLaborLines,
+            approvedTravelOdcs
+        ] = await Promise.all([
+            AuthorizationService.getById(authorizationId),
+            ModService.getByAuthorization(authorizationId),
+            WorkflowService.getActionsByAuthorization(authorizationId),
+            ResourceService.getByAuthorization(authorizationId),
+            LaborLineItemService.getByAuthorization(authorizationId),
+            TravelOdcService.getByAuthorization(authorizationId)
+        ]);
+        const taskOrder = approvedAuthorization.contractId && approvedAuthorization.invoice
+            ? (await DataSource.getInvoicesByContract(approvedAuthorization.contractId))
+                .find((invoice) => invoice.InvoiceID1 === approvedAuthorization.invoice)
+            : undefined;
+        const model = buildIwaExportViewModel(
+            approvedAuthorization,
+            mods,
+            approvedLaborLines,
+            approvedTravelOdcs,
+            actions,
+            resources,
+            selectedExportKey
+        );
+
+        if (model.option.pdfUrl) {
+            return false;
+        }
+
+        const generatedOn = new Date().toISOString();
+        const modelWithGeneratedDate = {
+            ...model,
+            option: {
+                ...model.option,
+                pdfGeneratedOn: generatedOn
+            }
+        };
+        const blob = await pdf(<IwaExportPdfDocument model={modelWithGeneratedDate} taskOrder={taskOrder} />).toBlob();
+        const pdfContent = await blob.arrayBuffer();
+
+        await IwaExportService.saveApprovedPdf(model, taskOrder, pdfContent, generatedOn);
+        return true;
+    }, [authorizationId]);
+
     const handleSubmitWorkflowDecision = React.useCallback(async (): Promise<void> => {
         if (!authorization || !currentRun || !workflowDecision) {
             return;
@@ -454,13 +564,23 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         try {
             handleCloseWorkflowDecision();
-            showBusy(decision === "approved" ? "Approving workflow step..." : "Rejecting workflow step...");
+            const shouldGeneratePdf = decision === "approved" && currentRun.currentStepKey === "cfo";
+
+            showBusy(decision === "approved"
+                ? shouldGeneratePdf ? "Approving workflow step and generating PDF export..." : "Approving workflow step..."
+                : "Rejecting workflow step...");
             await WorkflowDecisionService.submitDecision(authorization, currentRun, decision, trimmedComments);
-            await Promise.all([
-                refresh(true),
-                loadAuthorizationDetail(authorizationId, true)
-            ]);
-            showSuccess(decision === "approved" ? "Workflow step approved." : "Workflow step rejected and returned to the submitter.");
+            let generatedPdf = false;
+
+            if (shouldGeneratePdf) {
+                showBusy("Generating PDF export...");
+                generatedPdf = await generateApprovedPdfExport(currentRun);
+            }
+
+            await reloadAuthorizationDetailSections(authorizationId, ["mods", "runs", "actions"]);
+            showSuccess(decision === "approved"
+                ? generatedPdf ? "Workflow step approved. Successfully generated PDF export." : "Workflow step approved."
+                : "Workflow step rejected and returned to the submitter.");
             window.setTimeout(() => hideSuccess(), 1600);
         } catch (error) {
             hideBusy();
@@ -468,7 +588,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, authorizationId, currentRun, handleCloseWorkflowDecision, hideBusy, hideSuccess, loadAuthorizationDetail, refresh, showBusy, showSuccess, workflowComments, workflowDecision]);
+    }, [authorization, authorizationId, currentRun, generateApprovedPdfExport, handleCloseWorkflowDecision, hideBusy, hideSuccess, reloadAuthorizationDetailSections, showBusy, showSuccess, workflowComments, workflowDecision]);
 
     const handleUpdateDraft = React.useCallback((lineId: number, patch: Partial<ICompDraft>): void => {
         setCompDrafts((prev) => ({
@@ -627,14 +747,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 annualSalary: parseNumberOrUndefined(draft.annualSalary),
                 standardRate: parseNumberOrUndefined(draft.standardRate),
                 overtimeRate: parseNumberOrUndefined(draft.overtimeRate),
-                standardHours: parseNumberOrUndefined(draft.standardHours),
-                overtimeHours: parseNumberOrUndefined(draft.overtimeHours)
+                standardHours: line.standardHours,
+                overtimeHours: line.overtimeHours
             });
             await AuthorizationService.recalculateBaseAmounts(authorizationId);
-            await Promise.all([
-                refresh(true),
-                loadAuthorizationDetail(authorizationId, true)
-            ]);
+            await reloadAuthorizationDetailSections(authorizationId, ["labor"]);
             setEditingCompLineIds((prev) => ({
                 ...prev,
                 [line.Id]: false
@@ -647,7 +764,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorizationId, compDrafts, hideBusy, hideSuccess, loadAuthorizationDetail, refresh, showBusy, showSuccess]);
+    }, [authorizationId, compDrafts, hideBusy, hideSuccess, reloadAuthorizationDetailSections, showBusy, showSuccess]);
 
     if (!authorization) {
         return (
@@ -669,19 +786,22 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         <Typography variant="h4" fontWeight={600}>{authorization.Title}</Typography>
                         {headerModLabel && (
                             <Tooltip title={`${headerModLabel} is the latest Mod on this authorization.`}>
-                                <Chip icon={<AccountTreeOutlinedIcon />} label={headerModLabel} variant="outlined" />
+                                <Chip icon={<AccountTreeOutlinedIcon />} label={headerModLabel} />
                             </Tooltip>
                         )}
-                        <Chip label={authorizationStatusLabels[authorization.authorizationStatus]} color={getStatusChipColor(authorization.authorizationStatus)} />
+                        <Chip label={displayedStatus.label} color={displayedStatus.color} />
                         {draftMod && <Chip label={`Mod ${draftMod.modNumber ?? ""} Draft`} color="secondary" />}
                         <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
-                        {currentRun && <Chip label={`Workflow ${workflowRunStatusLabels[currentRun.runStatus]}`} color="info" variant="outlined" />}
+                        {currentRun && <Chip label={displayedWorkflowStatus.label} color={displayedWorkflowStatus.color} variant="outlined" />}
                     </Stack>
                     <Typography color="text.secondary">
                         {authorization.contractName || "No contract title"} | {formatRelationship(authorization.donorEntity, authorization.receivingEntity)}
                     </Typography>
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
+                    <Button variant="outlined" startIcon={<PictureAsPdfOutlinedIcon />} onClick={() => history.push(`/authorizations/export/${authorization.Id}`)}>
+                        Export Preview
+                    </Button>
                     {canEditDraftMod ? (
                         <Button variant="contained" color="secondary" startIcon={<EditOutlinedIcon />} onClick={handleEditMod}>
                             Edit Mod
@@ -721,11 +841,39 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                 "& .MuiStepConnector-root.Mui-completed .MuiStepConnector-line": { borderColor: "success.main" }
                             }}
                         >
-                            {baseWorkflowSteps.map((step) => (
-                                <Step key={step} completed={!!getStepAction(currentRunActions, step)}>
-                                    <StepLabel>{workflowStepLabels[step]}</StepLabel>
-                                </Step>
-                            ))}
+                            {baseWorkflowSteps.map((step) => {
+                                const action = getStepAction(currentRunActions, step);
+                                const isRejected = action?.actionType === "rejected";
+
+                                return (
+                                    <Step key={step} completed={!!action}>
+                                        <StepLabel
+                                            StepIconComponent={(stepIconProps) => isRejected ? (
+                                                <SvgIcon
+                                                    className={stepIconProps.className}
+                                                    viewBox="0 0 24 24"
+                                                    sx={(stepTheme) => ({
+                                                        color: "error.main",
+                                                        "& circle": {
+                                                            fill: stepTheme.palette.error.main
+                                                        },
+                                                        "& path": {
+                                                            stroke: stepTheme.palette.error.contrastText
+                                                        }
+                                                    })}
+                                                >
+                                                    <circle cx="12" cy="12" r="12" />
+                                                    <path d="M8 8l8 8M16 8l-8 8" strokeWidth="2.75" strokeLinecap="round" />
+                                                </SvgIcon>
+                                            ) : (
+                                                <StepIcon {...stepIconProps} />
+                                            )}
+                                        >
+                                            {workflowStepLabels[step]}
+                                        </StepLabel>
+                                    </Step>
+                                );
+                            })}
                         </Stepper>
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
@@ -894,7 +1042,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         handleSaveComp={handleSaveComp}
                         handleStandardRateChange={handleStandardRateChange}
                         handleStartCompEdit={handleStartCompEdit}
-                        handleUpdateDraft={handleUpdateDraft}
                         isFfpAuthorization={isFfpAuthorization}
                         laborDeltaTotal={laborDeltaTotal}
                         laborLines={laborLines}

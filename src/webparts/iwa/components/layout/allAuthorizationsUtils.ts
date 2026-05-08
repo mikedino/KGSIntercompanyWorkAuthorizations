@@ -9,6 +9,7 @@ import {
 } from "../data/props";
 import {
     authorizationStatusLabels,
+    modStatusLabels,
     getStatusChipColor
 } from "./myWorkUtils";
 
@@ -97,10 +98,93 @@ const toSearchParts = (authorization: IAuthorizationItem, run?: IWorkflowRunItem
         authorizationStatusLabels[authorization.authorizationStatus],
         run?.runStatus,
         run ? workflowRunStatusLabels[run.runStatus] : "",
+        run?.outcome,
+        run?.runType === "mod" && run.outcome === "rejected" ? "Mod Rejected" : "",
         run?.pendingRole,
         run?.pendingRole ? workflowRoleLabels[run.pendingRole] : "",
         run?.pendingApprover?.Title
     ].filter(Boolean) as string[];
+};
+
+export const getModWorkflowStatusLabel = (run?: IWorkflowRunItem): string | undefined => {
+    if (run?.runType !== "mod") {
+        return undefined;
+    }
+
+    if (run.outcome === "rejected") {
+        return "Mod Rejected";
+    }
+
+    switch (run.runStatus) {
+        case "active":
+            return "Mod Submitted";
+        case "completed":
+            return "Mod Approved";
+        case "rejected":
+            return "Mod Rejected";
+        case "canceled":
+            return "Mod Canceled";
+        case "superseded":
+            return "Mod Superseded";
+        default:
+            return "Mod Submitted";
+    }
+};
+
+export const getRowAuthorizationStatusLabel = (row: IAllAuthorizationsRow): string => {
+    if (row.isModDraft) {
+        return "Mod Draft";
+    }
+
+    return getModWorkflowStatusLabel(row.currentRun) ?? authorizationStatusLabels[row.authorization.authorizationStatus];
+};
+
+export const getRowAuthorizationStatusColor = (
+    row: IAllAuthorizationsRow
+): "default" | "success" | "warning" | "error" | "info" => {
+    if (row.isModDraft) {
+        return getStatusChipColor("draft");
+    }
+
+    if (row.currentRun?.runType === "mod") {
+        if (row.currentRun.outcome === "rejected") {
+            return "error";
+        }
+
+        switch (row.currentRun.runStatus) {
+            case "active":
+                return "warning";
+            case "completed":
+                return "success";
+            case "rejected":
+            case "canceled":
+                return "error";
+            case "superseded":
+                return "default";
+            default:
+                return "info";
+        }
+    }
+
+    return getStatusChipColor(row.authorization.authorizationStatus);
+};
+
+export const getRowWorkflowStatusLabel = (row: IAllAuthorizationsRow): string => {
+    if (row.currentRun?.runType === "mod" && row.currentRun.outcome === "rejected") {
+        return "Rejected";
+    }
+
+    return row.currentRun ? workflowRunStatusLabels[row.currentRun.runStatus] : "";
+};
+
+export const getRowWorkflowStatusColor = (
+    row: IAllAuthorizationsRow
+): "default" | "success" | "warning" | "error" | "info" => {
+    if (row.currentRun?.runType === "mod" && row.currentRun.outcome === "rejected") {
+        return "error";
+    }
+
+    return getWorkflowStatusChipColor(row.currentRun?.runStatus);
 };
 
 /**
@@ -190,7 +274,7 @@ const matchesPresetView = (
         case "expiredOrClosed":
             return closedAuthorizationStatuses.includes(row.authorization.authorizationStatus) || isExpired(row.authorization);
         case "rejected":
-            return row.authorization.authorizationStatus === "rejected" || row.currentRun?.runStatus === "rejected";
+            return row.authorization.authorizationStatus === "rejected" || row.currentRun?.runStatus === "rejected" || row.currentRun?.outcome === "rejected";
         case "withMods":
             return row.hasMods;
         case "all":
@@ -254,9 +338,9 @@ const getSortValue = (
 ): string | number => {
     switch (sortField) {
         case "authorizationStatus":
-            return authorizationStatusLabels[row.authorization.authorizationStatus];
+            return getRowAuthorizationStatusLabel(row);
         case "workflowStatus":
-            return row.currentRun ? workflowRunStatusLabels[row.currentRun.runStatus] : "";
+            return getRowWorkflowStatusLabel(row);
         case "pendingRole":
             return row.currentRun?.pendingRole ? workflowRoleLabels[row.currentRun.pendingRole as WorkflowRole] : "";
         case "assignedDate":
@@ -337,8 +421,8 @@ export const exportAllAuthorizationRows = (
             row.authorization.receivingEntity ?? "",
             row.authorization.og ?? "",
             row.authorization.lob ?? "",
-            authorizationStatusLabels[row.authorization.authorizationStatus],
-            row.currentRun ? workflowRunStatusLabels[row.currentRun.runStatus] : "",
+            getRowAuthorizationStatusLabel(row),
+            getRowWorkflowStatusLabel(row),
             row.currentRun?.pendingRole ? workflowRoleLabels[row.currentRun.pendingRole] : "",
             row.currentRun?.stepAssignedDate ?? "",
             row.authorization.baseGrandTotal ?? "",
@@ -360,4 +444,4 @@ export const exportAllAuthorizationRows = (
     URL.revokeObjectURL(url);
 };
 
-export { authorizationStatusLabels, getStatusChipColor };
+export { authorizationStatusLabels, modStatusLabels, getStatusChipColor };

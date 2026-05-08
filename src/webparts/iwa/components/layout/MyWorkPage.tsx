@@ -153,6 +153,10 @@ const getMyWorkStatusLabel = (row: IMyWorkRow): string => {
     }
 
     if (row.currentRun?.runType === "mod") {
+        if (row.currentRun.outcome === "rejected") {
+            return "Mod Rejected";
+        }
+
         switch (row.currentRun.runStatus) {
             case "active":
                 return "Mod Submitted";
@@ -176,6 +180,10 @@ const getMyWorkStatusChipColor = (
     row: IMyWorkRow
 ): "default" | "success" | "warning" | "error" | "info" => {
     if (row.currentRun?.runType === "mod") {
+        if (row.currentRun.outcome === "rejected") {
+            return "error";
+        }
+
         switch (row.currentRun.runStatus) {
             case "active":
                 return "warning";

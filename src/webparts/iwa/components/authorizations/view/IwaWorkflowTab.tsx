@@ -6,7 +6,7 @@ import SummarizeOutlinedIcon from "@mui/icons-material/SummarizeOutlined";
 import { IAuthorizationItem, IWorkflowActionItem, IWorkflowRunItem, WorkflowStepKey, workflowStepLabels } from "../../data/props";
 import { formatDate } from "../../common/utils";
 import { workflowRunStatusLabels } from "../../layout/allAuthorizationsUtils";
-import { baseWorkflowSteps, getStepAction, getWorkflowActionChipColor, getWorkflowStepApprover } from "./iwaViewUtils";
+import { baseWorkflowSteps, getModScopeChipColor, getModScopeLabel, getStepAction, getWorkflowActionChipColor, getWorkflowStepApprover } from "./iwaViewUtils";
 
 interface IIwaWorkflowTabProps {
     actions: IWorkflowActionItem[];
@@ -57,6 +57,12 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between" sx={{ width: "100%", pr: 1 }}>
                             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                                 <Typography variant="h6" fontWeight={600}>Run {run.runNumber ?? "-"}</Typography>
+                                <Chip
+                                    label={getModScopeLabel({ lineScope: run.runType, mod: run.mod })}
+                                    size="small"
+                                    color={getModScopeChipColor({ lineScope: run.runType })}
+                                    variant="outlined"
+                                />
                                 <Chip label={workflowRunStatusLabels[run.runStatus]} size="small" color={run.runStatus === "active" ? "info" : run.runStatus === "completed" ? "success" : "default"} variant={run.runStatus === "superseded" ? "outlined" : "filled"} />
                                 {modifiedAction && (
                                     <Button
@@ -116,7 +122,15 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                                     width: 14,
                                                     height: 14,
                                                     borderRadius: "50%",
-                                                    bgcolor: isCurrent ? theme.palette.warning.main : skipped ? theme.palette.divider : action ? theme.palette.success.main : theme.palette.divider,
+                                                    bgcolor: isCurrent
+                                                        ? theme.palette.warning.main
+                                                        : skipped
+                                                            ? theme.palette.divider
+                                                            : action?.actionType === "rejected"
+                                                                ? theme.palette.error.main
+                                                                : action
+                                                                    ? theme.palette.success.main
+                                                                    : theme.palette.divider,
                                                     border: `2px solid ${theme.palette.background.paper}`
                                                 })}
                                             />

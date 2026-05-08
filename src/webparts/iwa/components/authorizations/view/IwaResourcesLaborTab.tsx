@@ -5,11 +5,11 @@ import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import { ILaborLineItem, IModItem, IResourceItem } from "../../data/props";
-import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput, parseNumberOrUndefined } from "../../common/utils";
+import { formatCurrency, parseNumberOrUndefined } from "../../common/utils";
 import { resolveLaborCompensation } from "../../resources/laborMath";
 import {
     compactCurrencyInputSx,
-    compactNumberInputSx,
+    formatModLabel,
     getModScopeChipColor,
     getModScopeLabel,
     getResourceNamesForLabor,
@@ -26,6 +26,8 @@ interface ILaborTotals {
     totalAmount: number;
 }
 
+type ResourceScopeFilter = "all" | "base" | `mod-${number}`;
+
 interface IIwaResourcesLaborTabProps {
     canEditCompInHrReview: boolean;
     canEditCompLine: (line: ILaborLineItem) => boolean;
@@ -39,7 +41,6 @@ interface IIwaResourcesLaborTabProps {
     handleSaveComp: (line: ILaborLineItem) => void;
     handleStandardRateChange: (lineId: number, value: string) => void;
     handleStartCompEdit: (line: ILaborLineItem) => void;
-    handleUpdateDraft: (lineId: number, patch: Partial<ICompDraft>) => void;
     isFfpAuthorization: boolean;
     laborDeltaTotal: number;
     laborLines: ILaborLineItem[];
@@ -63,7 +64,6 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
     handleSaveComp,
     handleStandardRateChange,
     handleStartCompEdit,
-    handleUpdateDraft,
     isFfpAuthorization,
     laborDeltaTotal,
     laborLines,
@@ -73,41 +73,63 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
     resourceRosterRows,
     resources
 }): JSX.Element => {
-    const latestMod = React.useMemo(() => {
-        return [...mods].sort((left, right) => {
-            if ((right.modNumber ?? 0) !== (left.modNumber ?? 0)) {
-                return (right.modNumber ?? 0) - (left.modNumber ?? 0);
-            }
+    const modFilterOptions = React.useMemo(() => {
+        return [...mods]
+            .sort((left, right) => {
+                if ((left.modNumber ?? 0) !== (right.modNumber ?? 0)) {
+                    return (left.modNumber ?? 0) - (right.modNumber ?? 0);
+                }
 
-            return Date.parse(right.Created ?? "") - Date.parse(left.Created ?? "");
-        })[0];
+                return Date.parse(left.Created ?? "") - Date.parse(right.Created ?? "");
+            })
+            .map((mod) => ({
+                id: mod.Id,
+                label: formatModLabel(mod.modNumber),
+                value: `mod-${mod.Id}` as ResourceScopeFilter
+            }));
     }, [mods]);
-    const latestModLabel = latestMod ? getModScopeLabel({ lineScope: "mod", mod: latestMod }) : "this Mod";
-    const latestModId = latestMod?.Id;
-    const [resourceScope, setResourceScope] = React.useState<"mod" | "all">("all");
+    const [resourceScope, setResourceScope] = React.useState<ResourceScopeFilter>("all");
 
     React.useEffect(() => {
-        if (!latestModId) {
+        if (resourceScope === "all" || resourceScope === "base") {
+            return;
+        }
+
+        const modId = Number(resourceScope.replace("mod-", ""));
+        const modExists = modFilterOptions.some((option) => option.id === modId);
+
+        if (!modExists) {
             setResourceScope("all");
         }
-    }, [latestModId]);
+    }, [modFilterOptions, resourceScope]);
 
     const visibleLaborLines = React.useMemo(() => {
-        if (resourceScope !== "mod" || !latestModId) {
+        if (resourceScope === "all") {
             return laborLines;
         }
 
-        return laborLines.filter((line) => line.lineScope === "mod" && line.mod?.Id === latestModId);
-    }, [laborLines, latestModId, resourceScope]);
+        if (resourceScope === "base") {
+            return laborLines.filter((line) => line.lineScope !== "mod");
+        }
+
+        const modId = Number(resourceScope.replace("mod-", ""));
+        return laborLines.filter((line) => line.lineScope === "mod" && line.mod?.Id === modId);
+    }, [laborLines, resourceScope]);
     const visibleResourceRosterRows = React.useMemo(() => {
-        if (resourceScope !== "mod" || !latestModId) {
+        if (resourceScope === "all") {
             return resourceRosterRows;
         }
 
-        return resourceRosterRows.filter((resource) => resource.labels.includes(latestModLabel));
-    }, [latestModId, latestModLabel, resourceRosterRows, resourceScope]);
+        const label = resourceScope === "base"
+            ? "BASE"
+            : modFilterOptions.find((option) => option.value === resourceScope)?.label;
+
+        return label
+            ? resourceRosterRows.filter((resource) => resource.labels.includes(label))
+            : resourceRosterRows;
+    }, [modFilterOptions, resourceRosterRows, resourceScope]);
     const visibleLaborTotals = React.useMemo(() => {
-        if (resourceScope !== "mod") {
+        if (resourceScope === "all") {
             return laborTotals;
         }
 
@@ -118,12 +140,17 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
         }), { standardHours: 0, overtimeHours: 0, totalAmount: 0 });
     }, [laborTotals, resourceScope, visibleLaborLines]);
     const visibleLaborDeltaTotal = React.useMemo(() => {
-        if (resourceScope !== "mod") {
+        if (resourceScope === "all") {
             return laborDeltaTotal;
         }
 
         return visibleLaborLines.reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
     }, [laborDeltaTotal, resourceScope, visibleLaborLines]);
+    const selectedScopeLabel = resourceScope === "all"
+        ? "all resources for all Mods"
+        : resourceScope === "base"
+            ? "only the original BASE resources"
+            : `only the resources added or changed on ${modFilterOptions.find((option) => option.value === resourceScope)?.label ?? "this Mod"}`;
 
     return (
     <Stack spacing={2}>
@@ -139,25 +166,27 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 )}
             </Stack>
         )}
-        {latestModId && (
+        {modFilterOptions.length > 0 && (
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
                 <ToggleButtonGroup
                     exclusive
                     size="small"
                     value={resourceScope}
-                    onChange={(_event, value: "mod" | "all" | null) => {
+                    onChange={(_event, value: ResourceScopeFilter | null) => {
                         if (value) {
                             setResourceScope(value);
                         }
                     }}
+                    sx={{ flexWrap: "wrap", gap: 0.5, "& .MuiToggleButtonGroup-grouped": { borderRadius: 1, borderLeft: "1px solid", borderColor: "divider" } }}
                 >
-                    <ToggleButton value="mod">Show latest Mod</ToggleButton>
-                    <ToggleButton value="all">Show all</ToggleButton>
+                    <ToggleButton value="all">All</ToggleButton>
+                    <ToggleButton value="base">BASE</ToggleButton>
+                    {modFilterOptions.map((option) => (
+                        <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
+                    ))}
                 </ToggleButtonGroup>
                 <Typography variant="caption" color="text.secondary">
-                    {resourceScope === "mod"
-                        ? `Only show the resources added or changed on ${latestModLabel}.`
-                        : "Show all resources for all Mods."}
+                    Showing {selectedScopeLabel}.
                 </Typography>
             </Stack>
         )}
@@ -248,16 +277,8 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                         </TableCell>
                                         <TableCell>{line.jobId || "-"}</TableCell>
                                         <TableCell>{lineResource?.laborCategory || "-"}</TableCell>
-                                        <TableCell align="right">
-                                            {isEditingComp ? (
-                                                <TextField size="small" value={draft.standardHours} onChange={(event) => handleUpdateDraft(line.Id, { standardHours: normalizeDecimalInput(event.target.value) })} sx={compactNumberInputSx} />
-                                            ) : line.standardHours ?? "-"}
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            {isEditingComp ? (
-                                                <TextField size="small" value={draft.overtimeHours} onChange={(event) => handleUpdateDraft(line.Id, { overtimeHours: normalizeDecimalInput(event.target.value) })} sx={compactNumberInputSx} />
-                                            ) : line.overtimeHours ?? "-"}
-                                        </TableCell>
+                                        <TableCell align="right">{line.standardHours ?? "-"}</TableCell>
+                                        <TableCell align="right">{line.overtimeHours ?? "-"}</TableCell>
                                         {mayViewComp && (
                                             <TableCell align="right">
                                                 {isEditingComp ? (
@@ -277,7 +298,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                 {isEditingComp ? (
                                                     <TextField
                                                         size="small"
-                                                        value={draft.standardRate || formatCurrencyInputValue(preview.standardRate)}
+                                                        value={draft.standardRate}
                                                         onChange={(event) => handleStandardRateChange(line.Id, event.target.value)}
                                                         onBlur={() => handleCurrencyDraftBlur(line.Id, "standardRate")}
                                                         sx={compactCurrencyInputSx}
@@ -291,7 +312,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                 {isEditingComp ? (
                                                     <TextField
                                                         size="small"
-                                                        value={draft.overtimeRate || formatCurrencyInputValue(preview.overtimeRate)}
+                                                        value={draft.overtimeRate}
                                                         onChange={(event) => handleOvertimeRateChange(line.Id, event.target.value)}
                                                         onBlur={() => handleCurrencyDraftBlur(line.Id, "overtimeRate")}
                                                         sx={compactCurrencyInputSx}
@@ -383,7 +404,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 ))}
                 {visibleResourceRosterRows.length === 0 && (
                     <Grid size={{ xs: 12 }}>
-                        <Typography variant="body2" color="text.secondary">No resources were added or changed on {latestModLabel}.</Typography>
+                        <Typography variant="body2" color="text.secondary">No resources found for the selected filter.</Typography>
                     </Grid>
                 )}
             </Grid>

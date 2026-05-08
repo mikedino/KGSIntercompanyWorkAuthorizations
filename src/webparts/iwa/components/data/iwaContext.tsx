@@ -19,6 +19,8 @@ import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
 import { WorkflowService } from "../workflow/workflowService";
 
+export type AuthorizationDetailSection = "mods" | "runs" | "actions" | "resources" | "labor" | "travel";
+
 export interface IIwaContext {
   authorizations: IAuthorizationItem[];
   draftAuthorizations: IAuthorizationItem[];
@@ -46,6 +48,7 @@ export interface IIwaContext {
 
   isAuthorizationDetailLoading: (authorizationId: number) => boolean;
   loadAuthorizationDetail: (authorizationId: number, force?: boolean) => Promise<boolean>;
+  reloadAuthorizationDetailSections: (authorizationId: number, sections: AuthorizationDetailSection[]) => Promise<boolean>;
   clearAuthorizationDetailCache: (authorizationId?: number) => boolean;
 
   dashboardActions: IWorkflowActionItem[];
@@ -213,6 +216,90 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     return appUserByUserId.get(userId);
   }, [appUserByUserId]);
 
+  const setDetailSections = useCallback((
+    authorizationId: number,
+    values: {
+      mods?: IModItem[];
+      runs?: IWorkflowRunItem[];
+      actions?: IWorkflowActionItem[];
+      resources?: IResourceItem[];
+      laborLines?: ILaborLineItem[];
+      travelOdcs?: ITravelOdcItem[];
+    }
+  ): void => {
+    if (values.mods) {
+      const sortedMods: IModItem[] = [...values.mods].sort((a: IModItem, b: IModItem): number => {
+        return (a.modNumber ?? 0) - (b.modNumber ?? 0);
+      });
+
+      setModsByAuthorizationId((prev: Map<number, IModItem[]>): Map<number, IModItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedMods);
+        return next;
+      });
+    }
+
+    if (values.runs) {
+      const sortedRuns: IWorkflowRunItem[] = [...values.runs].sort((a: IWorkflowRunItem, b: IWorkflowRunItem): number => {
+        return (b.runNumber ?? 0) - (a.runNumber ?? 0);
+      });
+
+      setRunsByAuthorizationId((prev: Map<number, IWorkflowRunItem[]>): Map<number, IWorkflowRunItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedRuns);
+        return next;
+      });
+    }
+
+    if (values.actions) {
+      const sortedActions: IWorkflowActionItem[] = [...values.actions].sort((a: IWorkflowActionItem, b: IWorkflowActionItem): number => {
+        return new Date(b.actionDate).getTime() - new Date(a.actionDate).getTime();
+      });
+
+      setActionsByAuthorizationId((prev: Map<number, IWorkflowActionItem[]>): Map<number, IWorkflowActionItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedActions);
+        return next;
+      });
+    }
+
+    if (values.resources) {
+      const sortedResources: IResourceItem[] = [...values.resources].sort((a: IResourceItem, b: IResourceItem): number => {
+        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      });
+
+      setResourcesByAuthorizationId((prev: Map<number, IResourceItem[]>): Map<number, IResourceItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedResources);
+        return next;
+      });
+    }
+
+    if (values.laborLines) {
+      const sortedLaborLines: ILaborLineItem[] = [...values.laborLines].sort((a: ILaborLineItem, b: ILaborLineItem): number => {
+        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      });
+
+      setLaborLinesByAuthorizationId((prev: Map<number, ILaborLineItem[]>): Map<number, ILaborLineItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedLaborLines);
+        return next;
+      });
+    }
+
+    if (values.travelOdcs) {
+      const sortedTravelOdcs: ITravelOdcItem[] = [...values.travelOdcs].sort((a: ITravelOdcItem, b: ITravelOdcItem): number => {
+        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      });
+
+      setTravelOdcsByAuthorizationId((prev: Map<number, ITravelOdcItem[]>): Map<number, ITravelOdcItem[]> => {
+        const next = new Map(prev);
+        next.set(authorizationId, sortedTravelOdcs);
+        return next;
+      });
+    }
+  }, []);
+
   const clearAuthorizationDetailCache = useCallback((authorizationId?: number): boolean => {
     if (typeof authorizationId === "number" && authorizationId > 0) {
       setModsByAuthorizationId((prev: Map<number, IModItem[]>): Map<number, IModItem[]> => {
@@ -330,64 +417,13 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
         TravelOdcService.getByAuthorization(authorizationId)
       ]);
 
-      const sortedMods: IModItem[] = [...(mods ?? [])].sort((a: IModItem, b: IModItem): number => {
-        return (a.modNumber ?? 0) - (b.modNumber ?? 0);
-      });
-
-      const sortedRuns: IWorkflowRunItem[] = [...(runs ?? [])].sort((a: IWorkflowRunItem, b: IWorkflowRunItem): number => {
-        return (b.runNumber ?? 0) - (a.runNumber ?? 0);
-      });
-
-      const sortedActions: IWorkflowActionItem[] = [...(actions ?? [])].sort((a: IWorkflowActionItem, b: IWorkflowActionItem): number => {
-        return new Date(b.actionDate).getTime() - new Date(a.actionDate).getTime();
-      });
-
-      const sortedResources: IResourceItem[] = [...(resources ?? [])].sort((a: IResourceItem, b: IResourceItem): number => {
-        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
-      });
-
-      const sortedLaborLines: ILaborLineItem[] = [...(laborLines ?? [])].sort((a: ILaborLineItem, b: ILaborLineItem): number => {
-        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
-      });
-
-      const sortedTravelOdcs: ITravelOdcItem[] = [...(travelOdcs ?? [])].sort((a: ITravelOdcItem, b: ITravelOdcItem): number => {
-        return (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
-      });
-
-      setModsByAuthorizationId((prev: Map<number, IModItem[]>): Map<number, IModItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedMods);
-        return next;
-      });
-
-      setRunsByAuthorizationId((prev: Map<number, IWorkflowRunItem[]>): Map<number, IWorkflowRunItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedRuns);
-        return next;
-      });
-
-      setActionsByAuthorizationId((prev: Map<number, IWorkflowActionItem[]>): Map<number, IWorkflowActionItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedActions);
-        return next;
-      });
-
-      setResourcesByAuthorizationId((prev: Map<number, IResourceItem[]>): Map<number, IResourceItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedResources);
-        return next;
-      });
-
-      setLaborLinesByAuthorizationId((prev: Map<number, ILaborLineItem[]>): Map<number, ILaborLineItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedLaborLines);
-        return next;
-      });
-
-      setTravelOdcsByAuthorizationId((prev: Map<number, ITravelOdcItem[]>): Map<number, ITravelOdcItem[]> => {
-        const next = new Map(prev);
-        next.set(authorizationId, sortedTravelOdcs);
-        return next;
+      setDetailSections(authorizationId, {
+        mods: mods ?? [],
+        runs: runs ?? [],
+        actions: actions ?? [],
+        resources: resources ?? [],
+        laborLines: laborLines ?? [],
+        travelOdcs: travelOdcs ?? []
       });
 
       return true;
@@ -406,7 +442,78 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
         return next;
       });
     }
-  }, [onError]);
+  }, [onError, setDetailSections]);
+
+  const reloadAuthorizationDetailSections = useCallback(async (
+    authorizationId: number,
+    sections: AuthorizationDetailSection[]
+  ): Promise<boolean> => {
+    if (!authorizationId || authorizationId <= 0 || sections.length === 0) {
+      return false;
+    }
+
+    const uniqueSections = Array.from(new Set(sections));
+
+    setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
+      const next = new Map(prev);
+      next.set(authorizationId, true);
+      authorizationDetailLoadingRef.current = next;
+      return next;
+    });
+
+    try {
+      const values: {
+        mods?: IModItem[];
+        runs?: IWorkflowRunItem[];
+        actions?: IWorkflowActionItem[];
+        resources?: IResourceItem[];
+        laborLines?: ILaborLineItem[];
+        travelOdcs?: ITravelOdcItem[];
+      } = {};
+
+      await Promise.all(uniqueSections.map(async (section: AuthorizationDetailSection): Promise<void> => {
+        switch (section) {
+          case "mods":
+            values.mods = await ModService.getByAuthorization(authorizationId);
+            break;
+          case "runs":
+            values.runs = await WorkflowService.getRunsByAuthorization(authorizationId);
+            break;
+          case "actions":
+            values.actions = await WorkflowService.getActionsByAuthorization(authorizationId);
+            break;
+          case "resources":
+            values.resources = await ResourceService.getByAuthorization(authorizationId);
+            break;
+          case "labor":
+            values.laborLines = await LaborLineItemService.getByAuthorization(authorizationId);
+            break;
+          case "travel":
+            values.travelOdcs = await TravelOdcService.getByAuthorization(authorizationId);
+            break;
+          default:
+            break;
+        }
+      }));
+
+      setDetailSections(authorizationId, values);
+      return true;
+
+    } catch (error) {
+      const message = `Error reloading authorization detail for authorization ${authorizationId}: ${formatError(error)}`;
+      console.error("Error reloading authorization detail", error);
+      onError?.("Authorization Detail Error", message);
+      return false;
+
+    } finally {
+      setAuthorizationDetailLoading((prev: Map<number, boolean>): Map<number, boolean> => {
+        const next = new Map(prev);
+        next.set(authorizationId, false);
+        authorizationDetailLoadingRef.current = next;
+        return next;
+      });
+    }
+  }, [onError, setDetailSections]);
 
   const clearDashboardActionsCache = useCallback((): boolean => {
     setDashboardActions([]);
@@ -517,6 +624,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
 
       isAuthorizationDetailLoading,
       loadAuthorizationDetail,
+      reloadAuthorizationDetailSections,
       clearAuthorizationDetailCache,
 
       dashboardActions,
@@ -552,6 +660,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     isRefreshing,
     lastRefreshed,
     loadAuthorizationDetail,
+    reloadAuthorizationDetailSections,
     loadDashboardActions,
     loadMyActions,
     modsByAuthorizationId,

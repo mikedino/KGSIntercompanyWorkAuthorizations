@@ -1155,6 +1155,166 @@ export const Configuration = Helper.SPConfig({
     },
 
     /* =========================
+       IWA EXPORTS
+       ========================= */
+    {
+      ListInformation: {
+        Title: Strings.Sites.main.lists.Exports,
+        Description: "*DO NOT DELETE* CFO accounting PDF exports generated after base IWA or Mod approval.",
+        BaseTemplate: SPTypes.ListTemplateType.DocumentLibrary,
+        OnQuickLaunch: false
+      },
+      CustomFields: [
+        {
+          name: "authorization",
+          title: "Authorization",
+          type: Helper.SPCfgFieldType.Lookup,
+          listName: Strings.Sites.main.lists.Authorizations,
+          showField: "ID",
+          required: true,
+          indexed: true
+        } as Helper.IFieldInfoLookup,
+        {
+          name: "mod",
+          title: "Mod",
+          type: Helper.SPCfgFieldType.Lookup,
+          listName: Strings.Sites.main.lists.Mods,
+          showField: "ID",
+          indexed: true
+        } as Helper.IFieldInfoLookup,
+        {
+          name: "workflowRun",
+          title: "Workflow Run",
+          type: Helper.SPCfgFieldType.Lookup,
+          listName: Strings.Sites.main.lists.WorkflowRuns,
+          showField: "ID",
+          indexed: true
+        } as Helper.IFieldInfoLookup,
+        {
+          name: "exportType",
+          title: "Export Type",
+          type: Helper.SPCfgFieldType.Choice,
+          choices: ["base", "mod"],
+          defaultValue: "base",
+          multi: false,
+          indexed: true
+        } as Helper.IFieldInfoChoice,
+        {
+          name: "exportLabel",
+          title: "Export Label",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
+          name: "modNumber",
+          title: "Mod Number",
+          type: Helper.SPCfgFieldType.Number,
+          decimals: 0,
+          indexed: true
+        } as Helper.IFieldInfoNumber,
+        {
+          name: "contractId",
+          title: "Contract ID",
+          type: Helper.SPCfgFieldType.Text,
+          indexed: true
+        },
+        {
+          name: "taskOrderNumber",
+          title: "Task Order Number",
+          type: Helper.SPCfgFieldType.Text,
+          indexed: true
+        },
+        {
+          name: "donorEntity",
+          title: "Donor Entity",
+          type: Helper.SPCfgFieldType.Text,
+          indexed: true
+        },
+        {
+          name: "receivingEntity",
+          title: "Receiving Entity",
+          type: Helper.SPCfgFieldType.Text,
+          indexed: true
+        },
+        {
+          name: "laborAmount",
+          title: "Labor Amount",
+          description: "Labor total for this base IWA or Mod export.",
+          type: Helper.SPCfgFieldType.Currency,
+          decimals: 2,
+          defaultValue: "0"
+        } as Helper.IFieldInfoCurrency,
+        {
+          name: "travelAmount",
+          title: "Travel / ODC Amount",
+          description: "Travel/ODC total for this base IWA or Mod export.",
+          type: Helper.SPCfgFieldType.Currency,
+          decimals: 2,
+          defaultValue: "0"
+        } as Helper.IFieldInfoCurrency,
+        {
+          name: "thisTotal",
+          title: "This Total",
+          description: "Total amount for this base IWA or Mod export.",
+          type: Helper.SPCfgFieldType.Currency,
+          decimals: 2,
+          defaultValue: "0"
+        } as Helper.IFieldInfoCurrency,
+        {
+          name: "previousTotal",
+          title: "Previous Total",
+          type: Helper.SPCfgFieldType.Currency,
+          decimals: 2,
+          defaultValue: "0"
+        } as Helper.IFieldInfoCurrency,
+        {
+          name: "newTotal",
+          title: "New Total",
+          type: Helper.SPCfgFieldType.Currency,
+          decimals: 2,
+          defaultValue: "0"
+        } as Helper.IFieldInfoCurrency,
+        {
+          name: "approvedOn",
+          title: "Approved On",
+          type: Helper.SPCfgFieldType.Date,
+          format: SPTypes.DateFormat.DateTime,
+          indexed: true
+        } as Helper.IFieldInfoDate,
+        {
+          name: "generatedOn",
+          title: "Generated On",
+          type: Helper.SPCfgFieldType.Date,
+          format: SPTypes.DateFormat.DateTime,
+          indexed: true
+        } as Helper.IFieldInfoDate
+      ],
+      ViewInformation: [
+        {
+          ViewName: "All Documents",
+          Default: true,
+          ViewQuery: `
+            <OrderBy>
+              <FieldRef Name="generatedOn" Ascending="FALSE"/>
+              <FieldRef Name="Created" Ascending="FALSE"/>
+            </OrderBy>`,
+          ViewFields: [
+            "DocIcon",
+            "LinkFilename",
+            "authorization",
+            "exportType",
+            "modNumber",
+            "contractId",
+            "taskOrderNumber",
+            "thisTotal",
+            "newTotal",
+            "approvedOn",
+            "generatedOn"
+          ]
+        }
+      ]
+    },
+
+    /* =========================
        IWA APP USERS
        ========================= */
     {

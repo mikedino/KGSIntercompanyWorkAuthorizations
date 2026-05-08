@@ -26,6 +26,7 @@
     "@mui/material": "^7.3.9",
     "@mui/x-date-pickers": "8.27.2",
     "@pnp/spfx-controls-react": "3.23.0",
+    "@react-pdf/renderer": "3.4.5",
     "dattatable": "^2.11.65",
     "dayjs": "^1.11.20",
     "gd-sprest": "^9.7.3",

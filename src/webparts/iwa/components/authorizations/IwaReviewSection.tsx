@@ -43,6 +43,31 @@ const totalsRowSx = {
     }
 };
 
+const hasText = (value?: string): boolean => Boolean((value ?? "").trim());
+
+const hasNumericValue = (value?: string): boolean => {
+    if (!hasText(value)) {
+        return false;
+    }
+
+    return !Number.isNaN(Number(value));
+};
+
+const isVisibleFfpLaborRow = (row: IEditableFfpLaborRow): boolean => {
+    return hasText(row.jobId) ||
+        hasNumericValue(row.periodQty) ||
+        hasNumericValue(row.lumpSumAmount) ||
+        row.resourceRowIds.length > 0 ||
+        hasText(row.comments);
+};
+
+const isVisibleTravelRow = (row: IEditableTravelRow): boolean => {
+    return hasText(row.jobId) ||
+        hasText(row.description) ||
+        hasNumericValue(row.amount) ||
+        hasText(row.comments);
+};
+
 export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
     attachmentsCount,
     ffpLaborRows,
@@ -71,10 +96,10 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
         }), { standardHours: 0, overtimeHours: 0 });
     }, [resourceRows]);
     const travelTotal = React.useMemo(() => {
-        return travelRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+        return travelRows.filter(isVisibleTravelRow).reduce((total, row) => total + Number(row.amount || 0), 0);
     }, [travelRows]);
     const ffpLaborTotal = React.useMemo(() => {
-        return ffpLaborRows.reduce((total, row) => total + Number(row.lumpSumAmount || 0), 0);
+        return ffpLaborRows.filter(isVisibleFfpLaborRow).reduce((total, row) => total + Number(row.lumpSumAmount || 0), 0);
     }, [ffpLaborRows]);
     const getResourceNames = React.useCallback((resourceRowIds: string[]): string => {
         const names = resourceRowIds
@@ -83,6 +108,9 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
 
         return names.length ? names.join(", ") : "—";
     }, [resourceRows]);
+    const contractType = selectedContractType.value;
+    const visibleFfpLaborRows = React.useMemo(() => ffpLaborRows.filter(isVisibleFfpLaborRow), [ffpLaborRows]);
+    const visibleTravelRows = React.useMemo(() => travelRows.filter(isVisibleTravelRow), [travelRows]);
 
     return (
         <Paper sx={{ p: { xs: 2, md: 3 } }}>
@@ -119,7 +147,7 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                 <Grid size={{ xs: 12 }}>
                     <Stack spacing={1.25}>
                         <Typography variant="subtitle2" fontWeight={600}>Resources</Typography>
-                        {form.contractType === "ffp" && (
+                        {contractType === "ffp" && (
                             <TableContainer>
                                 <Table size="small" sx={quietTableSx}>
                                     <TableHead>
@@ -132,13 +160,13 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                             </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {ffpLaborRows.length === 0 ? (
+                                        {visibleFfpLaborRows.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={5}>No FFP labor / CLIN lines entered.</TableCell>
                                             </TableRow>
                                         ) : (
                                             <>
-                                                {ffpLaborRows.map((row) => {
+                                                {visibleFfpLaborRows.map((row) => {
                                                     const total = Number(row.lumpSumAmount || 0);
 
                                                     return (
@@ -151,7 +179,7 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                         </TableRow>
                                                     );
                                                 })}
-                                                {ffpLaborRows.length > 1 && (
+                                                {visibleFfpLaborRows.length > 1 && (
                                                     <TableRow sx={totalsRowSx}>
                                                         <TableCell colSpan={3}>Totals</TableCell>
                                                         <TableCell align="right">{formatCurrency(ffpLaborTotal)}</TableCell>
@@ -171,15 +199,15 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                         <TableCell>Employee</TableCell>
                                         <TableCell>State</TableCell>
                                         <TableCell>Labor Category</TableCell>
-                                        {form.contractType === "tm" && <TableCell>Job ID</TableCell>}
-                                        {form.contractType === "tm" && <TableCell>Std Hrs</TableCell>}
-                                        {form.contractType === "tm" && <TableCell>OT Hrs</TableCell>}
+                                        {contractType === "tm" && <TableCell>Job ID</TableCell>}
+                                        {contractType === "tm" && <TableCell>Std Hrs</TableCell>}
+                                        {contractType === "tm" && <TableCell>OT Hrs</TableCell>}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {resourceRows.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={form.contractType === "tm" ? 6 : 2}>No resources entered.</TableCell>
+                                            <TableCell colSpan={contractType === "tm" ? 6 : 3}>No resources entered.</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
@@ -188,16 +216,16 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                     <TableCell>{row.employee?.Title ?? "—"}</TableCell>
                                                     <TableCell>{row.state || "—"}</TableCell>
                                                     <TableCell>{row.laborCategory || "—"}</TableCell>
-                                                    {form.contractType === "tm" && <TableCell>{getJobLabel(row.jobId)}</TableCell>}
-                                                    {form.contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
-                                                    {form.contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
+                                                    {contractType === "tm" && <TableCell>{getJobLabel(row.jobId)}</TableCell>}
+                                                    {contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
+                                                    {contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>
                                             ))}
                                             {resourceRows.length > 1 && (
                                                 <TableRow sx={totalsRowSx}>
-                                                    <TableCell colSpan={form.contractType === "tm" ? 4 : 3}>Totals</TableCell>
-                                                    {form.contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
-                                                    {form.contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
+                                                    <TableCell colSpan={contractType === "tm" ? 4 : 3}>Totals</TableCell>
+                                                    {contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
+                                                    {contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>
                                             )}
                                         </>
@@ -221,13 +249,13 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                    {travelRows.length === 0 ? (
+                                    {visibleTravelRows.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={4}>No travel or ODC lines entered.</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
-                                            {travelRows.map((row) => (
+                                            {visibleTravelRows.map((row) => (
                                                 <TableRow key={row.id}>
                                                     <TableCell>{row.lineType.toUpperCase()}</TableCell>
                                                     <TableCell>{getJobLabel(row.jobId)}</TableCell>
@@ -235,7 +263,7 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                     <TableCell>{row.amount ? formatCurrency(Number(row.amount)) : "—"}</TableCell>
                                                 </TableRow>
                                             ))}
-                                            {travelRows.length > 1 && (
+                                            {visibleTravelRows.length > 1 && (
                                                 <TableRow sx={totalsRowSx}>
                                                     <TableCell colSpan={3}>Totals</TableCell>
                                                     <TableCell>{formatCurrency(travelTotal)}</TableCell>

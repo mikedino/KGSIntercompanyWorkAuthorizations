@@ -5,6 +5,7 @@ import {
     ITravelOdcItem
 } from "../data/props";
 import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow } from "../authorizations/workPackage/workPackageTypes";
+import { resolveLaborCompensation } from "../resources/laborMath";
 
 export interface IIwaChangeCaptureInput {
     beforeAuthorization?: IAuthorizationItem;
@@ -96,24 +97,34 @@ const normalizeExistingLabor = (laborLines: ILaborLineItem[], resources: IResour
         .sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0))
         .map((line, index) => {
             const resourceIds = line.resources?.results?.map((resource) => resource.Id).sort((left, right) => left - right) ?? [];
+            const pricingType = line.pricingType ?? "tm";
+            const baseLine = {
+                lineNumber: line.lineNumber ?? index + 1,
+                pricingType,
+                jobId: line.jobId ?? "",
+                comments: line.comments ?? ""
+            };
+
+            if (pricingType === "ffp") {
+                return {
+                    ...baseLine,
+                    employeeIds: resourceIds.map((resourceId) => employeeIdByResourceId.get(resourceId)).filter(Boolean),
+                    chargingPeriod: line.chargingPeriod ?? "",
+                    periodQty: Number(line.periodQty ?? 0),
+                    lumpSumAmount: Number(line.lumpSumAmount ?? 0),
+                    totalAmount: Number(line.totalAmount ?? 0)
+                };
+            }
 
             return {
-                lineNumber: line.lineNumber ?? index + 1,
-                pricingType: line.pricingType ?? "",
-                jobId: line.jobId ?? "",
-                ...(line.pricingType === "ffp"
-                    ? { employeeIds: resourceIds.map((resourceId) => employeeIdByResourceId.get(resourceId)).filter(Boolean) }
-                    : { resourceIds }),
-                chargingPeriod: line.chargingPeriod ?? "",
-                periodQty: Number(line.periodQty ?? 0),
-                lumpSumAmount: Number(line.lumpSumAmount ?? 0),
+                ...baseLine,
+                employeeId: resourceIds.length > 0 ? employeeIdByResourceId.get(resourceIds[0]) ?? null : null,
                 standardHours: Number(line.standardHours ?? 0),
                 overtimeHours: Number(line.overtimeHours ?? 0),
                 annualSalary: Number(line.annualSalary ?? 0),
                 standardRate: Number(line.standardRate ?? 0),
                 overtimeRate: Number(line.overtimeRate ?? 0),
-                totalAmount: Number(line.totalAmount ?? 0),
-                comments: line.comments ?? ""
+                totalAmount: Number(line.totalAmount ?? 0)
             };
         });
 };
@@ -136,18 +147,29 @@ const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpRows: IEditableFfp
         }));
     }
 
-    return activeRows.map((row, index) => ({
-        lineNumber: index + 1,
-        pricingType: "tm",
-        employeeId: row.employee?.Id ?? null,
-        jobId: row.jobId.trim(),
-        standardHours: Number(row.standardHours || 0),
-        overtimeHours: Number(row.overtimeHours || 0),
-        annualSalary: Number(row.annualSalary || 0),
-        standardRate: Number(row.standardRate || 0),
-        overtimeRate: Number(row.overtimeRate || 0),
-        comments: row.comments.trim()
-    }));
+    return activeRows.map((row, index) => {
+        const compensation = resolveLaborCompensation({
+            annualSalary: Number(row.annualSalary || 0),
+            standardRate: Number(row.standardRate || 0),
+            overtimeRate: Number(row.overtimeRate || 0),
+            standardHours: Number(row.standardHours || 0),
+            overtimeHours: Number(row.overtimeHours || 0)
+        });
+
+        return {
+            lineNumber: index + 1,
+            pricingType: "tm",
+            employeeId: row.employee?.Id ?? null,
+            jobId: row.jobId.trim(),
+            standardHours: compensation.standardHours,
+            overtimeHours: compensation.overtimeHours,
+            annualSalary: compensation.annualSalary,
+            standardRate: compensation.standardRate,
+            overtimeRate: compensation.overtimeRate,
+            totalAmount: compensation.totalAmount,
+            comments: row.comments.trim()
+        };
+    });
 };
 
 const normalizeExistingTravel = (travelOdcs: ITravelOdcItem[]): Record<string, unknown>[] => (

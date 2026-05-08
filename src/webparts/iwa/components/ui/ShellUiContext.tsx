@@ -7,6 +7,7 @@ export interface IShellUiContextValue {
     showBusy: (message: string) => boolean;
     hideBusy: () => boolean;
     showSuccess: (message: string) => boolean;
+    showBackdropSuccess: (message: string) => boolean;
     hideSuccess: () => boolean;
     showSnackbar: (message: string, severity?: AlertColor) => boolean;
     hideSnackbar: () => boolean;
@@ -102,6 +103,16 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         return showSnackbar(message, "success");
     }, [showSnackbar]);
 
+    const showBackdropSuccess = React.useCallback((message: string): boolean => {
+        setBusyOpen(false);
+        setBusyMessage("");
+        setSnackbarOpen(false);
+        setSnackbarMessage("");
+        setSuccessMessage(message);
+        setSuccessOpen(true);
+        return true;
+    }, []);
+
     const hideSuccess = React.useCallback((): boolean => {
         setSuccessOpen(false);
         setSuccessMessage("");
@@ -116,6 +127,7 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
             showBusy,
             hideBusy,
             showSuccess,
+            showBackdropSuccess,
             hideSuccess,
             showSnackbar,
             hideSnackbar,
@@ -136,6 +148,7 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         showBusy,
         hideBusy,
         showSuccess,
+        showBackdropSuccess,
         hideSuccess,
         showSnackbar,
         hideSnackbar,
