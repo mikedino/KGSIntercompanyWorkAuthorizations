@@ -19,6 +19,7 @@ import { formatDate, formatError, formatRelationship, formatSinceDate } from "..
 import { PageHeader } from "../ui/PageHeader";
 import { useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
+import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
 import {
@@ -204,9 +205,10 @@ const getMyWorkStatusChipColor = (
 
 const MyWorkMobileCard: React.FC<{
     row: IMyWorkRow;
+    canResumeDraft: boolean;
     onResumeDraft: (id: number) => void;
     onDiscardDraft: (row: IMyWorkRow) => void;
-}> = ({ row, onResumeDraft, onDiscardDraft }): JSX.Element => {
+}> = ({ row, canResumeDraft, onResumeDraft, onDiscardDraft }): JSX.Element => {
     const resumeLabel = row.isModDraft ? "Resume Mod" : "Resume Draft";
     const discardLabel = row.isModDraft ? "Discard Mod" : "Discard Draft";
 
@@ -277,7 +279,7 @@ const MyWorkMobileCard: React.FC<{
                     </Typography>
                 </Stack>
 
-                {row.isDraft && (
+                {row.isDraft && canResumeDraft && (
                     <Stack spacing={1}>
                         <Button
                             variant="contained"
@@ -370,6 +372,10 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             returnTo: `/my-work/${selectedView}`
         });
     }, [history, selectedView]);
+
+    const canResumeDraft = React.useCallback((row: IMyWorkRow): boolean => {
+        return row.isDraft && canUserEditAuthorization(row.authorization, currentUser, appUsers);
+    }, [appUsers, currentUser]);
 
     const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
         if (!discardDraftRow) {
@@ -578,6 +584,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                         <MyWorkMobileCard
                                             key={row.authorization.Id}
                                             row={row}
+                                            canResumeDraft={canResumeDraft(row)}
                                             onResumeDraft={handleResumeDraft}
                                             onDiscardDraft={setDiscardDraftRow}
                                         />
@@ -707,7 +714,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
-                                                        {row.isDraft ? (
+                                                        {canResumeDraft(row) ? (
                                                             <Stack spacing={1} alignItems="flex-start">
                                                                 <Button
                                                                     variant="contained"

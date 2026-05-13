@@ -40,11 +40,12 @@ import SearchIcon from "@mui/icons-material/Search";
 import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import AlertDialog from "../ui/Alert";
 import { PageHeader } from "../ui/PageHeader";
-import { formatCurrency, formatDate, formatError, formatRelationship, formatSinceDate } from "../common/utils";
+import { formatCurrency, formatDate, formatError, formatRelationship } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
-import { workflowRoleLabels } from "../data/props";
+import { IModItem, workflowRoleLabels } from "../data/props";
 import { useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
+import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
 import {
@@ -72,12 +73,13 @@ type ColumnKey =
     | "assignedDate"
     | "baseGrandTotal"
     | "approvedGrandTotal"
-    | "modCount"
+    | "createdDate"
     | "actions";
 
 interface IColumnConfig {
     key: ColumnKey;
     label: string;
+    tooltip?: string;
     sortField?: AllAuthorizationsSortField;
     minWidth: number;
     defaultWidth: number;
@@ -104,10 +106,17 @@ const columnConfigs: IColumnConfig[] = [
     { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 120, defaultWidth: 140 },
     { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 150, defaultWidth: 170 },
     { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 180, defaultWidth: 190 },
-    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 150, defaultWidth: 160 },
+    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 130, defaultWidth: 140 },
     { key: "baseGrandTotal", label: "Base Total", sortField: "baseGrandTotal", minWidth: 150, defaultWidth: 160, align: "right" },
     { key: "approvedGrandTotal", label: "Approved Total", sortField: "approvedGrandTotal", minWidth: 160, defaultWidth: 170, align: "right" },
-    { key: "modCount", label: "Mods", sortField: "modCount", minWidth: 100, defaultWidth: 110, align: "center" },
+    {
+        key: "createdDate",
+        label: "Created",
+        tooltip: "Shows who created the base IWA and when. If the IWA has Mods, this shows the creator and created date for the latest Mod.",
+        sortField: "createdDate",
+        minWidth: 170,
+        defaultWidth: 190
+    },
     { key: "actions", label: "", minWidth: 72, defaultWidth: 72, align: "center" }
 ];
 
@@ -141,8 +150,78 @@ const getPresetSummary = (presetView: AllAuthorizationsPresetView): string => {
     }
 };
 
-const canEditAuthorization = (row: IAllAuthorizationsRow | undefined): boolean => {
+const getDateValue = (value?: string): number => {
+    if (!value) {
+        return 0;
+    }
+
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const buildLatestModMap = (mods: IModItem[]): Map<number, IModItem> => {
+    return mods.reduce((map: Map<number, IModItem>, mod: IModItem): Map<number, IModItem> => {
+        const authorizationId = mod.authorization?.Id;
+
+        if (!authorizationId) {
+            return map;
+        }
+
+        const existing = map.get(authorizationId);
+        const isNewerModNumber = (mod.modNumber ?? 0) > (existing?.modNumber ?? 0);
+        const isSameModButNewer = (mod.modNumber ?? 0) === (existing?.modNumber ?? 0) && getDateValue(mod.Created) > getDateValue(existing?.Created);
+
+        if (!existing || isNewerModNumber || isSameModButNewer) {
+            map.set(authorizationId, mod);
+        }
+
+        return map;
+    }, new Map<number, IModItem>());
+};
+
+const formatQueueAge = (value?: string): string => {
+    if (!value) {
+        return "";
+    }
+
+    const assignedDate = new Date(value);
+
+    if (Number.isNaN(assignedDate.getTime())) {
+        return "";
+    }
+
+    const today = new Date();
+    const assignedStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate()).getTime();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const days = Math.max(0, Math.floor((todayStart - assignedStart) / (1000 * 60 * 60 * 24)));
+
+    return `${days} ${days === 1 ? "day" : "days"} in queue`;
+};
+
+const renderColumnLabel = (column: IColumnConfig): React.ReactNode => {
+    if (!column.tooltip) {
+        return column.label;
+    }
+
+    return (
+        <Tooltip title={column.tooltip}>
+            <Box component="span" sx={{ display: "inline-flex", alignItems: "center" }}>
+                {column.label}
+            </Box>
+        </Tooltip>
+    );
+};
+
+const canEditAuthorization = (
+    row: IAllAuthorizationsRow | undefined,
+    currentUser: ReturnType<typeof useIwa>["currentUser"],
+    appUsers: ReturnType<typeof useIwa>["appUsers"]
+): boolean => {
     if (!row) {
+        return false;
+    }
+
+    if (!canUserEditAuthorization(row.authorization, currentUser, appUsers)) {
         return false;
     }
 
@@ -157,10 +236,13 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const history = useHistory();
     const { view } = useParams<{ view?: string; }>();
     const {
+        appUsers,
         authorizations,
+        currentUser,
         draftAuthorizations,
         draftModsByAuthorizationId,
         isBootLoading,
+        lastRefreshed,
         runByAuthorizationId,
         clearAuthorizationDetailCache,
         refresh
@@ -179,6 +261,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [showDialog, setShowDialog] = React.useState<boolean>(false);
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
+    const [latestModsByAuthorizationId, setLatestModsByAuthorizationId] = React.useState<Map<number, IModItem>>(new Map());
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -198,8 +281,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     } | null>(null);
 
     const allRows = React.useMemo((): IAllAuthorizationsRow[] => {
-        return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId, draftModsByAuthorizationId);
-    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, runByAuthorizationId]);
+        return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId, draftModsByAuthorizationId, latestModsByAuthorizationId);
+    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, latestModsByAuthorizationId, runByAuthorizationId]);
 
     const entityOptions = React.useMemo((): string[] => {
         return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [
@@ -278,6 +361,34 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         setShowDialog(false);
     }, []);
 
+    React.useEffect((): (() => void) => {
+        let isMounted = true;
+
+        const loadLatestMods = async (): Promise<void> => {
+            try {
+                const mods = await ModService.getAll();
+
+                if (isMounted) {
+                    setLatestModsByAuthorizationId(buildLatestModMap(mods));
+                }
+            } catch (error) {
+                if (isMounted) {
+                    showFeatureDialog("Load Mods Error", formatError(error));
+                }
+            }
+        };
+
+        loadLatestMods().catch((error: unknown): void => {
+            if (isMounted) {
+                showFeatureDialog("Load Mods Error", formatError(error));
+            }
+        });
+
+        return (): void => {
+            isMounted = false;
+        };
+    }, [lastRefreshed, showFeatureDialog]);
+
     const handleSort = React.useCallback((field: AllAuthorizationsSortField): void => {
         setSortField((currentField: AllAuthorizationsSortField): AllAuthorizationsSortField => {
             if (currentField === field) {
@@ -326,6 +437,9 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const selectedMenuRow = React.useMemo((): IAllAuthorizationsRow | undefined => {
         return sortedRows.find((row: IAllAuthorizationsRow): boolean => row.authorization.Id === menuRowId);
     }, [menuRowId, sortedRows]);
+    const selectedMenuRowCanEdit = React.useMemo((): boolean => {
+        return canEditAuthorization(selectedMenuRow, currentUser, appUsers);
+    }, [appUsers, currentUser, selectedMenuRow]);
 
     const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
         if (!discardDraftRow) {
@@ -652,10 +766,10 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                                     }
                                                                 }}
                                                             >
-                                                                {column.label}
+                                                                {renderColumnLabel(column)}
                                                             </TableSortLabel>
                                                         ) : (
-                                                            column.label
+                                                            renderColumnLabel(column)
                                                         )}
 
                                                         {column.key !== "actions" && (
@@ -755,7 +869,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                             {row.currentRun?.stepAssignedDate ? formatDate(row.currentRun.stepAssignedDate, true) : "—"}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
-                                                            {row.currentRun?.stepAssignedDate ? formatSinceDate(row.currentRun.stepAssignedDate) : ""}
+                                                            {formatQueueAge(row.currentRun?.stepAssignedDate)}
                                                         </Typography>
                                                     </Stack>
                                                 </TableCell>
@@ -772,10 +886,15 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                     </Typography>
                                                 </TableCell>
 
-                                                <TableCell align="center" sx={{ width: columnWidths.modCount, verticalAlign: "top" }}>
-                                                    <Typography variant="body2">
-                                                        {row.authorization.modCount ?? 0}
-                                                    </Typography>
+                                                <TableCell sx={{ width: columnWidths.createdDate, verticalAlign: "top" }}>
+                                                    <Stack spacing={0.5}>
+                                                        <Typography variant="body2" noWrap>
+                                                            {row.createdByName || "—"}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {row.createdOn ? formatDate(row.createdOn, true) : ""}
+                                                        </Typography>
+                                                    </Stack>
                                                 </TableCell>
 
                                                 <TableCell align="center" sx={{ width: columnWidths.actions, verticalAlign: "top" }}>
@@ -834,12 +953,9 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
-                        showFeatureDialog(
-                            "View Mods",
-                            selectedMenuRow?.hasMods
-                                ? `Show the modifications for ${selectedMenuRow.authorization.Title}. The mods drill-in is the next action surface to wire up.`
-                                : "This authorization does not have any modifications yet."
-                        );
+                        if (selectedMenuRow) {
+                            history.push(`/authorizations/view/${selectedMenuRow.authorization.Id}?tab=mods`);
+                        }
                     }}
                 >
                     <AccountTreeOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
@@ -849,7 +965,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
-                        if (canEditAuthorization(selectedMenuRow)) {
+                        if (selectedMenuRowCanEdit) {
                             history.push(`/authorizations/edit/${selectedMenuRow!.authorization.Id}`, {
                                 returnTo: `/all-authorizations/${selectedView}`,
                                 modId: selectedMenuRow?.draftMod?.Id
@@ -862,6 +978,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                             `${selectedMenuRow?.authorization.Title ?? "This authorization"} can only be edited before the first workflow decision is recorded.`
                         );
                     }}
+                    disabled={!selectedMenuRowCanEdit}
                 >
                     <EditOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
                     {selectedMenuRow?.isModDraft ? "Resume Mod" : selectedMenuRow?.authorization.authorizationStatus === "draft" ? "Resume Draft" : "Edit Authorization"}
@@ -892,10 +1009,9 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
-                        showFeatureDialog(
-                            "Workflow",
-                            `Open the workflow detail for ${selectedMenuRow?.authorization.Title ?? "this authorization"}. This workflow drill-in is staged but not built yet.`
-                        );
+                        if (selectedMenuRow) {
+                            history.push(`/authorizations/view/${selectedMenuRow.authorization.Id}?tab=workflow`);
+                        }
                     }}
                 >
                     <OpenInBrowserOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />

@@ -30,6 +30,7 @@ export interface IIwaContext {
   appUser?: IAppUserItem;
   currentUser?: IAppUserItem;
   appUsers: IAppUserItem[];
+  isAppUsersLoading: boolean;
   appUserByUserId: Map<number, IAppUserItem>;
   getAppUserByUserId: (userId: number) => IAppUserItem | undefined;
   refreshCurrentUser: () => Promise<void>;
@@ -92,6 +93,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
 
   const [currentUser, setCurrentUser] = useState<IAppUserItem | undefined>(appUser);
   const [appUsers, setAppUsers] = useState<IAppUserItem[]>([]);
+  const [isAppUsersLoading, setIsAppUsersLoading] = useState<boolean>(false);
 
   const [modsByAuthorizationId, setModsByAuthorizationId] = useState<Map<number, IModItem[]>>(new Map());
   const [runsByAuthorizationId, setRunsByAuthorizationId] = useState<Map<number, IWorkflowRunItem[]>>(new Map());
@@ -192,9 +194,42 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
   }, []);
 
   const refreshAppUsers = useCallback(async (): Promise<void> => {
-    const nextUsers = await DataSource.getAppUsers();
-    setAppUsers(nextUsers ?? []);
+    setIsAppUsersLoading(true);
+
+    try {
+      const nextUsers = await DataSource.getAppUsers();
+      setAppUsers(nextUsers ?? []);
+    } finally {
+      setIsAppUsersLoading(false);
+    }
   }, []);
+
+  useEffect((): (() => void) => {
+    if (!enabled) {
+      return (): void => undefined;
+    }
+
+    let isMounted = true;
+    setIsAppUsersLoading(true);
+
+    DataSource.getAppUsers()
+      .then((nextUsers: IAppUserItem[]): void => {
+        if (isMounted) {
+          setAppUsers(nextUsers ?? []);
+          setIsAppUsersLoading(false);
+        }
+      })
+      .catch((error: unknown): void => {
+        if (isMounted) {
+          setIsAppUsersLoading(false);
+          onError?.("App Users Load Error", formatError(error));
+        }
+      });
+
+    return (): void => {
+      isMounted = false;
+    };
+  }, [enabled, onError]);
 
   const appUserByUserId = React.useMemo<Map<number, IAppUserItem>>(() => {
     const nextMap = new Map<number, IAppUserItem>();
@@ -606,6 +641,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
       appUser: currentUser,
       currentUser,
       appUsers,
+      isAppUsersLoading,
       appUserByUserId,
       getAppUserByUserId,
       refreshCurrentUser,
@@ -653,6 +689,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     dashboardActions,
     fatalError,
     getAppUserByUserId,
+    isAppUsersLoading,
     isAuthorizationDetailLoading,
     isBootLoading,
     isDashboardActionsLoading,

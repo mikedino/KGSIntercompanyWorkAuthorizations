@@ -15,6 +15,7 @@ import { IwaDetailPage } from "../authorizations/IwaDetailPage";
 import { IwaExportPreviewPage } from "../authorizations/export/IwaExportPreviewPage";
 import { useIwa } from "../data/iwaContext";
 import Strings from "../common/strings";
+import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 
 export interface IAppFrameProps {
     context: WebPartContext;
@@ -29,7 +30,7 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
     useDarkTheme,
     setUseDarkTheme
 }): JSX.Element => {
-    const { authorizations, draftAuthorizations } = useIwa();
+    const { appUsers, authorizations, currentUser, draftAuthorizations, isAppUsersLoading } = useIwa();
     const allEditableAuthorizations = React.useMemo(() => {
         return [...draftAuthorizations, ...authorizations];
     }, [authorizations, draftAuthorizations]);
@@ -76,6 +77,14 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
 
                             if (!item) {
                                 return <NotFoundPage />;
+                            }
+
+                            if (isAppUsersLoading) {
+                                return <Typography color="text.secondary">Checking edit access...</Typography>;
+                            }
+
+                            if (!canUserEditAuthorization(item, currentUser, appUsers)) {
+                                return <Redirect to={`/authorizations/view/${item.Id}`} />;
                             }
 
                             return (

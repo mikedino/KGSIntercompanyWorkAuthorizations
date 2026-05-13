@@ -979,7 +979,20 @@ export const Configuration = Helper.SPConfig({
           title: "Approved Snapshot Json",
           type: Helper.SPCfgFieldType.Note,
           noteType: SPTypes.FieldNoteType.TextOnly
-        } as Helper.IFieldInfoNote
+        } as Helper.IFieldInfoNote,
+        {
+          name: "bicNotifiedOn",
+          title: "BIC Notified On",
+          description: "(FROM FLOW) Set when the initial BIC email is sent. Used to decide whether Flow should send again after a reassignment",
+          type: Helper.SPCfgFieldType.Date,
+          format: SPTypes.DateFormat.DateTime
+        } as Helper.IFieldInfoDate,
+        {
+          name: "bicNotifiedTo",
+          title: "BIC Notified To",
+          description: "(FROM FLOW) Stores the email(s) it was sent to (primary + backup later). Helpful for troubleshooting/auditing",
+          type: Helper.SPCfgFieldType.Text
+        },
       ],
       ViewInformation: [
         {
@@ -1416,7 +1429,7 @@ export const Configuration = Helper.SPConfig({
         {
           name: "currentId",
           title: "Current ID",
-        description: "Last authorization item ID that consumed a number.",
+          description: "Last authorization item ID that consumed a number.",
           type: Helper.SPCfgFieldType.Number,
           decimals: 0,
           defaultValue: "0"

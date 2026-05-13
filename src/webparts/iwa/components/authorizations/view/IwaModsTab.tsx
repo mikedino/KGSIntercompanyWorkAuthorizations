@@ -73,6 +73,14 @@ const getModStatusChipColor = (status: IModItem["modStatus"]): "default" | "info
 
 const getModLabel = (mod: IModItem): string => `Mod ${mod.modNumber ?? "-"}`;
 
+const getModCreatedText = (mod: IModItem): string => {
+    if (!mod.Created) {
+        return `Created by ${mod.Author?.Title ?? "Unknown"}`;
+    }
+
+    return `Created by ${mod.Author?.Title ?? "Unknown"} on ${formatDate(mod.Created, false)}`;
+};
+
 const isActiveModStatus = (status: IModItem["modStatus"]): boolean => {
     return status === "draft" || status === "submitted" || status === "underReview";
 };
@@ -274,7 +282,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                 <Stack spacing={0.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
                                     <Typography variant="body2" fontWeight={600}>{formatCurrency(grandDelta)} total change</Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                        {mod.Created ? `Created ${formatDate(mod.Created, true)}` : "Created date unavailable"}
+                                        {getModCreatedText(mod)}
                                     </Typography>
                                 </Stack>
                             </Stack>

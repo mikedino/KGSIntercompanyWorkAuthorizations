@@ -411,6 +411,10 @@ export interface IWorkflowRunItem extends ISystemFields {
   cfo?: IPeoplePicker;
 
   approvedSnapshotJson?: string;
+
+  // FLOW NOTIFICATION USE
+  bicNotifiedOn: string; // datetime
+  bicNotifiedTo: string // auditing/troubleshooting
 }
 
 /* =========================

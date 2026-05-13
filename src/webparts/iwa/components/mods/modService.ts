@@ -61,6 +61,21 @@ export class ModService {
         });
     }
 
+    static getAll(): Promise<IModItem[]> {
+        return new Promise<IModItem[]>((resolve, reject) => {
+            Web().Lists(Strings.Sites.main.lists.Mods).Items().query({
+                GetAllItems: true,
+                Select: this.selectQuery,
+                Expand: this.expandQuery,
+                OrderBy: ["modNumber desc", "Created desc"],
+                Top: 5000
+            }).execute(
+                (items) => resolve((items?.results ?? []) as unknown as IModItem[]),
+                (error) => reject(new Error(`Error fetching Mods: ${formatError(error)}`))
+            );
+        });
+    }
+
     static async create(options: ICreateModOptions): Promise<IModItem> {
         const title = `${options.authorizationTitle}-MOD-${String(options.modNumber).padStart(2, "0")}`;
         const response = await Web().Lists(Strings.Sites.main.lists.Mods).Items().add({

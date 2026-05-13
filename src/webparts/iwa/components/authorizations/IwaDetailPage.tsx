@@ -11,7 +11,7 @@ import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutli
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import { pdf } from "@react-pdf/renderer";
-import { useHistory, useParams } from "react-router-dom";
+import { useHistory, useLocation, useParams } from "react-router-dom";
 import { IAuthorizationItem, ILaborLineItem, IModItem, IWorkflowActionItem, IWorkflowRunItem, workflowStepLabels } from "../data/props";
 import { useIwa } from "../data/iwaContext";
 import { DataSource } from "../data/ds";
@@ -23,6 +23,7 @@ import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
 import { useShellUi } from "../ui/ShellUiContext";
 import AlertDialog from "../ui/Alert";
+import { canUserEditAuthorization } from "./authorizationEditAccess";
 import { AuthorizationService } from "./iwaService";
 import { WorkflowDecisionService } from "../workflow/decisionService";
 import { WorkflowService } from "../workflow/workflowService";
@@ -60,6 +61,7 @@ import {
 
 export const IwaDetailPage: React.FC = (): JSX.Element => {
     const history = useHistory();
+    const location = useLocation();
     const { id } = useParams<{ id: string; }>();
     const authorizationId = Number(id);
     const { showBusy, hideBusy, showSuccess, hideSuccess, showSnackbar } = useShellUi();
@@ -81,7 +83,14 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         travelOdcsByAuthorizationId
     } = useIwa();
 
-    const [selectedTab, setSelectedTab] = React.useState<DetailTab>("summary");
+    const getRequestedTab = React.useCallback((): DetailTab => {
+        const tab = new URLSearchParams(location.search).get("tab");
+        const requestedTab = detailTabs.find((item) => item.value === tab);
+
+        return requestedTab?.value ?? "summary";
+    }, [location.search]);
+
+    const [selectedTab, setSelectedTab] = React.useState<DetailTab>(() => getRequestedTab());
     const [compDrafts, setCompDrafts] = React.useState<Record<number, ICompDraft>>({});
     const [compOverrideDrafts, setCompOverrideDrafts] = React.useState<Record<number, ICompOverrideDraft>>({});
     const [editingCompLineIds, setEditingCompLineIds] = React.useState<Record<number, boolean>>({});
@@ -191,6 +200,9 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const draftMod = React.useMemo<IModItem | undefined>(() => {
         return mods.find((mod) => mod.modStatus === "draft") ?? draftModsByAuthorizationId.get(authorizationId);
     }, [authorizationId, draftModsByAuthorizationId, mods]);
+    const canEditAuthorizationByUser = React.useMemo((): boolean => {
+        return canUserEditAuthorization(authorization, currentUser, appUsers);
+    }, [appUsers, authorization, currentUser]);
     const currentRunMod = React.useMemo<IModItem | undefined>(() => {
         const modId = currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined;
 
@@ -239,8 +251,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         };
     }, [currentRun]);
     const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
-    const currentUserId = currentUser?.user?.Id;
-    const canEditDraftMod = !!draftMod && !!currentUserId && draftMod.Author?.Id === currentUserId;
+    const canEditDraftMod = !!draftMod && canEditAuthorizationByUser;
     const mayViewComp = canViewCompensation(currentUser, authorization);
     const mayEditComp = canEditCompensation(currentUser);
     const isFfpAuthorization = authorization?.contractType === "ffp";
@@ -265,7 +276,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const hasActiveWorkflowRun = React.useMemo(() => {
         return workflowRuns.some((run) => run.runStatus === "active");
     }, [workflowRuns]);
-    const canInitiateMod = !!authorization && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
+    const canInitiateMod = !!authorization && canEditAuthorizationByUser && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
     const laborTotals = React.useMemo(() => {
         return laborLines.reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
@@ -347,6 +358,27 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, [changeDialogRun?.mod?.Id, mods]);
 
     React.useEffect((): void => {
+        const requestedTab = getRequestedTab();
+
+        setSelectedTab((current) => current === requestedTab ? current : requestedTab);
+    }, [getRequestedTab]);
+
+    const selectDetailTab = React.useCallback((value: DetailTab): void => {
+        setSelectedTab(value);
+
+        const params = new URLSearchParams(location.search);
+        params.set("tab", value);
+        history.replace({
+            pathname: location.pathname,
+            search: params.toString()
+        });
+    }, [history, location.pathname, location.search]);
+
+    const handleTabChange = React.useCallback((_event: React.SyntheticEvent, value: DetailTab): void => {
+        selectDetailTab(value);
+    }, [selectDetailTab]);
+
+    React.useEffect((): void => {
         if (workflowRuns.length === 0) {
             setExpandedRunId(false);
             return;
@@ -387,7 +419,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, [history]);
 
     const handleEdit = React.useCallback((): void => {
-        if (!authorization) {
+        if (!authorization || !canEditAuthorizationByUser) {
             return;
         }
 
@@ -404,7 +436,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             returnTo: `/authorizations/view/${authorization.Id}`,
             modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, currentRun, draftMod, history]);
+    }, [authorization, canEditAuthorizationByUser, currentRun, draftMod, history]);
 
     const handleEditMod = React.useCallback((): void => {
         if (!authorization || !draftMod?.Id || !canEditDraftMod) {
@@ -419,7 +451,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, [authorization, canEditDraftMod, draftMod, history]);
 
     const handleConfirmModify = React.useCallback((): void => {
-        if (!authorization) {
+        if (!authorization || !canEditAuthorizationByUser) {
             return;
         }
 
@@ -428,14 +460,14 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             returnTo: `/authorizations/view/${authorization.Id}`,
             modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, currentRun, history]);
+    }, [authorization, canEditAuthorizationByUser, currentRun, history]);
 
     const handleOpenInitiateMod = React.useCallback((): void => {
         setModPromptOpen(true);
     }, []);
 
     const handleInitiateMod = React.useCallback(async (): Promise<void> => {
-        if (!authorization) {
+        if (!authorization || !canEditAuthorizationByUser) {
             return;
         }
 
@@ -475,7 +507,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, hideBusy, history, mods, reloadAuthorizationDetailSections, showBusy]);
+    }, [authorization, canEditAuthorizationByUser, hideBusy, history, mods, reloadAuthorizationDetailSections, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
@@ -810,7 +842,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         <Button variant="contained" color="secondary" startIcon={<AccountTreeOutlinedIcon />} onClick={handleOpenInitiateMod}>
                             Initiate Mod
                         </Button>
-                    ) : !draftMod ? (
+                    ) : canEditAuthorizationByUser && !draftMod ? (
                         <Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={handleEdit}>
                             Edit
                         </Button>
@@ -937,7 +969,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 <BottomNavigation
                     showLabels
                     value={selectedTab}
-                    onChange={(_event, value: DetailTab) => setSelectedTab(value)}
+                    onChange={handleTabChange}
                     sx={(theme) => ({
                         gap: 0.75,
                         px: 1,
@@ -1205,7 +1237,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                             startIcon={<AccountTreeOutlinedIcon />}
                             onClick={() => {
                                 setChangeDialog(undefined);
-                                setSelectedTab("mods");
+                                selectDetailTab("mods");
                             }}
                         >
                             View Mods

@@ -29,7 +29,7 @@ export type AllAuthorizationsSortField =
     | "assignedDate"
     | "baseGrandTotal"
     | "approvedGrandTotal"
-    | "modCount"
+    | "createdDate"
     | "periodEnd"
     | "modified";
 
@@ -46,6 +46,9 @@ export interface IAllAuthorizationsRow {
     hasMods: boolean;
     isModDraft: boolean;
     draftMod?: IModItem;
+    latestMod?: IModItem;
+    createdByName: string;
+    createdOn?: string;
     searchIndex: string;
 }
 
@@ -84,7 +87,11 @@ const closedAuthorizationStatuses: AuthorizationStatus[] = ["closed", "canceled"
 
 const normalizeText = (value?: string): string => (value ?? "").trim().toLowerCase();
 
-const toSearchParts = (authorization: IAuthorizationItem, run?: IWorkflowRunItem): string[] => {
+const toSearchParts = (
+    authorization: IAuthorizationItem,
+    run?: IWorkflowRunItem,
+    createdByName?: string
+): string[] => {
     return [
         authorization.Title,
         authorization.contractName,
@@ -102,7 +109,8 @@ const toSearchParts = (authorization: IAuthorizationItem, run?: IWorkflowRunItem
         run?.runType === "mod" && run.outcome === "rejected" ? "Mod Rejected" : "",
         run?.pendingRole,
         run?.pendingRole ? workflowRoleLabels[run.pendingRole] : "",
-        run?.pendingApprover?.Title
+        run?.pendingApprover?.Title,
+        createdByName
     ].filter(Boolean) as string[];
 };
 
@@ -194,11 +202,15 @@ export const getRowWorkflowStatusColor = (
 export const buildAllAuthorizationRows = (
     authorizations: IAuthorizationItem[],
     runByAuthorizationId: Map<number, IWorkflowRunItem>,
-    draftModsByAuthorizationId: Map<number, IModItem> = new Map()
+    draftModsByAuthorizationId: Map<number, IModItem> = new Map(),
+    latestModsByAuthorizationId: Map<number, IModItem> = new Map()
 ): IAllAuthorizationsRow[] => {
     return authorizations.map((authorization: IAuthorizationItem): IAllAuthorizationsRow => {
         const currentRun = runByAuthorizationId.get(authorization.Id);
         const draftMod = draftModsByAuthorizationId.get(authorization.Id);
+        const latestMod = latestModsByAuthorizationId.get(authorization.Id) ?? draftMod;
+        const createdByName = latestMod?.Author?.Title ?? authorization.Author?.Title ?? "";
+        const createdOn = latestMod?.Created ?? authorization.Created;
 
         return {
             authorization,
@@ -206,7 +218,10 @@ export const buildAllAuthorizationRows = (
             hasMods: (authorization.modCount ?? 0) > 0,
             isModDraft: !!draftMod,
             draftMod,
-            searchIndex: normalizeText(toSearchParts(authorization, currentRun).join(" | "))
+            latestMod,
+            createdByName,
+            createdOn,
+            searchIndex: normalizeText(toSearchParts(authorization, currentRun, createdByName).join(" | "))
         };
     });
 };
@@ -349,8 +364,8 @@ const getSortValue = (
             return row.authorization.baseGrandTotal ?? 0;
         case "approvedGrandTotal":
             return row.authorization.approvedGrandTotal ?? 0;
-        case "modCount":
-            return row.authorization.modCount ?? 0;
+        case "createdDate":
+            return getDateValue(row.createdOn);
         case "periodEnd":
             return getDateValue(row.authorization.periodEnd);
         case "modified":
@@ -407,7 +422,8 @@ export const exportAllAuthorizationRows = (
         "Assigned Date",
         "Base Grand Total",
         "Approved Grand Total",
-        "Mod Count",
+        "Created By",
+        "Created Date",
         "Period End",
         "Modified"
     ];
@@ -427,7 +443,8 @@ export const exportAllAuthorizationRows = (
             row.currentRun?.stepAssignedDate ?? "",
             row.authorization.baseGrandTotal ?? "",
             row.authorization.approvedGrandTotal ?? "",
-            row.authorization.modCount ?? "",
+            row.createdByName,
+            row.createdOn ?? "",
             row.authorization.periodEnd ?? "",
             row.authorization.Modified ?? ""
         ].map((value: string | number) => escapeCsv(value)).join(",");
