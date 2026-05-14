@@ -27,9 +27,11 @@ export type AllAuthorizationsSortField =
     | "workflowStatus"
     | "pendingRole"
     | "assignedDate"
-    | "baseGrandTotal"
-    | "approvedGrandTotal"
     | "createdDate"
+    | "contractType"
+    | "customerContractCode"
+    | "invoice"
+    | "periodStart"
     | "periodEnd"
     | "modified";
 
@@ -96,7 +98,9 @@ const toSearchParts = (
         authorization.Title,
         authorization.contractName,
         authorization.contractId,
+        authorization.customerContractCode,
         authorization.invoice,
+        authorization.contractType,
         authorization.donorEntity,
         authorization.receivingEntity,
         authorization.og,
@@ -360,12 +364,16 @@ const getSortValue = (
             return row.currentRun?.pendingRole ? workflowRoleLabels[row.currentRun.pendingRole as WorkflowRole] : "";
         case "assignedDate":
             return getDateValue(row.currentRun?.stepAssignedDate);
-        case "baseGrandTotal":
-            return row.authorization.baseGrandTotal ?? 0;
-        case "approvedGrandTotal":
-            return row.authorization.approvedGrandTotal ?? 0;
         case "createdDate":
             return getDateValue(row.createdOn);
+        case "contractType":
+            return row.authorization.contractType === "tm" ? "T&M" : "FFP";
+        case "customerContractCode":
+            return row.authorization.customerContractCode ?? "";
+        case "invoice":
+            return row.authorization.invoice ?? "";
+        case "periodStart":
+            return getDateValue(row.authorization.periodStart);
         case "periodEnd":
             return getDateValue(row.authorization.periodEnd);
         case "modified":
@@ -412,6 +420,9 @@ export const exportAllAuthorizationRows = (
         "Title",
         "Contract Title",
         "Contract ID",
+        "Contract Type",
+        "Customer Contract Code",
+        "Invoice ID",
         "Donor Entity",
         "Receiving Entity",
         "OG",
@@ -420,10 +431,9 @@ export const exportAllAuthorizationRows = (
         "Workflow Status",
         "Pending Role",
         "Assigned Date",
-        "Base Grand Total",
-        "Approved Grand Total",
         "Created By",
         "Created Date",
+        "Period Start",
         "Period End",
         "Modified"
     ];
@@ -433,6 +443,9 @@ export const exportAllAuthorizationRows = (
             row.authorization.Title,
             row.authorization.contractName ?? "",
             row.authorization.contractId ?? "",
+            row.authorization.contractType === "tm" ? "T&M" : "FFP",
+            row.authorization.customerContractCode ?? "",
+            row.authorization.invoice ?? "",
             row.authorization.donorEntity ?? "",
             row.authorization.receivingEntity ?? "",
             row.authorization.og ?? "",
@@ -441,10 +454,9 @@ export const exportAllAuthorizationRows = (
             getRowWorkflowStatusLabel(row),
             row.currentRun?.pendingRole ? workflowRoleLabels[row.currentRun.pendingRole] : "",
             row.currentRun?.stepAssignedDate ?? "",
-            row.authorization.baseGrandTotal ?? "",
-            row.authorization.approvedGrandTotal ?? "",
             row.createdByName,
             row.createdOn ?? "",
+            row.authorization.periodStart ?? "",
             row.authorization.periodEnd ?? "",
             row.authorization.Modified ?? ""
         ].map((value: string | number) => escapeCsv(value)).join(",");

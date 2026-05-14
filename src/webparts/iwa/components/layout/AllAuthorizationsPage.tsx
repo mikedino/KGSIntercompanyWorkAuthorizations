@@ -10,11 +10,13 @@ import {
     DialogActions,
     DialogContent,
     DialogTitle,
+    FormControlLabel,
     IconButton,
     Menu,
     MenuItem,
     Paper,
     Stack,
+    Switch,
     Table,
     TableBody,
     TableCell,
@@ -40,7 +42,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import AlertDialog from "../ui/Alert";
 import { PageHeader } from "../ui/PageHeader";
-import { formatCurrency, formatDate, formatError, formatRelationship } from "../common/utils";
+import { formatDate, formatError, formatRelationship } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
 import { IModItem, workflowRoleLabels } from "../data/props";
 import { useHistory, useParams } from "react-router-dom";
@@ -67,12 +69,12 @@ import { formatModLabel } from "../authorizations/view/iwaViewUtils";
 
 type ColumnKey =
     | "title"
+    | "contractDetails"
     | "authorizationStatus"
     | "workflowStatus"
     | "pendingRole"
     | "assignedDate"
-    | "baseGrandTotal"
-    | "approvedGrandTotal"
+    | "period"
     | "createdDate"
     | "actions";
 
@@ -103,12 +105,12 @@ const isPresetView = (value: string | undefined): value is AllAuthorizationsPres
 
 const columnConfigs: IColumnConfig[] = [
     { key: "title", label: "Authorization", sortField: "title", minWidth: 280, defaultWidth: 320 },
+    { key: "contractDetails", label: "Contract Details", sortField: "customerContractCode", minWidth: 170, defaultWidth: 190 },
     { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 120, defaultWidth: 140 },
     { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 150, defaultWidth: 170 },
     { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 180, defaultWidth: 190 },
     { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 130, defaultWidth: 140 },
-    { key: "baseGrandTotal", label: "Base Total", sortField: "baseGrandTotal", minWidth: 150, defaultWidth: 160, align: "right" },
-    { key: "approvedGrandTotal", label: "Approved Total", sortField: "approvedGrandTotal", minWidth: 160, defaultWidth: 170, align: "right" },
+    { key: "period", label: "Period", sortField: "periodEnd", minWidth: 140, defaultWidth: 150 },
     {
         key: "createdDate",
         label: "Created",
@@ -262,6 +264,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [showDialog, setShowDialog] = React.useState<boolean>(false);
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
     const [latestModsByAuthorizationId, setLatestModsByAuthorizationId] = React.useState<Map<number, IModItem>>(new Map());
+    const [showDrafts, setShowDrafts] = React.useState<boolean>(false);
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -284,24 +287,32 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         return buildAllAuthorizationRows([...draftAuthorizations, ...authorizations], runByAuthorizationId, draftModsByAuthorizationId, latestModsByAuthorizationId);
     }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, latestModsByAuthorizationId, runByAuthorizationId]);
 
+    const visibleRows = React.useMemo((): IAllAuthorizationsRow[] => {
+        if (showDrafts) {
+            return allRows;
+        }
+
+        return allRows.filter((row: IAllAuthorizationsRow): boolean => row.authorization.authorizationStatus !== "draft");
+    }, [allRows, showDrafts]);
+
     const entityOptions = React.useMemo((): string[] => {
-        return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [
+        return getUniqueFilterValues(visibleRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [
             row.authorization.donorEntity,
             row.authorization.receivingEntity
         ]);
-    }, [allRows]);
+    }, [visibleRows]);
 
     const ogOptions = React.useMemo((): string[] => {
-        return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [row.authorization.og]);
-    }, [allRows]);
+        return getUniqueFilterValues(visibleRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [row.authorization.og]);
+    }, [visibleRows]);
 
     const lobOptions = React.useMemo((): string[] => {
-        return getUniqueFilterValues(allRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [row.authorization.lob]);
-    }, [allRows]);
+        return getUniqueFilterValues(visibleRows, (row: IAllAuthorizationsRow): Array<string | undefined> => [row.authorization.lob]);
+    }, [visibleRows]);
 
     const filteredRows = React.useMemo((): IAllAuthorizationsRow[] => {
-        return filterAllAuthorizationRows(allRows, selectedView, filters);
-    }, [allRows, filters, selectedView]);
+        return filterAllAuthorizationRows(visibleRows, selectedView, filters);
+    }, [filters, selectedView, visibleRows]);
 
     const sortedRows = React.useMemo((): IAllAuthorizationsRow[] => {
         return sortAllAuthorizationRows(filteredRows, sortField, sortDirection);
@@ -314,7 +325,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
     React.useEffect((): void => {
         setPage(0);
-    }, [filters, selectedView]);
+    }, [filters, selectedView, showDrafts]);
 
     React.useEffect((): (() => void) => {
         const handleMouseMove = (event: MouseEvent): void => {
@@ -454,7 +465,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
             if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
                 await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
-                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (discardDraftRow.authorization.modCount ?? 1) - 1));
+                await AuthorizationService.recalculateModCount(authorizationId);
                 sessionStorage.removeItem(`iwa:activeModDraft:${authorizationId}`);
             } else {
                 await AuthorizationService.delete(authorizationId);
@@ -633,60 +644,75 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
             </Paper>
 
             <Paper sx={{ px: 1, borderRadius: 3 }}>
-                <BottomNavigation
-                    showLabels
-                    value={selectedView}
-                    onChange={handleChangeView}
-                    sx={(theme) => ({
-                        gap: 0.75,
-                        px: 1,
-                        py: 1,
-                        height: "auto",
-                        justifyContent: "flex-start",
-                        alignItems: "stretch",
-                        flexWrap: "wrap",
-                        backgroundColor: "transparent",
-                        "& .MuiBottomNavigationAction-root": {
-                            flex: "0 0 auto",
-                            minWidth: "auto",
-                            width: "auto",
-                            maxWidth: 220,
-                            px: 2,
-                            py: 1.25,
-                            borderRadius: 2,
-                            border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
-                            color: theme.palette.text.secondary,
-                            transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
-                            "& .MuiBottomNavigationAction-label": {
-                                fontSize: "0.82rem",
-                                fontWeight: 500,
-                                backgroundColor: "transparent",
-                                opacity: 1
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }}>
+                    <BottomNavigation
+                        showLabels
+                        value={selectedView}
+                        onChange={handleChangeView}
+                        sx={(theme) => ({
+                            gap: 0.75,
+                            px: 1,
+                            py: 1,
+                            height: "auto",
+                            justifyContent: "flex-start",
+                            alignItems: "stretch",
+                            flexWrap: "wrap",
+                            backgroundColor: "transparent",
+                            flex: 1,
+                            "& .MuiBottomNavigationAction-root": {
+                                flex: "0 0 auto",
+                                minWidth: "auto",
+                                width: "auto",
+                                maxWidth: 220,
+                                px: 2,
+                                py: 1.25,
+                                borderRadius: 2,
+                                border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+                                color: theme.palette.text.secondary,
+                                transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease",
+                                "& .MuiBottomNavigationAction-label": {
+                                    fontSize: "0.82rem",
+                                    fontWeight: 500,
+                                    backgroundColor: "transparent",
+                                    opacity: 1
+                                },
+                                "& .MuiBottomNavigationAction-label.Mui-selected": {
+                                    fontSize: "0.82rem",
+                                    fontWeight: 600,
+                                    backgroundColor: "transparent"
+                                }
                             },
-                            "& .MuiBottomNavigationAction-label.Mui-selected": {
-                                fontSize: "0.82rem",
-                                fontWeight: 600,
-                                backgroundColor: "transparent"
+                            "& .MuiBottomNavigationAction-root.Mui-selected": {
+                                color: theme.palette.text.primary,
+                                borderColor: theme.palette.mode === "dark"
+                                    ? theme.palette.primary.main
+                                    : theme.palette.primary.light ?? theme.palette.primary.main,
+                                backgroundColor: theme.palette.mode === "dark"
+                                    ? "rgba(0,183,255,0.18)"
+                                    : "rgba(10,49,77,0.1)",
+                                boxShadow: theme.palette.mode === "dark"
+                                    ? "inset 0 0 0 1px rgba(255,255,255,0.04)"
+                                    : "inset 0 0 0 1px rgba(255,255,255,0.35)"
                             }
-                        },
-                        "& .MuiBottomNavigationAction-root.Mui-selected": {
-                            color: theme.palette.text.primary,
-                            borderColor: theme.palette.mode === "dark"
-                                ? theme.palette.primary.main
-                                : theme.palette.primary.light ?? theme.palette.primary.main,
-                            backgroundColor: theme.palette.mode === "dark"
-                                ? "rgba(0,183,255,0.18)"
-                                : "rgba(10,49,77,0.1)",
-                            boxShadow: theme.palette.mode === "dark"
-                                ? "inset 0 0 0 1px rgba(255,255,255,0.04)"
-                                : "inset 0 0 0 1px rgba(255,255,255,0.35)"
-                        }
-                    })}
-                >
-                    {presetViews.map((view) => (
-                        <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
-                    ))}
-                </BottomNavigation>
+                        })}
+                    >
+                        {presetViews.map((view) => (
+                            <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
+                        ))}
+                    </BottomNavigation>
+                    <Tooltip title={showDrafts ? "Base draft authorizations are visible." : "Base draft authorizations are hidden. Mod drafts remain visible."}>
+                        <FormControlLabel
+                            sx={{ alignSelf: { xs: "flex-end", md: "center" }, mr: { xs: 1, md: 1.5 }, whiteSpace: "nowrap" }}
+                            control={
+                                <Switch
+                                    checked={showDrafts}
+                                    onChange={(event: React.ChangeEvent<HTMLInputElement>): void => setShowDrafts(event.target.checked)}
+                                />
+                            }
+                            label={showDrafts ? "Show Drafts" : "Hide Drafts"}
+                        />
+                    </Tooltip>
+                </Stack>
             </Paper>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
@@ -830,6 +856,18 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                     </Stack>
                                                 </TableCell>
 
+                                                <TableCell sx={{ width: columnWidths.contractDetails, verticalAlign: "top" }}>
+                                                    <Stack spacing={0.35}>
+                                                        <Typography variant="body2">{row.authorization.customerContractCode || "—"}</Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            Invoice: {row.authorization.invoice || "—"}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {row.authorization.contractType === "tm" ? "T&M" : "FFP"}
+                                                        </Typography>
+                                                    </Stack>
+                                                </TableCell>
+
                                                 <TableCell sx={{ width: columnWidths.authorizationStatus, verticalAlign: "top" }}>
                                                     <Chip
                                                         label={getRowAuthorizationStatusLabel(row)}
@@ -874,16 +912,13 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                     </Stack>
                                                 </TableCell>
 
-                                                <TableCell align="right" sx={{ width: columnWidths.baseGrandTotal, verticalAlign: "top" }}>
-                                                    <Typography variant="body2">
-                                                        {formatCurrency(row.authorization.baseGrandTotal)}
-                                                    </Typography>
-                                                </TableCell>
-
-                                                <TableCell align="right" sx={{ width: columnWidths.approvedGrandTotal, verticalAlign: "top" }}>
-                                                    <Typography variant="body2">
-                                                        {formatCurrency(row.authorization.approvedGrandTotal)}
-                                                    </Typography>
+                                                <TableCell sx={{ width: columnWidths.period, verticalAlign: "top" }}>
+                                                    <Stack spacing={0.35}>
+                                                        <Typography variant="body2">{formatDate(row.authorization.periodStart, false)}</Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            to {formatDate(row.authorization.periodEnd, false)}
+                                                        </Typography>
+                                                    </Stack>
                                                 </TableCell>
 
                                                 <TableCell sx={{ width: columnWidths.createdDate, verticalAlign: "top" }}>

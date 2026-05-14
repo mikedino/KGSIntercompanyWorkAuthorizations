@@ -19,6 +19,7 @@ export interface IIwaDataState {
     isBootLoading: boolean;
     isRefreshing: boolean;
     lastRefreshed: string | undefined;
+    patchAuthorization: (authorizationId: number, patch: Partial<IAuthorizationItem>) => boolean;
     refresh: (override?: boolean, mode?: RefreshMode) => Promise<boolean>;
     fatalError?: string;
     appUser?: IAppUserItem;
@@ -206,6 +207,18 @@ export const useIwaData = (
         }
     }, [enabled, onError]);
 
+    const patchAuthorization = useCallback((authorizationId: number, patch: Partial<IAuthorizationItem>): boolean => {
+        const applyPatch = (item: IAuthorizationItem): IAuthorizationItem => (
+            item.Id === authorizationId
+                ? { ...item, ...patch }
+                : item
+        );
+
+        setAuthorizations((prev: IAuthorizationItem[]): IAuthorizationItem[] => prev.map(applyPatch));
+        setDraftAuthorizations((prev: IAuthorizationItem[]): IAuthorizationItem[] => prev.map(applyPatch));
+        return true;
+    }, []);
+
     React.useEffect((): undefined => {
         if (!enabled) {
             setIsBootLoading(false);
@@ -227,6 +240,7 @@ export const useIwaData = (
         isBootLoading,
         isRefreshing,
         lastRefreshed,
+        patchAuthorization,
         refresh,
         fatalError,
         appUser

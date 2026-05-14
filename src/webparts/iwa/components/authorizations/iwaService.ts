@@ -135,8 +135,9 @@ export class AuthorizationService {
 
     return new Promise<IAuthorizationItem>((resolve, reject) => {
 
-      // Keep the update payload tightly aligned to the provisioned
-      // authorization header fields so draft/save/submit all share one path.
+      // Keep form saves limited to user-editable header fields. Derived/system
+      // fields are updated by their dedicated service methods so stale form
+      // state cannot overwrite newer workflow, total, Mod, or PDF values.
       const updateBody: Record<string, unknown> = {
         __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
         authorizationStatus,
@@ -152,38 +153,18 @@ export class AuthorizationService {
         lob: item.lob ?? "",
         contractName: item.contractName,
         contractId: item.contractId,
+        customerContractCode: item.customerContractCode ?? "",
         invoice: item.invoice ?? "",
         contractType: item.contractType,
         periodStart: item.periodStart || null,
         periodEnd: item.periodEnd || null,
         scopeOfWork: item.scopeOfWork ?? "",
         justification: item.justification ?? "",
-        notes: item.notes ?? "",
-        baseLaborAmount: item.baseLaborAmount ?? 0,
-        baseTravelAmount: item.baseTravelAmount ?? 0,
-        baseGrandTotal: item.baseGrandTotal ?? 0,
-        approvedLaborAmount: item.approvedLaborAmount ?? 0,
-        approvedTravelAmount: item.approvedTravelAmount ?? 0,
-        approvedGrandTotal: item.approvedGrandTotal ?? 0,
-        modCount: item.modCount ?? 0,
-        pdfUrl: item.pdfUrl ?? "",
-        pdfGeneratedOn: item.pdfGeneratedOn || null,
-        approvedOn: item.approvedOn || null,
-        rejectedOn: item.rejectedOn || null,
-        canceledOn: item.canceledOn || null,
-        closedOn: item.closedOn || null
+        notes: item.notes ?? ""
       };
 
       if (trackingTitle) {
         updateBody.Title = trackingTitle;
-      }
-
-      if (item.currentWorkflowRun?.Id) {
-        updateBody.currentWorkflowRunId = item.currentWorkflowRun.Id;
-      }
-
-      if (item.effectiveApprovedRun?.Id) {
-        updateBody.effectiveApprovedRunId = item.effectiveApprovedRun.Id;
       }
 
       Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(item.Id).update(updateBody).execute(
@@ -258,6 +239,18 @@ export class AuthorizationService {
       console.error("Error updating IWA mod count: ", error);
       throw new Error(`Error updating IWA mod count: ${err}`);
     }
+  }
+
+  static async recalculateModCount(itemId: number): Promise<number> {
+    if (!itemId) {
+      throw new Error("Cannot recalculate authorization mod count: item.Id is missing.");
+    }
+
+    const mods = await ModService.getByAuthorization(itemId);
+    const modCount = Math.max(0, ...(mods ?? []).map((mod) => mod.modNumber ?? 0));
+    await this.updateModCount(itemId, modCount);
+
+    return modCount;
   }
 
   static async updateBaseAmounts(

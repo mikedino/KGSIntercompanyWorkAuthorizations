@@ -1,11 +1,13 @@
 import * as React from "react";
-import { Alert, Box, Button, Chip, Grid, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Grid, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
+import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import { ILaborLineItem, IModItem, IResourceItem } from "../../data/props";
 import { formatCurrency, parseNumberOrUndefined } from "../../common/utils";
+import { maskedCurrencyText } from "../financialAccess";
 import { resolveLaborCompensation } from "../../resources/laborMath";
 import {
     compactCurrencyInputSx,
@@ -31,6 +33,7 @@ type ResourceScopeFilter = "all" | "base" | `mod-${number}`;
 interface IIwaResourcesLaborTabProps {
     canEditCompInHrReview: boolean;
     canEditCompLine: (line: ILaborLineItem) => boolean;
+    canViewFinancials: boolean;
     compDrafts: Record<number, ICompDraft>;
     editingCompLineIds: Record<number, boolean>;
     handleAnnualSalaryChange: (lineId: number, value: string) => void;
@@ -41,11 +44,11 @@ interface IIwaResourcesLaborTabProps {
     handleSaveComp: (line: ILaborLineItem) => void;
     handleStandardRateChange: (lineId: number, value: string) => void;
     handleStartCompEdit: (line: ILaborLineItem) => void;
+    onOpenCommentDialog: (dialog: { title: string; comments: string }) => void;
     isFfpAuthorization: boolean;
     laborDeltaTotal: number;
     laborLines: ILaborLineItem[];
     laborTotals: ILaborTotals;
-    mayViewComp: boolean;
     mods: IModItem[];
     resourceRosterRows: IResourceRosterRow[];
     resources: IResourceItem[];
@@ -54,6 +57,7 @@ interface IIwaResourcesLaborTabProps {
 export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
     canEditCompInHrReview,
     canEditCompLine,
+    canViewFinancials,
     compDrafts,
     editingCompLineIds,
     handleAnnualSalaryChange,
@@ -64,11 +68,11 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
     handleSaveComp,
     handleStandardRateChange,
     handleStartCompEdit,
+    onOpenCommentDialog,
     isFfpAuthorization,
     laborDeltaTotal,
     laborLines,
     laborTotals,
-    mayViewComp,
     mods,
     resourceRosterRows,
     resources
@@ -157,11 +161,11 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
         {!isFfpAuthorization && (
             <Stack spacing={1}>
                 <Alert severity="info">
-                    Only HR, current PM and Admins can view salary information. HR will add rates during the HR Review step.
+                    Dollar amounts are visible to workflow approvers, their backups, and the PM. HR will add rates during the HR Review step.
                 </Alert>
                 {canEditCompInHrReview && (
                     <Alert severity="info">
-                        Std rate is derived from salary / 2080 unless HR/Admin overrides the rate fields.
+                        Std rate is derived from salary / 2080 x 1.65 unless HR/Admin overrides the rate fields.
                     </Alert>
                 )}
             </Stack>
@@ -210,9 +214,9 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                 <TableCell>Labor Category</TableCell>
                                 <TableCell align="right">Std Hrs</TableCell>
                                 <TableCell align="right">OT Hrs</TableCell>
-                                {mayViewComp && <TableCell align="right">Salary</TableCell>}
-                                {mayViewComp && <TableCell align="right">Std Rate</TableCell>}
-                                {mayViewComp && <TableCell align="right">OT Rate</TableCell>}
+                                <TableCell align="right">Salary</TableCell>
+                                <TableCell align="right">Std Rate</TableCell>
+                                <TableCell align="right">OT Rate</TableCell>
                             </>
                         )}
                         <TableCell align="right">{isFfpAuthorization ? "Total Amount" : "Total"}</TableCell>
@@ -222,7 +226,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 <TableBody>
                     {visibleLaborLines.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={isFfpAuthorization ? 6 : canEditCompInHrReview ? 11 : mayViewComp ? 10 : 7}>No labor lines found.</TableCell>
+                            <TableCell colSpan={isFfpAuthorization ? 6 : canEditCompInHrReview ? 11 : 10}>No labor lines found.</TableCell>
                         </TableRow>
                     ) : (
                         <>
@@ -242,12 +246,13 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                             <TableCell>{line.chargingPeriod || "-"}</TableCell>
                                             <TableCell align="right">{line.periodQty ?? "-"}</TableCell>
                                             <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
-                                            <TableCell align="right">{formatCurrency(line.totalAmount)}</TableCell>
+                                            <TableCell align="right">{canViewFinancials ? formatCurrency(line.totalAmount) : maskedCurrencyText}</TableCell>
                                         </TableRow>
                                     );
                                 }
 
                                 const lineResource = resources.find((resource) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
+                                const resourceComments = (lineResource?.comments ?? "").trim();
                                 const draft = compDrafts[line.Id] ?? toCompDraft(line);
                                 const canEditThisLine = canEditCompLine(line);
                                 const isEditingComp = canEditThisLine && !!editingCompLineIds[line.Id];
@@ -261,7 +266,25 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
 
                                 return (
                                     <TableRow key={line.Id} hover>
-                                        <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
+                                        <TableCell>
+                                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                                <Typography variant="body2">{getResourceNamesForLabor(line, resources)}</Typography>
+                                                {!!resourceComments && (
+                                                    <Tooltip title="View resource comments">
+                                                        <IconButton
+                                                            size="small"
+                                                            color="info"
+                                                            onClick={() => onOpenCommentDialog({
+                                                                title: `${getResourceNamesForLabor(line, resources)} Comments`,
+                                                                comments: resourceComments
+                                                            })}
+                                                        >
+                                                            <ChatBubbleOutlineOutlinedIcon fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                )}
+                                            </Stack>
+                                        </TableCell>
                                         <TableCell>
                                             <Stack spacing={0.5} alignItems="flex-start">
                                                 <Typography variant="body2">
@@ -279,9 +302,8 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                         <TableCell>{lineResource?.laborCategory || "-"}</TableCell>
                                         <TableCell align="right">{line.standardHours ?? "-"}</TableCell>
                                         <TableCell align="right">{line.overtimeHours ?? "-"}</TableCell>
-                                        {mayViewComp && (
-                                            <TableCell align="right">
-                                                {isEditingComp ? (
+                                        <TableCell align="right">
+                                            {isEditingComp ? (
                                                     <TextField
                                                         size="small"
                                                         value={draft.annualSalary}
@@ -290,12 +312,10 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         sx={compactCurrencyInputSx}
                                                         slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                                                     />
-                                                ) : formatCurrency(line.annualSalary)}
-                                            </TableCell>
-                                        )}
-                                        {mayViewComp && (
-                                            <TableCell align="right">
-                                                {isEditingComp ? (
+                                            ) : canViewFinancials ? formatCurrency(line.annualSalary) : maskedCurrencyText}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            {isEditingComp ? (
                                                     <TextField
                                                         size="small"
                                                         value={draft.standardRate}
@@ -304,12 +324,10 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         sx={compactCurrencyInputSx}
                                                         slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                                                     />
-                                                ) : formatCurrency(line.standardRate)}
-                                            </TableCell>
-                                        )}
-                                        {mayViewComp && (
-                                            <TableCell align="right">
-                                                {isEditingComp ? (
+                                            ) : canViewFinancials ? formatCurrency(line.standardRate) : maskedCurrencyText}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            {isEditingComp ? (
                                                     <TextField
                                                         size="small"
                                                         value={draft.overtimeRate}
@@ -318,10 +336,9 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         sx={compactCurrencyInputSx}
                                                         slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                                                     />
-                                                ) : formatCurrency(line.overtimeRate)}
-                                            </TableCell>
-                                        )}
-                                        <TableCell align="right">{formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount)}</TableCell>
+                                            ) : canViewFinancials ? formatCurrency(line.overtimeRate) : maskedCurrencyText}
+                                        </TableCell>
+                                        <TableCell align="right">{canViewFinancials ? formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount) : maskedCurrencyText}</TableCell>
                                         {canEditCompInHrReview && (
                                             <TableCell align="right">
                                                 {isEditingComp ? (
@@ -357,15 +374,15 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                     <TableCell colSpan={isFfpAuthorization ? 5 : 4}>Totals</TableCell>
                                     {!isFfpAuthorization && <TableCell align="right">{visibleLaborTotals.standardHours || "-"}</TableCell>}
                                     {!isFfpAuthorization && <TableCell align="right">{visibleLaborTotals.overtimeHours || "-"}</TableCell>}
-                                    {!isFfpAuthorization && mayViewComp && <TableCell />}
-                                    {!isFfpAuthorization && mayViewComp && <TableCell />}
-                                    {!isFfpAuthorization && mayViewComp && <TableCell />}
+                                    {!isFfpAuthorization && <TableCell />}
+                                    {!isFfpAuthorization && <TableCell />}
+                                    {!isFfpAuthorization && <TableCell />}
                                     <TableCell align="right">
                                         <Stack spacing={0.25} alignItems="flex-end">
-                                            <Typography variant="body2" fontWeight={600}>{formatCurrency(visibleLaborTotals.totalAmount)}</Typography>
+                                            <Typography variant="body2" fontWeight={600}>{canViewFinancials ? formatCurrency(visibleLaborTotals.totalAmount) : maskedCurrencyText}</Typography>
                                             {visibleLaborDeltaTotal !== 0 && (
                                                 <Typography variant="caption" color={visibleLaborDeltaTotal > 0 ? "success.main" : "error.main"}>
-                                                    {visibleLaborDeltaTotal > 0 ? "+" : ""}{formatCurrency(visibleLaborDeltaTotal)} mod
+                                                    {canViewFinancials ? `${visibleLaborDeltaTotal > 0 ? "+" : ""}${formatCurrency(visibleLaborDeltaTotal)}` : maskedCurrencyText} mod
                                                 </Typography>
                                             )}
                                         </Stack>

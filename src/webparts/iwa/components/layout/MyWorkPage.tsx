@@ -118,15 +118,15 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
 };
 
 const presetViews: Array<{ value: MyWorkPresetView; label: string; }> = [
-    { value: "all", label: "All My Work" },
     { value: "needsAction", label: "Needs My Action" },
     { value: "created", label: "Created By Me" },
     { value: "activity", label: "My Activity" },
     { value: "activeWorkflow", label: "Active Workflow" },
-    { value: "closed", label: "Recently Closed" }
+    { value: "closed", label: "Recently Closed" },
+    { value: "all", label: "All My Work" }
 ];
 
-const defaultPresetView: MyWorkPresetView = "all";
+const defaultPresetView: MyWorkPresetView = "needsAction";
 
 const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
     return presetViews.some((view) => view.value === value);
@@ -390,7 +390,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
 
             if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
                 await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
-                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (discardDraftRow.authorization.modCount ?? 1) - 1));
+                await AuthorizationService.recalculateModCount(authorizationId);
                 sessionStorage.removeItem(`iwa:activeModDraft:${authorizationId}`);
             } else {
                 await AuthorizationService.delete(authorizationId);

@@ -1,4 +1,5 @@
-import { IAuthorizationItem, IAppUserItem } from "../data/props";
+import { IAuthorizationItem, IAppUserItem, IWorkflowRunItem } from "../data/props";
+import { getBackupCoverageMap } from "../workflow/workflowAccess";
 
 export const canViewCompensation = (
     currentUser: IAppUserItem | undefined,
@@ -19,7 +20,24 @@ export const canViewCompensation = (
 };
 
 export const canEditCompensation = (
-    currentUser: IAppUserItem | undefined
+    currentUser: IAppUserItem | undefined,
+    currentRun?: IWorkflowRunItem,
+    appUsers: IAppUserItem[] = []
 ): boolean => {
-    return currentUser?.role === "admin" || currentUser?.role === "hr";
+    const currentUserId = currentUser?.user?.Id;
+    const role = currentUser?.role;
+
+    if (role === "admin" || role === "hr") {
+        return true;
+    }
+
+    if (!currentUserId || !currentRun?.hr?.Id) {
+        return false;
+    }
+
+    if (currentRun.hr.Id === currentUserId) {
+        return true;
+    }
+
+    return getBackupCoverageMap(appUsers, currentUserId).has(currentRun.hr.Id);
 };

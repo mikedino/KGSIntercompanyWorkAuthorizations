@@ -9,15 +9,18 @@ import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
 import { pdf } from "@react-pdf/renderer";
+import { Web } from "gd-sprest";
 import { useHistory, useLocation, useParams } from "react-router-dom";
 import { IAuthorizationItem, ILaborLineItem, IModItem, IWorkflowActionItem, IWorkflowRunItem, workflowStepLabels } from "../data/props";
 import { useIwa } from "../data/iwaContext";
 import { DataSource } from "../data/ds";
+import Strings from "../common/strings";
 import { formatCurrencyInputValue, formatDate, formatError, formatRelationship, normalizeDecimalInput, parseNumberOrUndefined } from "../common/utils";
 import { authorizationStatusLabels, getStatusChipColor, modStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
-import { canEditCompensation, canViewCompensation } from "../resources/laborAccess";
+import { canEditCompensation } from "../resources/laborAccess";
 import { ResourceService } from "../resources/resourceService";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
@@ -33,10 +36,12 @@ import { ModService } from "../mods/modService";
 import { buildIwaExportViewModel } from "./export/exportViewModel";
 import { IwaExportPdfDocument } from "./export/IwaExportPdfDocument";
 import { IwaExportService } from "./export/iwaExportService";
+import { canViewFinancialAmounts } from "./financialAccess";
 import { IwaHistoryTab } from "./view/IwaHistoryTab";
 import { IwaModsTab } from "./view/IwaModsTab";
 import { IwaResourcesLaborTab } from "./view/IwaResourcesLaborTab";
 import { IwaSummaryTab } from "./view/IwaSummaryTab";
+import { IViewAttachmentItem } from "./view/IwaSummaryTab";
 import { IwaTravelOdcTab } from "./view/IwaTravelOdcTab";
 import { IwaWorkflowTab } from "./view/IwaWorkflowTab";
 import {
@@ -76,6 +81,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         lastRefreshed,
         loadAuthorizationDetail,
         modsByAuthorizationId,
+        patchAuthorization,
         reloadAuthorizationDetailSections,
         resourcesByAuthorizationId,
         runByAuthorizationId,
@@ -106,6 +112,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const [modifyPromptOpen, setModifyPromptOpen] = React.useState<boolean>(false);
     const [modPromptOpen, setModPromptOpen] = React.useState<boolean>(false);
     const [expandedRunId, setExpandedRunId] = React.useState<number | false>(false);
+    const [attachments, setAttachments] = React.useState<IViewAttachmentItem[]>([]);
     const theme = useTheme();
 
     const authorization = React.useMemo<IAuthorizationItem | undefined>(() => {
@@ -116,7 +123,11 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         return runsByAuthorizationId.get(authorizationId) ?? [];
     }, [authorizationId, runsByAuthorizationId]);
     const currentRun = React.useMemo<IWorkflowRunItem | undefined>(() => {
-        return detailRuns.find((run) => run.runStatus === "active") ?? runByAuthorizationId.get(authorizationId);
+        if (detailRuns.length > 0) {
+            return detailRuns.find((run) => run.runStatus === "active") ?? detailRuns[0];
+        }
+
+        return runByAuthorizationId.get(authorizationId);
     }, [authorizationId, detailRuns, runByAuthorizationId]);
     const workflowRuns = React.useMemo<IWorkflowRunItem[]>(() => {
         const runs = detailRuns.length > 0 ? detailRuns : currentRun ? [currentRun] : [];
@@ -185,6 +196,64 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const headerModLabel = latestMod || (authorization?.modCount ?? 0) > 0
         ? formatModLabel(latestMod?.modNumber ?? authorization?.modCount)
         : undefined;
+
+    React.useEffect(() => {
+        if (!authorizationId || Number.isNaN(authorizationId)) {
+            setAttachments([]);
+            return;
+        }
+
+        let isActive = true;
+
+        const loadViewAttachments = async (): Promise<void> => {
+            try {
+                const files = await Web()
+                    .Lists(Strings.Sites.main.lists.Authorizations)
+                    .Items()
+                    .getById(authorizationId)
+                    .AttachmentFiles()
+                    .executeAndWait() as { results?: IViewAttachmentItem[] };
+                const baseAttachments = files?.results ?? [];
+                const enrichedAttachments = await Promise.all(baseAttachments.map(async (attachment) => {
+                    if (!attachment.ServerRelativeUrl) {
+                        return attachment;
+                    }
+
+                    try {
+                        const file = await Web()
+                            .getFileByServerRelativeUrl(attachment.ServerRelativeUrl)
+                            .query({
+                                Select: ["UniqueId"]
+                            })
+                            .executeAndWait() as { UniqueId?: string };
+
+                        return {
+                            ...attachment,
+                            UniqueId: file?.UniqueId
+                        };
+                    } catch (error) {
+                        console.warn("Could not resolve attachment UniqueId:", attachment.FileName, error);
+                        return attachment;
+                    }
+                }));
+
+                if (isActive) {
+                    setAttachments(enrichedAttachments);
+                }
+            } catch (error: unknown) {
+                if (isActive) {
+                    setAttachments([]);
+                    showSnackbar(`Unable to load attachments: ${formatError(error)}`, "error");
+                }
+            }
+        };
+
+        loadViewAttachments().catch(() => undefined);
+
+        return () => {
+            isActive = false;
+        };
+    }, [authorizationId, lastRefreshed, showSnackbar]);
     const pendingModCount = React.useMemo(() => {
         return mods.filter((mod) => mod.modStatus === "draft" || mod.modStatus === "submitted" || mod.modStatus === "underReview").length;
     }, [mods]);
@@ -252,8 +321,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, [currentRun]);
     const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
     const canEditDraftMod = !!draftMod && canEditAuthorizationByUser;
-    const mayViewComp = canViewCompensation(currentUser, authorization);
-    const mayEditComp = canEditCompensation(currentUser);
+    const canViewFinancials = React.useMemo(() => {
+        return canViewFinancialAmounts(currentUser, authorization, workflowRuns, appUsers);
+    }, [appUsers, authorization, currentUser, workflowRuns]);
+    const mayEditComp = canEditCompensation(currentUser, currentRun, appUsers);
     const isFfpAuthorization = authorization?.contractType === "ffp";
     const canEditCompInHrReview = mayEditComp && currentRun?.runStatus === "active" && currentRun.currentStepKey === "hr";
     const canEditCompLine = React.useCallback((line: ILaborLineItem): boolean => {
@@ -273,10 +344,17 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const workflowPermission = React.useMemo(() => {
         return getWorkflowActionPermission(currentRun, currentUser, appUsers);
     }, [appUsers, currentRun, currentUser]);
+    const missingCompensationMessage = React.useMemo(() => {
+        if (!canEditCompInHrReview) {
+            return undefined;
+        }
+
+        return getMissingCompensationMessage(authorization, currentRun, laborLines);
+    }, [authorization, canEditCompInHrReview, currentRun, laborLines]);
     const hasActiveWorkflowRun = React.useMemo(() => {
         return workflowRuns.some((run) => run.runStatus === "active");
     }, [workflowRuns]);
-    const canInitiateMod = !!authorization && canEditAuthorizationByUser && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
+    const canInitiateMod = !!authorization && !!currentUser?.user?.Id && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
     const laborTotals = React.useMemo(() => {
         return laborLines.reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
@@ -467,7 +545,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, []);
 
     const handleInitiateMod = React.useCallback(async (): Promise<void> => {
-        if (!authorization || !canEditAuthorizationByUser) {
+        if (!authorization || !currentUser?.user?.Id || authorization.authorizationStatus !== "approved" || hasActiveWorkflowRun || draftMod) {
             return;
         }
 
@@ -491,6 +569,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
             showBusy("Updating authorization...");
             await AuthorizationService.updateModCount(authorization.Id, nextModNumber);
+            patchAuthorization(authorization.Id, { modCount: nextModNumber });
 
             showBusy("Refreshing authorization...");
             await reloadAuthorizationDetailSections(authorization.Id, ["mods"]);
@@ -507,7 +586,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, canEditAuthorizationByUser, hideBusy, history, mods, reloadAuthorizationDetailSections, showBusy]);
+    }, [authorization, currentUser?.user?.Id, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
@@ -610,6 +689,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             }
 
             await reloadAuthorizationDetailSections(authorizationId, ["mods", "runs", "actions"]);
+            const latestAuthorization = await AuthorizationService.getById(authorizationId);
+            patchAuthorization(authorizationId, latestAuthorization);
             showSuccess(decision === "approved"
                 ? generatedPdf ? "Workflow step approved. Successfully generated PDF export." : "Workflow step approved."
                 : "Workflow step rejected and returned to the submitter.");
@@ -620,7 +701,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, authorizationId, currentRun, generateApprovedPdfExport, handleCloseWorkflowDecision, hideBusy, hideSuccess, reloadAuthorizationDetailSections, showBusy, showSuccess, workflowComments, workflowDecision]);
+    }, [authorization, authorizationId, currentRun, generateApprovedPdfExport, handleCloseWorkflowDecision, hideBusy, hideSuccess, patchAuthorization, reloadAuthorizationDetailSections, showBusy, showSuccess, workflowComments, workflowDecision]);
 
     const handleUpdateDraft = React.useCallback((lineId: number, patch: Partial<ICompDraft>): void => {
         setCompDrafts((prev) => ({
@@ -782,7 +863,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 standardHours: line.standardHours,
                 overtimeHours: line.overtimeHours
             });
-            await AuthorizationService.recalculateBaseAmounts(authorizationId);
+            const baseAmounts = await AuthorizationService.recalculateBaseAmounts(authorizationId);
+            if (line.lineScope !== "mod") {
+                patchAuthorization(authorizationId, baseAmounts);
+            }
             await reloadAuthorizationDetailSections(authorizationId, ["labor"]);
             setEditingCompLineIds((prev) => ({
                 ...prev,
@@ -796,7 +880,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorizationId, compDrafts, hideBusy, hideSuccess, reloadAuthorizationDetailSections, showBusy, showSuccess]);
+    }, [authorizationId, compDrafts, hideBusy, hideSuccess, patchAuthorization, reloadAuthorizationDetailSections, showBusy, showSuccess]);
 
     if (!authorization) {
         return (
@@ -831,9 +915,18 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Typography>
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
-                    <Button variant="outlined" startIcon={<PictureAsPdfOutlinedIcon />} onClick={() => history.push(`/authorizations/export/${authorization.Id}`)}>
-                        Export Preview
-                    </Button>
+                    <Tooltip title={canViewFinancials ? "Open export preview" : "Export preview contains dollar amounts and is limited to workflow approvers, their backups, and the PM."}>
+                        <span>
+                            <Button
+                                variant="outlined"
+                                startIcon={<PictureAsPdfOutlinedIcon />}
+                                onClick={() => history.push(`/authorizations/export/${authorization.Id}`)}
+                                disabled={!canViewFinancials}
+                            >
+                                Export Preview
+                            </Button>
+                        </span>
+                    </Tooltip>
                     {canEditDraftMod ? (
                         <Button variant="contained" color="secondary" startIcon={<EditOutlinedIcon />} onClick={handleEditMod}>
                             Edit Mod
@@ -1017,7 +1110,22 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     })}
                 >
                     {detailTabs.map((tab) => {
-                        const label = tab.value === "mods" && mods.length > 0 ? (
+                        const label = tab.value === "resources" && missingCompensationMessage ? (
+                            <Tooltip title={missingCompensationMessage}>
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        gap: 0.65
+                                    }}
+                                >
+                                    <ErrorOutlineOutlinedIcon fontSize="small" />
+                                    <span>{tab.label}</span>
+                                </Box>
+                            </Tooltip>
+                        ) : tab.value === "mods" && mods.length > 0 ? (
                             <Tooltip title={modsBadgeTooltip}>
                                 <Box
                                     component="span"
@@ -1053,17 +1161,40 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                             </Tooltip>
                         ) : tab.label;
 
-                        return <BottomNavigationAction key={tab.value} value={tab.value} label={label} />;
+                        return (
+                            <BottomNavigationAction
+                                key={tab.value}
+                                value={tab.value}
+                                label={label}
+                                sx={tab.value === "resources" && missingCompensationMessage ? (theme) => ({
+                                    borderColor: `${theme.palette.accent.main} !important`,
+                                    bgcolor: `${alpha(theme.palette.accent.main, theme.palette.mode === "dark" ? 0.12 : 0.14)} !important`,
+                                    color: `${theme.palette.accent.main} !important`,
+                                    boxShadow: `inset 0 0 0 1px ${alpha(theme.palette.accent.main, 0.35)}, 0 0 0 2px ${alpha(theme.palette.accent.main, 0.12)}`,
+                                    "& .MuiBottomNavigationAction-label": {
+                                        fontWeight: 800
+                                    }
+                                }) : undefined}
+                            />
+                        );
                     })}
                 </BottomNavigation>
             </Paper>
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
-                {selectedTab === "summary" && <IwaSummaryTab authorization={authorization} />}
+                {selectedTab === "summary" && (
+                    <IwaSummaryTab
+                        attachments={attachments}
+                        authorization={authorization}
+                        canViewFinancials={canViewFinancials}
+                        latestMod={latestMod}
+                    />
+                )}
                 {selectedTab === "resources" && (
                     <IwaResourcesLaborTab
                         canEditCompInHrReview={canEditCompInHrReview}
                         canEditCompLine={canEditCompLine}
+                        canViewFinancials={canViewFinancials}
                         compDrafts={compDrafts}
                         editingCompLineIds={editingCompLineIds}
                         handleAnnualSalaryChange={handleAnnualSalaryChange}
@@ -1078,8 +1209,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         laborDeltaTotal={laborDeltaTotal}
                         laborLines={laborLines}
                         laborTotals={laborTotals}
-                        mayViewComp={mayViewComp}
                         mods={mods}
+                        onOpenCommentDialog={setCommentDialog}
                         resourceRosterRows={resourceRosterRows}
                         resources={resources}
                     />
@@ -1106,6 +1237,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 {selectedTab === "mods" && (
                     <IwaModsTab
                         actions={actions}
+                        canViewFinancials={canViewFinancials}
                         laborLines={laborLines}
                         mods={mods}
                         resources={resources}

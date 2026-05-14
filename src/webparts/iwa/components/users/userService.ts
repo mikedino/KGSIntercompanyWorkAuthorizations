@@ -92,13 +92,14 @@ export class AppUserService {
         }
     }
 
-    static async updateBackups(appUserItemId: number, backups: { results: IPeoplePicker[]; }): Promise<void> {
-        const hasBackup = backups.results.length > 0;
+    static async updateBackups(appUserItemId: number, backups: { results?: IPeoplePicker[]; }): Promise<void> {
+        const selectedBackups = backups.results ?? [];
+        const hasBackup = selectedBackups.length > 0;
 
         try {
             await Web().Lists(Strings.Sites.main.lists.Users).Items().getById(appUserItemId).update({
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Users)}ListItem` },
-                backupsId: { results: backups.results.map((backup: IPeoplePicker): number => backup.Id) },
+                backupsId: { results: selectedBackups.map((backup: IPeoplePicker): number => backup.Id) },
                 hasBackup
             }).executeAndWait();
         } catch (err) {

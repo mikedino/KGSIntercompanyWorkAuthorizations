@@ -245,7 +245,7 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
         ["DONOR ENTITY", authorization.donorEntity || "-", authorization.donorEntityAbbr],
         ["RECIPIENT ENTITY", authorization.receivingEntity || "-", authorization.receivingEntityAbbr],
         ["OPERATING GROUP", authorization.og || "-", authorization.lob],
-        ["CONTRACT ID", authorization.contractId || "-", contractType],
+        ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
         ["CONTRACT NAME", authorization.contractName || "-", ""],
         ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],
         ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],
@@ -270,8 +270,8 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
 
                 <View style={styles.statsRow}>
                     {[
-                        ["NEW LABOR", formatCurrency(model.newLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
-                        ["NEW TRAVEL", formatCurrency(model.newTravelTotal), `${model.travelDetails.length} line(s)`],
+                        ["NEW LABOR", formatCurrency(model.modLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
+                        ["NEW TRAVEL", formatCurrency(model.modTravelTotal), `${model.travelDetails.length} line(s)`],
                         [totalThisLabel, formatCurrency(model.modGrandTotal), exportLabel ?? "Base IWA"],
                         ["NEW GRAND TOTAL", formatCurrency(model.newGrandTotal), "Labor + Travel / ODC"]
                     ].map(([label, value, detail]) => (

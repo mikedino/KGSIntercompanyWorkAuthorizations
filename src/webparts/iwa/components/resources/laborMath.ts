@@ -25,7 +25,7 @@ export const resolveLaborCompensation = (
     input: ILaborCompensationInput
 ): ILaborCompensationResolved => {
     const annualSalary = Number(input.annualSalary ?? 0);
-    const derivedStandardRate = annualSalary > 0 ? annualSalary / 2080 : 0;
+    const derivedStandardRate = annualSalary > 0 ? (annualSalary / 2080) * 1.65 : 0;
     const standardRate = Number(input.standardRate ?? 0) > 0
         ? Number(input.standardRate ?? 0)
         : derivedStandardRate;

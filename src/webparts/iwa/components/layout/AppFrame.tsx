@@ -30,7 +30,7 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
     useDarkTheme,
     setUseDarkTheme
 }): JSX.Element => {
-    const { appUsers, authorizations, currentUser, draftAuthorizations, isAppUsersLoading } = useIwa();
+    const { appUsers, authorizations, currentUser, draftAuthorizations, isAppUsersLoading, isRefreshing } = useIwa();
     const allEditableAuthorizations = React.useMemo(() => {
         return [...draftAuthorizations, ...authorizations];
     }, [authorizations, draftAuthorizations]);
@@ -56,10 +56,10 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                 <Box sx={{ mx: "auto", maxWidth: "1600px" }}>
                     <Switch>
                         <Route exact path="/">
-                            <Redirect to="/my-work/all" />
+                            <Redirect to="/my-work/needsAction" />
                         </Route>
                         <Route exact path="/my-work">
-                            <Redirect to="/my-work/all" />
+                            <Redirect to="/my-work/needsAction" />
                         </Route>
                         <Route path="/my-work/:view" component={MyWorkPage} />
                         <Route exact path="/all-authorizations">
@@ -75,12 +75,12 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                             const id = routeProps.match.params.id;
                             const item = allEditableAuthorizations.find((authorization) => authorization.Id.toString() === id);
 
-                            if (!item) {
-                                return <NotFoundPage />;
+                            if (isRefreshing || isAppUsersLoading) {
+                                return <Typography color="text.secondary">Checking edit access...</Typography>;
                             }
 
-                            if (isAppUsersLoading) {
-                                return <Typography color="text.secondary">Checking edit access...</Typography>;
+                            if (!item) {
+                                return <NotFoundPage />;
                             }
 
                             if (!canUserEditAuthorization(item, currentUser, appUsers)) {

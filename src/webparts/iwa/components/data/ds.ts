@@ -238,7 +238,7 @@ export class DataSource {
         "Id", "Title", "authorizationStatus",
         "donorEntity", "donorEntityAbbr", "receivingEntity",
         "receivingEntityAbbr", "og", "lob",
-        "contractName", "contractId", "invoice", "contractType",
+        "contractName", "contractId", "customerContractCode", "invoice", "contractType",
         "periodStart", "periodEnd", "scopeOfWork",
         "justification", "notes", "baseLaborAmount",
         "baseTravelAmount", "baseGrandTotal", "approvedLaborAmount",
@@ -513,6 +513,19 @@ export class DataSource {
     private static _invoices: IInvoiceItem[] = [];
     static get Invoices(): IInvoiceItem[] { return this._invoices; }
 
+    private static isUsableInvoice(invoice: IInvoiceItem): boolean {
+        return !/^HIS\d*$/i.test((invoice.field_14 ?? "").trim());
+    }
+
+    private static isChargeableJob(job: IJobItem, invoiceId1: string): boolean {
+        const jobId = job.field_13 ?? "";
+        const jobTitle = (job.field_19 ?? "").toLowerCase();
+
+        return !jobId.startsWith(`${invoiceId1}-0000`) &&
+            !jobTitle.includes("subaccrual") &&
+            !/^adm\b/i.test(job.field_19 ?? "");
+    }
+
     static getInvoicesByContract(contractId: string): Promise<IInvoiceItem[]> {
         return new Promise<IInvoiceItem[]>((resolve, reject) => {
             this._invoices = [];
@@ -531,7 +544,8 @@ export class DataSource {
                 })
                 .execute(
                     (items) => {
-                        this._invoices = (items?.results ?? []) as unknown as IInvoiceItem[];
+                        this._invoices = ((items?.results ?? []) as unknown as IInvoiceItem[])
+                            .filter((invoice: IInvoiceItem): boolean => this.isUsableInvoice(invoice));
                         resolve(this._invoices);
                     },
                     (error) => reject(new Error(`Error fetching Invoices: ${formatError(error)}`))
@@ -542,27 +556,80 @@ export class DataSource {
     private static _jobs: IJobItem[] = [];
     static get Jobs(): IJobItem[] { return this._jobs; }
 
-    static getJobsByContract(contractId: string): Promise<IJobItem[]> {
+    static getJobsByInvoice(invoiceId1: string): Promise<IJobItem[]> {
         return new Promise<IJobItem[]>((resolve, reject) => {
             this._jobs = [];
+            const trimmedInvoiceId = invoiceId1.trim();
 
+            if (!trimmedInvoiceId) {
+                resolve([]);
+                return;
+            }
+
+            const jobIdPrefix = trimmedInvoiceId.endsWith("-") ? trimmedInvoiceId : `${trimmedInvoiceId}-`;
+            const escapedJobIdPrefix = jobIdPrefix.replace(/'/g, "''");
+
+            // Query jobs only for the selected task order/invoice. This keeps the
+            // startswith filter narrow enough for large SharePoint lists and matches
+            // the JAMIS job id shape: ContractID-InvoiceID-...
             Web(Strings.Sites.jamis.url)
                 .Lists(Strings.Sites.jamis.lists.JobEP)
                 .Items()
                 .query({
                     GetAllItems: true,
-                    OrderBy: ["field_19"],
                     Select: ["Id", "field_13", "field_19"],
-                    Filter: `startswith(field_13, '${contractId}-')`,
+                    Filter: `startswith(field_13, '${escapedJobIdPrefix}')`,
                     Top: 5000
                 })
                 .execute(
                     (items) => {
-                        this._jobs = (items?.results ?? []) as unknown as IJobItem[];
+                        this._jobs = ((items?.results ?? []) as unknown as IJobItem[])
+                            // Jobs with a third segment of 0000 are admin/subaccrual style
+                            // buckets and should not be selected for IWA charging.
+                            .filter((job: IJobItem): boolean => this.isChargeableJob(job, trimmedInvoiceId))
+                            .sort((left: IJobItem, right: IJobItem): number => {
+                                const idSort = (left.field_13 ?? "").localeCompare(right.field_13 ?? "", undefined, { numeric: true, sensitivity: "base" });
+
+                                if (idSort !== 0) {
+                                    return idSort;
+                                }
+
+                                return (left.field_19 ?? "").localeCompare(right.field_19 ?? "", undefined, { numeric: true, sensitivity: "base" });
+                            });
                         resolve(this._jobs);
                     },
-                    (error) => reject(new Error(`Error fetching Jobs by Contract: ${formatError(error)}`))
+                    (error) => {
+                        reject(new Error(`Error fetching Jobs by Invoice: ${formatError(error)}`));
+                    }
                 );
+        });
+    }
+
+    static getJobsByContract(contractId: string, jobPrefixes?: string[]): Promise<IJobItem[]> {
+        return new Promise<IJobItem[]>((resolve, reject) => {
+            Promise.resolve(jobPrefixes?.length
+                ? jobPrefixes.map((prefix: string): IInvoiceItem => ({ Id: 0, Title: prefix, field_49: contractId, field_28: "", field_14: "", InvoiceID1: prefix, field_42: "" }))
+                : this.getInvoicesByContract(contractId))
+                .then(async (invoices: IInvoiceItem[]): Promise<void> => {
+                    const jobs = await Promise.all(invoices.map((invoice: IInvoiceItem): Promise<IJobItem[]> => this.getJobsByInvoice(invoice.InvoiceID1)));
+                    const jobsById = new Map<number, IJobItem>();
+
+                    jobs.flat().forEach((job: IJobItem): void => {
+                        jobsById.set(job.Id, job);
+                    });
+
+                    this._jobs = Array.from(jobsById.values()).sort((left: IJobItem, right: IJobItem): number => {
+                        const idSort = (left.field_13 ?? "").localeCompare(right.field_13 ?? "", undefined, { numeric: true, sensitivity: "base" });
+
+                        if (idSort !== 0) {
+                            return idSort;
+                        }
+
+                        return (left.field_19 ?? "").localeCompare(right.field_19 ?? "", undefined, { numeric: true, sensitivity: "base" });
+                    });
+                    resolve(this._jobs);
+                })
+                .catch((error: unknown): void => reject(error));
         });
     }
 }

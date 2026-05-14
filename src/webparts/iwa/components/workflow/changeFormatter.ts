@@ -18,6 +18,7 @@ const headerLabels: Record<string, string> = {
     lob: "LOB",
     contractName: "Contract Name",
     contractId: "Contract ID",
+    customerContractCode: "Customer Contract Code",
     invoice: "Invoice",
     contractType: "Contract Type",
     periodStart: "Period Start",

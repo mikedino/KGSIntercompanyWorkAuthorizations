@@ -41,6 +41,7 @@ export class WorkflowDecisionService {
             lob: authorization.lob ?? "",
             contractName: authorization.contractName,
             contractId: authorization.contractId,
+            customerContractCode: authorization.customerContractCode ?? "",
             invoice: authorization.invoice ?? "",
             contractType: authorization.contractType,
             periodStart: authorization.periodStart || null,

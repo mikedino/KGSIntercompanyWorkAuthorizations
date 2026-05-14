@@ -15,6 +15,10 @@ export const canUserEditAuthorization = (
         return false;
     }
 
+    if ((currentUser.role ?? "user").toLowerCase() === "admin") {
+        return true;
+    }
+
     if (
         samePerson(authorization.Author, currentUserId) ||
         samePerson(authorization.backupRequestor, currentUserId) ||

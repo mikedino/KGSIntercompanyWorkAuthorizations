@@ -7,6 +7,7 @@ export const CompactDateField = ({
     label,
     value,
     onChange,
+    required,
     error,
     helperText,
     maxWidth
@@ -14,6 +15,7 @@ export const CompactDateField = ({
     label: string;
     value: Dayjs | undefined;
     onChange: (value: Dayjs | undefined) => void;
+    required?: boolean;
     error: boolean;
     helperText?: string;
     maxWidth?: number;
@@ -28,6 +30,7 @@ export const CompactDateField = ({
             slotProps={{
                 textField: {
                     fullWidth: true,
+                    required,
                     error,
                     helperText,
                     size: "small",

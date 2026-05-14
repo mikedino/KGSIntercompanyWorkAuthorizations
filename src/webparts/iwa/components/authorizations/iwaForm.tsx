@@ -169,6 +169,7 @@ const createEmptyAuthorization = (): IAuthorizationItem => ({
     receivingEntity: "",
     contractName: "",
     contractId: "",
+    customerContractCode: "",
     invoice: "",
     contractType: "tm",
     scopeOfWork: "",
@@ -215,7 +216,7 @@ const readSessionModId = (authorizationId?: number): number | undefined => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const editableModStatuses: IModItem["modStatus"][] = ["draft", "submitted", "underReview", "rejected"];
+const editableModStatuses: IModItem["modStatus"][] = ["draft", "rejected"];
 
 const sortModsNewestFirst = (left: IModItem, right: IModItem): number => {
     const leftModified = Date.parse(left.Modified ?? left.Created ?? "");
@@ -249,9 +250,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const {
         clearAuthorizationDetailCache,
         authorizations,
+        currentUser,
         draftAuthorizations,
         laborLinesByAuthorizationId,
         loadAuthorizationDetail,
+        loadMyActions,
         modsByAuthorizationId,
         refresh,
         resourcesByAuthorizationId,
@@ -263,9 +266,16 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const successTimeoutRef = React.useRef<number | undefined>(undefined);
     const initialAuthorizationRef = React.useRef<IAuthorizationItem | undefined>(item);
     const lastSyncedContractIdRef = React.useRef<string | undefined>(item?.contractId);
-    const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/all";
+    const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/needsAction";
     const routeModId = location.state?.modId;
     const storedModId = readSessionModId(item?.Id);
+    const editableMods = React.useMemo<IModItem[]>(() => {
+        if (!item?.Id) {
+            return [];
+        }
+
+        return (modsByAuthorizationId.get(item.Id) ?? []).filter((mod: IModItem): boolean => editableModStatuses.includes(mod.modStatus));
+    }, [item?.Id, modsByAuthorizationId]);
     const activeRunModId = React.useMemo<number | undefined>(() => {
         if (!item?.Id) {
             return undefined;
@@ -274,16 +284,22 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         const currentRun = runByAuthorizationId.get(item.Id) ??
             (runsByAuthorizationId.get(item.Id) ?? []).find((run) => run.runStatus === "active");
 
-        return currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined;
-    }, [item?.Id, runByAuthorizationId, runsByAuthorizationId]);
+        if (currentRun?.runType !== "mod" || !currentRun.mod?.Id) {
+            return undefined;
+        }
+
+        return editableMods.some((mod: IModItem): boolean => mod.Id === currentRun.mod?.Id)
+            ? currentRun.mod.Id
+            : undefined;
+    }, [editableMods, item?.Id, runByAuthorizationId, runsByAuthorizationId]);
     const latestEditableModId = React.useMemo<number | undefined>(() => {
         if (!item?.Id) {
             return undefined;
         }
 
-        return getEditableModId(modsByAuthorizationId.get(item.Id) ?? []);
-    }, [item?.Id, modsByAuthorizationId]);
-    const activeModDraftId = routeModId ?? activeRunModId ?? storedModId ?? latestEditableModId;
+        return getEditableModId(editableMods);
+    }, [editableMods, item?.Id]);
+    const activeModDraftId = routeModId ?? storedModId ?? latestEditableModId ?? activeRunModId;
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -324,10 +340,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const [periodEnd, setPeriodEnd] = React.useState<Dayjs | undefined>(() => toDayjs(item?.periodEnd));
     const isExistingSubmittedEdit = mode === "edit" && !isDraftStatus(form.authorizationStatus);
     const isDraftAuthorization = isDraftStatus(form.authorizationStatus);
-    const isModEditIntent = mode === "edit" && typeof activeModDraftId === "number" && activeModDraftId > 0;
-    const activeModId = currentMod?.Id ?? (isModEditIntent ? activeModDraftId : undefined);
-    const isModEditMode = isModEditIntent && !!activeModId;
-    const isModDraftMode = isModEditIntent && (currentMod?.modStatus ?? "draft") === "draft";
+    const activeModId = currentMod?.Id;
+    const isModEditMode = mode === "edit" && !!activeModId;
+    const isModDraftMode = isModEditMode && (currentMod?.modStatus ?? "draft") === "draft";
     const canSaveProgress = !isExistingSubmittedEdit && !isModDraftMode;
     const isBaselineLocked = isModEditMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
     const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
@@ -397,6 +412,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 receivingEntity: form.receivingEntity ?? "",
                 contractName: form.contractName ?? "",
                 contractId: form.contractId ?? "",
+                customerContractCode: form.customerContractCode ?? "",
                 invoice: form.invoice ?? "",
                 contractType: form.contractType ?? "tm",
                 pmId: toPersonId(form.pm),
@@ -729,8 +745,20 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             try {
-                const modId = activeModDraftId ?? getEditableModId(await ModService.getByAuthorization(item.Id));
-                const mod = modId ? await ModService.getById(modId) : undefined;
+                const mods = await ModService.getByAuthorization(item.Id);
+                const requestedMod = activeModDraftId
+                    ? mods.find((candidate: IModItem): boolean => candidate.Id === activeModDraftId)
+                    : undefined;
+                const mod = requestedMod && editableModStatuses.includes(requestedMod.modStatus)
+                    ? requestedMod
+                    : getEditableModId(mods)
+                        ? await ModService.getById(getEditableModId(mods)!)
+                        : undefined;
+
+                if (activeModDraftId && !mod) {
+                    sessionStorage.removeItem(getActiveModDraftSessionKey(item.Id));
+                    showDialog("Mod Not Editable", "That modification is no longer editable. Refresh the IWA and initiate a new Mod if needed.");
+                }
 
                 if (mod?.Id && item.Id) {
                     sessionStorage.setItem(getActiveModDraftSessionKey(item.Id), String(mod.Id));
@@ -780,6 +808,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 setInvoiceOptions([]);
                 setJobOptions([]);
                 updateField("contractName", "");
+                updateField("customerContractCode", "");
                 updateField("invoice", "");
                 setContractOgWarning("");
                 return;
@@ -792,8 +821,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
             if (!isBaselineLocked) {
                 updateField("contractName", selectedContract.field_20 ?? "");
+                updateField("customerContractCode", selectedContract.field_35 ?? "");
                 if (contractActuallyChanged) {
                     updateField("invoice", "");
+                    setJobOptions([]);
                 }
                 applyOgAndLobFromContract(selectedContract);
 
@@ -806,12 +837,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             setIsInvoicesLoading(true);
 
             try {
-                const [invoices, jobs] = await Promise.all([
-                    DataSource.getInvoicesByContract(selectedContract.field_19),
-                    DataSource.getJobsByContract(selectedContract.field_19)
-                ]);
+                const invoices = await DataSource.getInvoicesByContract(selectedContract.field_19);
                 setInvoiceOptions([...(invoices ?? [])]);
-                setJobOptions([...(jobs ?? [])]);
             } catch (error) {
                 setInvoiceOptions([]);
                 setJobOptions([]);
@@ -826,6 +853,32 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             showDialog("Contract Sync Error", formatError(error));
         });
     }, [applyOgAndLobFromContract, form.pm?.Id, isBaselineLocked, resolveProjectManager, selectedContract, showDialog, updateField]);
+
+    React.useEffect((): void => {
+        const syncInvoiceJobs = async (): Promise<void> => {
+            if (!selectedInvoice?.InvoiceID1) {
+                setJobOptions([]);
+                return;
+            }
+
+            setIsInvoicesLoading(true);
+
+            try {
+                const jobs = await DataSource.getJobsByInvoice(selectedInvoice.InvoiceID1);
+                setJobOptions([...(jobs ?? [])]);
+            } catch (error) {
+                setJobOptions([]);
+                showDialog("Job Load Error", formatError(error));
+            } finally {
+                setIsInvoicesLoading(false);
+            }
+        };
+
+        syncInvoiceJobs().catch((error) => {
+            setIsInvoicesLoading(false);
+            showDialog("Job Load Error", formatError(error));
+        });
+    }, [selectedInvoice?.InvoiceID1, showDialog]);
 
     React.useEffect((): void => {
         if (!selectedOg) {
@@ -1273,6 +1326,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             return false;
         }
 
+        if (isSubmittingMod && currentMod && !editableModStatuses.includes(currentMod.modStatus)) {
+            setIsSaving(false);
+            showDialog("Mod Not Editable", `Mod ${currentMod.modNumber ?? ""} is ${currentMod.modStatus} and cannot be submitted from this form.`);
+            return false;
+        }
+
         if (isSubmittingMod && !modReason.trim()) {
             setIsSaving(false);
             showDialog("Mod Reason Required", "Please enter a reason for this modification before submitting it for approval.");
@@ -1334,7 +1393,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     }
                 };
             } else {
-                saved = await AuthorizationService.edit(nextForm, normalizedStatus);
+                saved = await AuthorizationService.edit(nextForm, authorizationStatusToSave);
             }
 
             const totals = await syncWorkPackageData(saved.Id);
@@ -1486,10 +1545,21 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             const shouldRefreshListData = normalizedStatus !== "draft" || navigateOnSuccess;
 
             if (shouldRefreshListData) {
-                await Promise.all([
-                    refresh(false),
+                if (!options.quiet && normalizedStatus !== "draft") {
+                    showBusy("Refreshing My Work...");
+                }
+
+                const refreshTasks: Promise<boolean>[] = [
+                    refresh(true),
                     loadAuthorizationDetail(saved.Id, true)
-                ]);
+                ];
+
+                const currentUserId = currentUser?.user?.Id;
+                if (normalizedStatus !== "draft" && typeof currentUserId === "number") {
+                    refreshTasks.push(loadMyActions(currentUserId, true));
+                }
+
+                await Promise.all(refreshTasks);
             } else {
                 await loadAuthorizationDetail(saved.Id, true);
             }
@@ -1541,7 +1611,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             setIsSaving(false);
         }
-    }, [activeModId, clearAuthorizationDetailCache, currentMod, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
+    }, [activeModId, clearAuthorizationDetailCache, currentMod, currentUser?.user?.Id, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, loadMyActions, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
     const getProgressSaveStatus = React.useCallback((): AuthorizationStatus => {
         if (isModDraftMode) {
@@ -1621,7 +1691,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
             if (isModDraftMode && activeModId) {
                 await ModService.discardDraft(authorizationId, activeModId);
-                await AuthorizationService.updateModCount(authorizationId, Math.max(0, (form.modCount ?? 1) - 1));
+                await AuthorizationService.recalculateModCount(authorizationId);
                 sessionStorage.removeItem(getActiveModDraftSessionKey(authorizationId));
             } else {
                 await AuthorizationService.delete(authorizationId);
@@ -1636,7 +1706,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             hideBusy();
             showDialog("Discard Draft Error", formatError(error));
         }
-    }, [activeModId, clearAuthorizationDetailCache, draftId, form.Id, form.modCount, hideBusy, history, isModDraftMode, refresh, returnTo, showBusy, showDialog, showSuccess]);
+    }, [activeModId, clearAuthorizationDetailCache, draftId, form.Id, hideBusy, history, isModDraftMode, refresh, returnTo, showBusy, showDialog, showSuccess]);
 
     const handleViewDuplicate = React.useCallback(async (): Promise<void> => {
         if (!duplicateMatch) {
@@ -1668,7 +1738,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [clearAuthorizationDetailCache, draftId, duplicateMatch, form.Id, hideBusy, history, isDraftAuthorization, refresh, showBusy, showDialog, showSuccess]);
 
     const stepOneHasError = submitted && !validateStep(0);
-    const stepTwoHasError = submitted && !validateStep(1);
+    const stepTwoHasError = submitted && !validateStep(2);
 
     const basicInfoSection = (
         <Paper sx={{ p: { xs: 2, md: 3 }, maxWidth: 1200, mx: "auto", width: "100%" }}>
@@ -1775,6 +1845,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         onChange={(_, value: IContractItem | null) => {
                             updateUserField("contractId", value?.field_19 ?? "");
                             updateUserField("contractName", value?.field_20 ?? "");
+                            updateUserField("customerContractCode", value?.field_35 ?? "");
                         }}
                         getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
                         filterOptions={(options, state) => {
@@ -1818,6 +1889,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 <Grid size={{ xs: 12, md: 6 }}>
                     <Autocomplete
                         options={sortedInvoiceOptions}
+                        placeholder="Start typing to search..."
                         value={selectedInvoice}
                         disabled={isBaselineLocked}
                         loading={isInvoicesLoading}
@@ -1831,7 +1903,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             const search = state.inputValue.trim().toLowerCase();
 
                             if (!search) {
-                                return options.slice(0, 50);
+                                return options.slice(0, 100);
                             }
 
                             return options.filter((option: IInvoiceItem) => {
@@ -1879,6 +1951,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             markUserInteracted();
                             setPeriodStart(value);
                         }}
+                        required
                         error={stepOneHasError && !periodStart}
                         helperText={stepOneHasError && !periodStart ? "Period start is required." : undefined}
                     />
@@ -1891,6 +1964,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             markUserInteracted();
                             setPeriodEnd(value);
                         }}
+                        required
                         error={(stepOneHasError && !periodEnd) || periodEndBeforeStart}
                         helperText={
                             periodEndBeforeStart
@@ -1953,8 +2027,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     <TextField
                         label="LOB"
                         fullWidth
-                        value={form.lob ?? ""}
-                        required
+                        value={form.lob ?? ""}                        
                         disabled
                         error={stepOneHasError && !form.lob}
                         helperText={stepOneHasError && !form.lob ? "LOB is required." : "Derived from the selected OG to keep routing/reporting aligned."}

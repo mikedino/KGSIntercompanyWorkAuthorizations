@@ -60,7 +60,7 @@ export const getCompOverrideDraft = (line: ILaborLineItem): ICompOverrideDraft =
     const annualSalary = Number(line.annualSalary ?? 0);
     const standardRate = Number(line.standardRate ?? 0);
     const overtimeRate = Number(line.overtimeRate ?? 0);
-    const derivedStandardRate = annualSalary > 0 ? roundCurrency(annualSalary / 2080) : 0;
+    const derivedStandardRate = annualSalary > 0 ? roundCurrency((annualSalary / 2080) * 1.65) : 0;
     const effectiveStandardRate = standardRate > 0 ? standardRate : derivedStandardRate;
     const derivedOvertimeRate = effectiveStandardRate > 0 ? roundCurrency(effectiveStandardRate * 1.5) : 0;
 
@@ -71,7 +71,7 @@ export const getCompOverrideDraft = (line: ILaborLineItem): ICompOverrideDraft =
 };
 
 export const getDerivedRatesFromSalary = (annualSalary: number | undefined): { standardRate: number; overtimeRate: number } => {
-    const standardRate = annualSalary && annualSalary > 0 ? roundCurrency(annualSalary / 2080) : 0;
+    const standardRate = annualSalary && annualSalary > 0 ? roundCurrency((annualSalary / 2080) * 1.65) : 0;
 
     return {
         standardRate,

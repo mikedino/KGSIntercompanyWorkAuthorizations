@@ -169,9 +169,9 @@ export interface ICounterItem extends ISystemFields {
 export interface IContractItem {
   readonly Id: number;
   Title: string;
-  field_19: string; // Contract ID (e.g. 100002)
+  field_19: string; // Contract ID (e.g. 100158)
   field_20: string; // Contract Title
-  field_35: string; // Customer Contract Code
+  field_35: string; // Customer Contract Code (e.g. 19AQMM21D0121)
   field_21: string; // Manager 1 Email (Project Manager)
   field_23: string; // Manager 1 Name (Project Manager)
   field_73: string; // NAICS Code (e.g. 541519)
@@ -182,17 +182,17 @@ export interface IContractItem {
 export interface IInvoiceItem {
   readonly Id: number;
   Title: string;
-  field_49: string; // Contract ID (e.g. 100002)
-  field_28: string; // Customer Contract Code
-  field_14: string; // Invoice ID (e.g. 100002-0003)
-  InvoiceID1: string; // "ContractID-InvoiceID"
-  field_42: string; // Invoice Title
+  field_49: string; // Contract ID (e.g. 100158)
+  field_28: string; // Customer Contract Code (e.g. 19AQMM21D0121)
+  field_14: string; // Invoice ID 1 (e.g. 0003, 0001)
+  InvoiceID1: string; // "ContractID-InvoiceID" (e.g. 100158-0001, 100158-0003, 100158-HIS1)
+  field_42: string; // Invoice Title (e.g. "DOS 3451 OP4 OBO ASMB")
 }
 
 export interface IJobItem {
   readonly Id: number;
-  field_13: string; // Direct Job ID
-  field_19: string; // Direct Job Title
+  field_13: string; // Direct Job ID (e.g. 100158-0002-0001-0001) 100158-0002-0000-0001
+  field_19: string; // Direct Job Title (e.g. "DOS 3451 OP3 3001 Labor")
 }
 
 export interface IOgItem {
@@ -253,6 +253,7 @@ export interface IAuthorizationItem extends ISystemFields {
 
   contractName: string;
   contractId: string;
+  customerContractCode?: string;
   invoice: string;
   contractType: ContractType;
   periodStart?: string;

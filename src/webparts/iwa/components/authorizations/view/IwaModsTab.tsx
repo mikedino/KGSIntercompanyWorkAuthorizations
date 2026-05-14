@@ -4,6 +4,7 @@ import { alpha } from "@mui/material/styles";
 import ExpandMoreOutlinedIcon from "@mui/icons-material/ExpandMoreOutlined";
 import { ILaborLineItem, IModItem, IResourceItem, ITravelOdcItem, IWorkflowActionItem } from "../../data/props";
 import { formatCurrency, formatDate } from "../../common/utils";
+import { maskedCurrencyText } from "../financialAccess";
 import { quietTableSx, totalsRowSx } from "./iwaViewUtils";
 
 interface IModLaborSummaryRow {
@@ -29,6 +30,7 @@ interface IModTravelSummaryRow {
 
 interface IIwaModsTabProps {
     actions: IWorkflowActionItem[];
+    canViewFinancials: boolean;
     laborLines: ILaborLineItem[];
     mods: IModItem[];
     resources: IResourceItem[];
@@ -196,6 +198,7 @@ const getModPeriodChange = (mod: IModItem, actions: IWorkflowActionItem[]): IMod
 
 export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
     actions,
+    canViewFinancials,
     laborLines,
     mods,
     resources,
@@ -280,7 +283,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                     <Chip label={`${travelRows.length} travel / ODC change${travelRows.length === 1 ? "" : "s"}`} size="small" variant="outlined" />
                                 </Stack>
                                 <Stack spacing={0.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
-                                    <Typography variant="body2" fontWeight={600}>{formatCurrency(grandDelta)} total change</Typography>
+                                    <Typography variant="body2" fontWeight={600}>{canViewFinancials ? formatCurrency(grandDelta) : maskedCurrencyText} total change</Typography>
                                     <Typography variant="caption" color="text.secondary">
                                         {getModCreatedText(mod)}
                                     </Typography>
@@ -295,8 +298,8 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                         <Typography color="text.secondary">{mod.reason || mod.changeSummary || "No reason was entered for this Mod."}</Typography>
                                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
                                             <Chip label={`Created by ${mod.Author?.Title ?? "Unknown"}`} size="small" variant="outlined" />
-                                            <Chip label={`Labor ${formatCurrency(laborCostTotal)}`} size="small" variant="outlined" />
-                                            <Chip label={`Travel / ODC ${formatCurrency(travelCostTotal)}`} size="small" variant="outlined" />
+                                            <Chip label={`Labor ${canViewFinancials ? formatCurrency(laborCostTotal) : maskedCurrencyText}`} size="small" variant="outlined" />
+                                            <Chip label={`Travel / ODC ${canViewFinancials ? formatCurrency(travelCostTotal) : maskedCurrencyText}`} size="small" variant="outlined" />
                                         </Stack>
                                     </Stack>
                                 </Paper>
@@ -364,7 +367,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                                             <TableCell align="right">{row.standardHours || "-"}</TableCell>
                                                             <TableCell align="right">{row.overtimeHours || "-"}</TableCell>
                                                             <TableCell align="right">+{row.totalHours}</TableCell>
-                                                            <TableCell align="right">+{formatCurrency(row.totalAmount)}</TableCell>
+                                                            <TableCell align="right">{canViewFinancials ? `+${formatCurrency(row.totalAmount)}` : maskedCurrencyText}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow sx={totalsRowSx}>
@@ -372,7 +375,7 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                                         <TableCell align="right">{standardHoursTotal || "-"}</TableCell>
                                                         <TableCell align="right">{overtimeHoursTotal || "-"}</TableCell>
                                                         <TableCell align="right">+{laborHoursTotal}</TableCell>
-                                                        <TableCell align="right">+{formatCurrency(laborCostTotal)}</TableCell>
+                                                        <TableCell align="right">{canViewFinancials ? `+${formatCurrency(laborCostTotal)}` : maskedCurrencyText}</TableCell>
                                                     </TableRow>
                                                 </TableBody>
                                             </Table>
@@ -403,12 +406,12 @@ export const IwaModsTab: React.FC<IIwaModsTabProps> = ({
                                                             <TableCell><Chip label={`Added ${row.lineType}`} size="small" color="info" variant="outlined" /></TableCell>
                                                             <TableCell>{row.jobId}</TableCell>
                                                             <TableCell>{row.description}</TableCell>
-                                                            <TableCell align="right">+{formatCurrency(row.amount)}</TableCell>
+                                                            <TableCell align="right">{canViewFinancials ? `+${formatCurrency(row.amount)}` : maskedCurrencyText}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow sx={totalsRowSx}>
                                                         <TableCell colSpan={3}>Total travel / ODC change</TableCell>
-                                                        <TableCell align="right">+{formatCurrency(travelCostTotal)}</TableCell>
+                                                        <TableCell align="right">{canViewFinancials ? `+${formatCurrency(travelCostTotal)}` : maskedCurrencyText}</TableCell>
                                                     </TableRow>
                                                 </TableBody>
                                             </Table>

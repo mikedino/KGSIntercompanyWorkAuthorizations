@@ -35,6 +35,7 @@ import { IwaExportPdfDocument } from "./IwaExportPdfDocument";
 import { IwaExportService } from "./iwaExportService";
 import { useShellUi } from "../../ui/ShellUiContext";
 import { AuthorizationService } from "../iwaService";
+import { canViewFinancialAmounts } from "../financialAccess";
 
 const totalCellSx = {
     fontWeight: 600,
@@ -101,7 +102,9 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
     const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
     const {
         actionsByAuthorizationId,
+        appUsers,
         authorizations,
+        currentUser,
         draftAuthorizations,
         laborLinesByAuthorizationId,
         lastRefreshed,
@@ -109,6 +112,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
         modsByAuthorizationId,
         refresh,
         resourcesByAuthorizationId,
+        runsByAuthorizationId,
         travelOdcsByAuthorizationId
     } = useIwa();
     const contextAuthorization = React.useMemo(() => {
@@ -170,6 +174,8 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
     const travelOdcs = travelOdcsByAuthorizationId.get(authorizationId) ?? [];
     const actions = actionsByAuthorizationId.get(authorizationId) ?? [];
     const resources = resourcesByAuthorizationId.get(authorizationId) ?? [];
+    const workflowRuns = runsByAuthorizationId.get(authorizationId) ?? [];
+    const canViewFinancials = canViewFinancialAmounts(currentUser, authorization, workflowRuns, appUsers);
     const options = authorization ? buildIwaExportOptions(authorization, mods) : [];
     const model = authorization
         ? buildIwaExportViewModel(authorization, mods, laborLines, travelOdcs, actions, resources, selectedExportKey)
@@ -242,6 +248,21 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
             <Paper sx={{ p: 3 }}>
                 <Typography variant="h6" fontWeight={700}>Export preview unavailable</Typography>
                 <Typography color="text.secondary">Refresh the app or return to the authorization and try again.</Typography>
+            </Paper>
+        );
+    }
+
+    if (!canViewFinancials) {
+        return (
+            <Paper sx={{ p: 3 }}>
+                <Stack spacing={1.5}>
+                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={() => history.push(`/authorizations/view/${authorization.Id}`)} sx={{ alignSelf: "flex-start" }}>
+                        Back
+                    </Button>
+                    <Alert severity="warning">
+                        Export preview contains dollar amounts and is limited to workflow approvers, their backups, and the PM.
+                    </Alert>
+                </Stack>
             </Paper>
         );
     }
@@ -333,8 +354,8 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
 
                         <Grid container spacing={1.5}>
                             {[
-                                ["NEW LABOR", formatCurrency(model.newLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
-                                ["NEW TRAVEL", formatCurrency(model.newTravelTotal), `${model.travelDetails.length} line(s)`],
+                                ["NEW LABOR", formatCurrency(model.modLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
+                                ["NEW TRAVEL", formatCurrency(model.modTravelTotal), `${model.travelDetails.length} line(s)`],
                                 [modSummaryTitle, formatCurrency(model.modGrandTotal), exportLabel ?? "Base IWA"],
                                 ["NEW GRAND TOTAL", formatCurrency(model.newGrandTotal), "Labor + Travel / ODC"]
                             ].map(([label, value, detail]) => (
@@ -355,7 +376,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                     ["DONOR ENTITY", authorization.donorEntity, authorization.donorEntityAbbr],
                                     ["RECIPIENT ENTITY", authorization.receivingEntity, authorization.receivingEntityAbbr],
                                     ["OPERATING GROUP", authorization.og || "-", authorization.lob],
-                                    ["CONTRACT ID", authorization.contractId || "-", contractTypeLabel],
+                                    ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
                                     ["CONTRACT NAME", authorization.contractName || "-", ""],
                                     ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],
                                     ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],

@@ -4,10 +4,13 @@ import {
     Avatar,
     Box,
     Button,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
     IconButton,
     Menu,
     MenuItem,
-    Popover,
     Stack,
     Toolbar,
     Typography
@@ -72,7 +75,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
     const [dialogTitle, setDialogTitle] = React.useState<string>("");
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [backups, setBackups] = React.useState<{ results: IPeoplePicker[]; }>({ results: [] });
-    const [backupAnchorEl, setBackupAnchorEl] = React.useState<HTMLElement | undefined>(undefined);
+    const [backupDialogOpen, setBackupDialogOpen] = React.useState<boolean>(false);
     const [menuAnchorEl, setMenuAnchorEl] = React.useState<HTMLElement | undefined>(undefined);
     const [backupSaving, setBackupSaving] = React.useState<boolean>(false);
 
@@ -156,12 +159,26 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
         }
     }, [clearAuthorizationDetailCache, clearDashboardActionsCache, clearMyActionsCache, hideBusy, refresh, showBusy]);
 
-    const handleBackupOpen = React.useCallback((event: React.MouseEvent<HTMLElement>): void => {
-        setBackupAnchorEl(event.currentTarget);
-    }, []);
+    const handleBackupOpen = React.useCallback((): void => {
+        setBackups(currentUser?.backups ?? { results: [] });
+        setBackupDialogOpen(true);
+    }, [currentUser?.backups]);
+
+    const hasBackupChanges = React.useMemo((): boolean => {
+        const originalIds = (currentUser?.backups?.results ?? []).map((backup: IPeoplePicker): number => backup.Id).sort((left, right) => left - right);
+        const selectedIds = (backups.results ?? []).map((backup: IPeoplePicker): number => backup.Id).sort((left, right) => left - right);
+
+        if (originalIds.length !== selectedIds.length) {
+            return true;
+        }
+
+        return originalIds.some((id: number, index: number): boolean => id !== selectedIds[index]);
+    }, [backups.results, currentUser?.backups?.results]);
+
+    const canSaveBackups = hasBackupChanges && !backupSaving;
 
     const handleBackupClose = React.useCallback((): void => {
-        setBackupAnchorEl(undefined);
+        setBackupDialogOpen(false);
     }, []);
 
     const handleMenuOpen = React.useCallback((event: React.MouseEvent<HTMLElement>): void => {
@@ -384,9 +401,9 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     Help
                 </MenuItem>
                 <MenuItem
-                    onClick={(event: React.MouseEvent<HTMLElement>) => {
+                    onClick={() => {
                         handleMenuClose();
-                        handleBackupOpen(event);
+                        handleBackupOpen();
                     }}
                 >
                     {currentUser?.hasBackup ? (
@@ -411,54 +428,38 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                 </MenuItem>
             </Menu>
 
-            <Popover
-                open={!!backupAnchorEl}
-                anchorEl={backupAnchorEl}
+            <Dialog
+                open={backupDialogOpen}
                 onClose={handleBackupClose}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
-                slotProps={{
-                    paper: {
-                        sx: {
-                            mt: 1.5,
-                            width: { xs: 320, sm: 450 },
-                            p: 2,
-                            borderRadius: 2,
-                            boxShadow: theme.shadows[8]
-                        }
-                    }
-                }}
+                fullWidth
+                maxWidth="sm"
             >
-                <Stack spacing={2}>
-                    <Box>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                            Manage Backups
-                        </Typography>
+                <DialogTitle>Manage Backups</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={2} sx={{ pt: 1 }}>
                         <Typography variant="body2" color="text.secondary">
                             Select one or more backup approvers for your account.
                         </Typography>
-                    </Box>
 
-                    <MuiPeoplePicker
-                        label="Backup(s)"
-                        context={peoplePickerContext}
-                        value={backups.results?.length ? backups.results.map(b => b.EMail) : []}
-                        required
-                        onChange={handleBackups}
-                        helperText="Select one or more backups"
-                        selectionLimit={5}
-                    />
-
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button onClick={handleBackupClose} color="inherit">
-                            Cancel
-                        </Button>
-                        <Button variant="contained" onClick={handleSaveBackups} disabled={backupSaving}>
-                            Save
-                        </Button>
+                        <MuiPeoplePicker
+                            label="Backup(s)"
+                            context={peoplePickerContext}
+                            value={backups.results?.length ? backups.results.map(b => b.EMail) : []}
+                            onChange={handleBackups}
+                            helperText="Leave blank to remove all backups"
+                            selectionLimit={5}
+                        />
                     </Stack>
-                </Stack>
-            </Popover>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleBackupClose} color="inherit">
+                        Cancel
+                    </Button>
+                    <Button variant="contained" onClick={handleSaveBackups} disabled={!canSaveBackups}>
+                        Save
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             <AlertDialog open={showDialog} title={dialogTitle} message={dialogMessage} onClose={hideDialog} />
         </AppBar>

@@ -110,6 +110,13 @@ const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
     comments: ""
 });
 
+type RemoveConfirmation = {
+    id: string;
+    message: string;
+    title: string;
+    type: "resource" | "travel" | "ffpLabor";
+};
+
 const toPeoplePickerValue = (item?: IPersonaProps): IPeoplePicker | undefined => {
     if (!item?.id || !item.text || !item.secondaryText) {
         return undefined;
@@ -138,6 +145,21 @@ const filterJobOptions = (options: IJobItem[], inputValue: string): IJobItem[] =
             (option.field_19 ?? "").toLowerCase().includes(search)
         );
     }).slice(0, 50);
+};
+
+const filterAllJobOptions = (options: IJobItem[], inputValue: string): IJobItem[] => {
+    const search = inputValue.trim().toLowerCase();
+
+    if (!search) {
+        return options;
+    }
+
+    return options.filter((option: IJobItem): boolean => {
+        return (
+            (option.field_13 ?? "").toLowerCase().includes(search) ||
+            (option.field_19 ?? "").toLowerCase().includes(search)
+        );
+    });
 };
 
 const renderJobOption = (props: React.HTMLAttributes<HTMLLIElement>, option: IJobItem): JSX.Element => (
@@ -195,6 +217,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const [ffpDraftErrors, setFfpDraftErrors] = React.useState<Record<string, string>>({});
     const [ffpAmountFocused, setFfpAmountFocused] = React.useState(false);
     const [priorResourcesOpen, setPriorResourcesOpen] = React.useState(false);
+    const [removeConfirmation, setRemoveConfirmation] = React.useState<RemoveConfirmation | undefined>(undefined);
     const resourceTotals = React.useMemo(() => {
         return resourceRows.reduce((totals, row) => ({
             standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
@@ -251,6 +274,49 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const copyAllPriorResources = React.useCallback((): void => {
         priorResourceRows.forEach(copyPriorResource);
     }, [copyPriorResource, priorResourceRows]);
+
+    const requestRemoveResource = React.useCallback((row: IEditableResourceRow): void => {
+        setRemoveConfirmation({
+            id: row.id,
+            type: "resource",
+            title: "Remove Resource?",
+            message: `Remove ${row.employee?.Title ?? "this resource"} from this IWA? Associated FFP line assignments will also be cleared.`
+        });
+    }, []);
+
+    const requestRemoveTravel = React.useCallback((row: IEditableTravelRow): void => {
+        setRemoveConfirmation({
+            id: row.id,
+            type: "travel",
+            title: "Remove Travel / ODC Line?",
+            message: `Remove this ${row.lineType.toUpperCase()} line from this IWA?`
+        });
+    }, []);
+
+    const requestRemoveFfpLabor = React.useCallback((row: IEditableFfpLaborRow): void => {
+        setRemoveConfirmation({
+            id: row.id,
+            type: "ffpLabor",
+            title: "Remove FFP Line?",
+            message: `Remove ${row.jobId || "this FFP labor / CLIN line"} from this IWA?`
+        });
+    }, []);
+
+    const confirmRemove = React.useCallback((): void => {
+        if (!removeConfirmation) {
+            return;
+        }
+
+        if (removeConfirmation.type === "resource") {
+            onRemoveResource(removeConfirmation.id);
+        } else if (removeConfirmation.type === "travel") {
+            onRemoveTravel(removeConfirmation.id);
+        } else {
+            onRemoveFfpLabor(removeConfirmation.id);
+        }
+
+        setRemoveConfirmation(undefined);
+    }, [onRemoveFfpLabor, onRemoveResource, onRemoveTravel, removeConfirmation]);
 
     const openNewResourceDialog = React.useCallback((): void => {
         setResourceDraft(createEmptyResourceDraft());
@@ -521,7 +587,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                     <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditResourceDialog(row)}>
                                                         Edit
                                                     </Button>
-                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => onRemoveResource(row.id)}>
+                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveResource(row)}>
                                                         Remove
                                                     </Button>
                                                 </Stack>
@@ -597,7 +663,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                                 <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditFfpDialog(row)}>
                                                                     Edit
                                                                 </Button>
-                                                                <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => onRemoveFfpLabor(row.id)}>
+                                                                <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveFfpLabor(row)}>
                                                                     Remove
                                                                 </Button>
                                                             </Stack>
@@ -672,7 +738,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                     <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditTravelDialog(row)}>
                                                         Edit
                                                     </Button>
-                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => onRemoveTravel(row.id)}>
+                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveTravel(row)}>
                                                         Remove
                                                     </Button>
                                                 </Stack>
@@ -769,7 +835,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
                                             onChange={(_, value: IJobItem | null) => setResourceDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
-                                            filterOptions={(options, state) => filterJobOptions(options, state.inputValue)}
+                                            filterOptions={(options, state) => filterAllJobOptions(options, state.inputValue)}
                                             getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                             isOptionEqualToValue={(option, value) => option.Id === value.Id}
                                             renderOption={renderJobOption}
@@ -788,6 +854,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         <TextField
                                             label="Enter Standard Hours"
                                             fullWidth
+                                            required
                                             value={resourceDraft.standardHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, standardHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.standardHours)}
@@ -954,7 +1021,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     options={jobOptions}
                                     value={jobOptions.find((job) => job.field_13 === travelDraft.jobId) ?? null}
                                     onChange={(_, value: IJobItem | null) => setTravelDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
-                                    filterOptions={(options, state) => filterJobOptions(options, state.inputValue)}
+                                    filterOptions={(options, state) => filterAllJobOptions(options, state.inputValue)}
                                     getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                     isOptionEqualToValue={(option, value) => option.Id === value.Id}
                                     renderOption={renderJobOption}
@@ -1019,6 +1086,21 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 <DialogActions>
                     <Button onClick={closeTravelDialog}>Cancel</Button>
                     <Button variant="contained" onClick={saveTravelDraft}>Save Line</Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog open={!!removeConfirmation} onClose={() => setRemoveConfirmation(undefined)} fullWidth maxWidth="sm">
+                <DialogTitle>{removeConfirmation?.title ?? "Remove Line?"}</DialogTitle>
+                <DialogContent>
+                    <Typography color="text.secondary">
+                        {removeConfirmation?.message ?? "Remove this line from the IWA?"}
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setRemoveConfirmation(undefined)}>Cancel</Button>
+                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={confirmRemove}>
+                        Remove
+                    </Button>
                 </DialogActions>
             </Dialog>
         </Stack>

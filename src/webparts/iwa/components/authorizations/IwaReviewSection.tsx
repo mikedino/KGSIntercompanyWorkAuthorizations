@@ -124,6 +124,10 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                     <Typography variant="body1" color="text.secondary">{form.contractId || "—"} | {form.contractName || "—"}</Typography>
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
+                    <Typography variant="subtitle2" fontWeight={600}>Customer Contract Code</Typography>
+                    <Typography variant="body1" color="text.secondary">{form.customerContractCode || "—"}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="subtitle2" fontWeight={600}>Contract Type</Typography>
                     <Typography variant="body1" color="text.secondary">{selectedContractType.label}</Typography>
                 </Grid>
@@ -134,6 +138,10 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                 <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="subtitle2" fontWeight={600}>Workflow Routing</Typography>
                     <Typography variant="body1" color="text.secondary">{form.pm?.Title || "—"} | {form.og || "—"} | {form.lob || "—"}</Typography>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Typography variant="subtitle2" fontWeight={600}>Backup Requestor</Typography>
+                    <Typography variant="body1" color="text.secondary">{form.backupRequestor?.Title || "—"}</Typography>
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
                     <Typography variant="subtitle2" fontWeight={600}>Period</Typography>
