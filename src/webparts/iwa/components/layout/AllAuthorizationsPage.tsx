@@ -104,22 +104,22 @@ const isPresetView = (value: string | undefined): value is AllAuthorizationsPres
 };
 
 const columnConfigs: IColumnConfig[] = [
-    { key: "title", label: "Authorization", sortField: "title", minWidth: 280, defaultWidth: 320 },
-    { key: "contractDetails", label: "Contract Details", sortField: "customerContractCode", minWidth: 170, defaultWidth: 190 },
-    { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 120, defaultWidth: 140 },
-    { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 150, defaultWidth: 170 },
-    { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 180, defaultWidth: 190 },
-    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 130, defaultWidth: 140 },
-    { key: "period", label: "Period", sortField: "periodEnd", minWidth: 140, defaultWidth: 150 },
+    { key: "title", label: "Authorization", sortField: "title", minWidth: 205, defaultWidth: 220 },
+    { key: "contractDetails", label: "Contract Details", sortField: "customerContractCode", minWidth: 135, defaultWidth: 145 },
+    { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 100, defaultWidth: 110 },
+    { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 105, defaultWidth: 115 },
+    { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 135, defaultWidth: 145 },
+    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 115, defaultWidth: 125 },
+    { key: "period", label: "Period", sortField: "periodEnd", minWidth: 100, defaultWidth: 110 },
     {
         key: "createdDate",
         label: "Created",
         tooltip: "Shows who created the base IWA and when. If the IWA has Mods, this shows the creator and created date for the latest Mod.",
         sortField: "createdDate",
-        minWidth: 170,
-        defaultWidth: 190
+        minWidth: 135,
+        defaultWidth: 145
     },
-    { key: "actions", label: "", minWidth: 72, defaultWidth: 72, align: "center" }
+    { key: "actions", label: "", minWidth: 56, defaultWidth: 56, align: "center" }
 ];
 
 const defaultColumnWidths = columnConfigs.reduce((accumulator: Record<ColumnKey, number>, column: IColumnConfig) => {
@@ -844,7 +844,16 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                                 </Tooltip>
                                                             )}
                                                         </Stack>
-                                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                                        <Typography
+                                                            variant="body2"
+                                                            color="text.secondary"
+                                                            sx={{
+                                                                display: "-webkit-box",
+                                                                overflow: "hidden",
+                                                                WebkitBoxOrient: "vertical",
+                                                                WebkitLineClamp: 2
+                                                            }}
+                                                        >
                                                             {row.authorization.contractName || "No contract title"}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">

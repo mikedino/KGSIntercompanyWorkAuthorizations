@@ -889,7 +889,6 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [selectedOg, updateField]);
 
     const donorEqualsReceiving = !!form.donorEntity && !!form.receivingEntity && form.donorEntity === form.receivingEntity;
-    const missingInvoiceHint = !!form.contractId && !selectedInvoice;
     const periodEndBeforeStart = !!periodStart && !!periodEnd && periodEnd.isBefore(periodStart, "day");
 
     const addResourceRow = React.useCallback((row?: IEditableResourceRow): void => {
@@ -1067,6 +1066,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 form.contractType &&
                 form.contractId &&
                 form.contractName &&
+                form.invoice &&
                 form.pm?.Id &&
                 form.og &&
                 form.lob &&
@@ -1306,6 +1306,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         if (!ensureUniqueAuthorizationCombination()) {
+            return false;
+        }
+
+        if (form.contractId && !form.invoice) {
+            setSubmitted(true);
+            showDialog("Invoice / Task Order Required", "Select an Invoice / Task Order before saving or continuing.");
             return false;
         }
 
@@ -1755,7 +1761,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         renderInput={(params) => (
                             <TextField
                                 {...params}
-                                label="Donor Entity"
+                                label="Entity A (Donor)"
                                 required
                                 error={stepOneHasError && !form.donorEntity}
                                 helperText={stepOneHasError && !form.donorEntity ? "Donor entity is required." : "Entity providing employees or services."}
@@ -1775,7 +1781,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         renderInput={(params) => (
                             <TextField
                                 {...params}
-                                label="Receiving Entity"
+                                label="Entity B (Receiving Services)"
                                 required
                                 error={(stepOneHasError && !form.receivingEntity) || donorEqualsReceiving}
                                 helperText={
@@ -1919,12 +1925,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             <TextField
                                 {...params}
                                 label="Invoice / Task Order"
+                                required
+                                error={stepOneHasError && !form.invoice}
                                 helperText={
                                     !form.contractId
                                         ? "Select a contract first."
-                                        : missingInvoiceHint
-                                            ? "Invoice is optional for now. Leave blank if not applicable."
-                                            : "Optional, but helpful when the work is tied to a specific invoice or task order."
+                                        : stepOneHasError && !form.invoice
+                                            ? "Invoice / Task Order is required."
+                                            : "Select the Invoice / Task Order before continuing."
                                 }
                             />
                         )}

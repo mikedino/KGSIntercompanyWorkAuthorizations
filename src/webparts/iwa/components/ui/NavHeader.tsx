@@ -100,24 +100,28 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
         setShowDialog(false);
     }, []);
 
+    const brandedAccentColor = "#f9b818";
+    const brandedAccentHoverColor = "#d99600";
+    const brandedAccentContrastText = "#091e31";
+
     const navButtonSx = React.useMemo(() => ({
         fontSize: 14,
         lineHeight: 1.2,
         "&.active": {
-            color: theme.palette.warning.main,
-            borderColor: theme.palette.warning.main
+            color: brandedAccentColor,
+            borderColor: brandedAccentColor
         },
         "&:hover": {
-            color: theme.palette.warning.main,
+            color: brandedAccentColor,
             backgroundColor: "rgba(242, 199, 68, 0.08)"
         }
-    }), [theme.palette.warning.main]);
+    }), []);
 
     const headerBgColor = "#091e31";
     const headerBorderColor = "rgba(200, 220, 255, 0.18)";
     const headerTextColor = "#f9f9f9";
     const headerSecondaryColor = "rgba(255,255,255,0.65)";
-    const headerAccentColor = theme.palette.secondary.main;
+    const headerAccentColor = brandedAccentColor;
     const currentRoleLabel = currentUser?.role === "admin"
         ? "Administrator"
         : currentUser?.role === "hr"
@@ -362,15 +366,16 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     </IconButton>
                     <Button
                         variant="contained"
-                        color="secondary"
                         startIcon={<AddOutlinedIcon />}
                         onClick={handleNewAuthorization}
                         sx={{
                             fontSize: 14,
                             whiteSpace: "nowrap",
-                            // "&:hover": {
-                            //     backgroundColor: theme.palette.secondary.main
-                            // }
+                            bgcolor: brandedAccentColor,
+                            color: brandedAccentContrastText,
+                            "&:hover": {
+                                bgcolor: brandedAccentHoverColor
+                            }
                         }}
                     >
                         New Authorization

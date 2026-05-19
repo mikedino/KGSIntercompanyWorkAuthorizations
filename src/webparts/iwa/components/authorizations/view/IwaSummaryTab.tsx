@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Box, Grid, Link, Paper, Stack, Typography } from "@mui/material";
+import { Grid, Link, Paper, Stack, Typography } from "@mui/material";
 import AttachFileOutlinedIcon from "@mui/icons-material/AttachFileOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
@@ -8,7 +8,7 @@ import SlideshowOutlinedIcon from "@mui/icons-material/SlideshowOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import { ContextInfo } from "gd-sprest";
 import { IAuthorizationItem, IModItem } from "../../data/props";
-import { formatCurrency, formatDate, RELATIONSHIP_SEPARATOR } from "../../common/utils";
+import { formatCurrency, formatDate } from "../../common/utils";
 import { maskedCurrencyText } from "../financialAccess";
 
 export interface IViewAttachmentItem {
@@ -99,18 +99,34 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
                 <Typography variant="subtitle2" fontWeight={600}>Entities / Organization</Typography>
-                <Stack spacing={1} sx={{ mt: 0.5 }}>
-                    <Box>
-                        <Typography variant="caption" color="text.secondary">Entities</Typography>
-                        <Typography fontWeight={500}>
-                            {authorization.donorEntity || "-"} <Box component="span" sx={{ color: "secondary.main" }}>{RELATIONSHIP_SEPARATOR}</Box> {authorization.receivingEntity || "-"}
-                        </Typography>
-                    </Box>
-                    <Box>
-                        <Typography variant="caption" color="text.secondary">Operating Group / LOB</Typography>
-                        <Typography fontWeight={500}>{authorization.og || "-"} | {authorization.lob || "-"}</Typography>
-                    </Box>
-                </Stack>
+                <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Entity A (Donor)</Typography>
+                        <Typography fontWeight={500}>{authorization.donorEntityAbbr || authorization.donorEntity || "-"}</Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Entity B (Receives Services)</Typography>
+                        <Typography fontWeight={500}>{authorization.receivingEntityAbbr || authorization.receivingEntity || "-"}</Typography>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">OG</Typography>
+                        <Typography fontWeight={500}>{authorization.og || "-"}</Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">LOB</Typography>
+                        <Typography fontWeight={500}>{authorization.lob || "-"}</Typography>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Entity A GM</Typography>
+                        <Typography fontWeight={500}>{authorization.donorGm?.Title || "-"}</Typography>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                        <Typography variant="caption" color="text.secondary">Entity B GM</Typography>
+                        <Typography fontWeight={500}>{authorization.receivingGm?.Title || "-"}</Typography>
+                    </Grid>
+                </Grid>
             </Paper>
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>

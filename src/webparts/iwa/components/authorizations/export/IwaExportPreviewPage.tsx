@@ -345,7 +345,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                 </Stack>
                             </Box>
                             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={0.5}>
-                                <Typography color="text.secondary">{authorization.donorEntity} providing services to {authorization.receivingEntity}</Typography>
+                                <Typography color="text.secondary">Entity A: {authorization.donorEntity} providing services to Entity B: {authorization.receivingEntity}</Typography>
                                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: { xs: "left", md: "right" } }}>
                                     {storedPdfGeneratedOn ? `PDF Generated ${formatDate(storedPdfGeneratedOn, true)}` : "PDF not generated"}
                                 </Typography>
@@ -373,9 +373,12 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                             <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Transaction Header</Typography>
                             <Grid container spacing={2}>
                                 {[
-                                    ["DONOR ENTITY", authorization.donorEntity, authorization.donorEntityAbbr],
-                                    ["RECIPIENT ENTITY", authorization.receivingEntity, authorization.receivingEntityAbbr],
-                                    ["OPERATING GROUP", authorization.og || "-", authorization.lob],
+                                    ["ENTITY A (DONOR)", authorization.donorEntity, authorization.donorEntityAbbr],
+                                    ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity, authorization.receivingEntityAbbr],
+                                    ["OG", authorization.og || "-", ""],
+                                    ["LOB", authorization.lob || "-", ""],
+                                    ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
+                                    ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
                                     ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
                                     ["CONTRACT NAME", authorization.contractName || "-", ""],
                                     ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],

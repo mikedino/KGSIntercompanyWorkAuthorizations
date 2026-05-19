@@ -73,7 +73,7 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                             onOpenChangeDialog(modifiedAction);
                                         }}
                                     >
-                                        Changes
+                                        View Changes
                                     </Button>
                                 )}
                             </Stack>
@@ -92,10 +92,22 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                 const skippedAfterRejection = rejectedStepIndex >= 0 && stepIndex > rejectedStepIndex && !action && step !== "submitter";
                                 const skippedForFfpHr = step === "hr" && isFfpAuthorization;
                                 const skipped = (step === "pm" && run.skipPmStep === true) || skippedForFfpHr || skippedAfterRejection;
-                                const label = workflowStepLabels[step];
+                                const label = step === "submitter" && action?.actionType === "restarted"
+                                    ? "Resubmitted"
+                                    : workflowStepLabels[step];
                                 const approver = getWorkflowStepApprover(step, authorization, run);
                                 const completedBy = action?.actionBy?.Title ?? (action ? "System" : "");
-                                const actedOnBehalf = action?.actionBy?.Id && approver?.Id && action.actionBy.Id !== approver.Id && step !== "submit";
+                                const isReturnedToSubmitterStep = step === "submitter" && action?.actionType === "returned";
+                                const actedOnBehalf = !isReturnedToSubmitterStep &&
+                                    action?.actionBy?.Id &&
+                                    approver?.Id &&
+                                    action.actionBy.Id !== approver.Id &&
+                                    step !== "submit";
+                                const personDisplay = isReturnedToSubmitterStep
+                                    ? `Returned to ${approver?.Title ?? "the submitter"} by ${completedBy}`
+                                    : actedOnBehalf
+                                        ? `${completedBy} on behalf of ${approver?.Title ?? "the assigned approver"}`
+                                        : approver?.Title ?? "No approver assigned";
                                 const statusLabel = skipped
                                     ? "Skipped"
                                     : isCurrent
@@ -151,7 +163,7 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                                 <Box>
                                                     <Stack direction="row" spacing={0.75} alignItems="center">
                                                         <Typography fontWeight={600}>{label}</Typography>
-                                                        {action && !!action.comments && (
+                                                        {action && !!action.comments && !(step === "submitter" && (action.actionType === "returned" || action.actionType === "restarted")) && (
                                                             <Tooltip title="View comments">
                                                                 <IconButton
                                                                     size="small"
@@ -165,13 +177,13 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                                         )}
                                                     </Stack>
                                                     <Typography variant="body2" color="text.secondary">
-                                                        {actedOnBehalf ? `${completedBy} on behalf of ${approver?.Title ?? "the assigned approver"}` : approver?.Title ?? "No approver assigned"}
+                                                        {personDisplay}
                                                     </Typography>
                                                 </Box>
                                                 <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                                                     <Stack spacing={0.5} alignItems="flex-end">
                                                         <Chip label={statusLabel} color={getWorkflowActionChipColor(action, isCurrent, skipped)} size="small" variant={skipped || !action && !isCurrent ? "outlined" : "filled"} />
-                                                        {isCurrent && (
+                                                        {isCurrent && (!action || action.actionDate !== run.stepAssignedDate) && (
                                                             <Typography variant="caption" color="text.secondary">
                                                                 {formatDate(run.stepAssignedDate, true)}
                                                             </Typography>

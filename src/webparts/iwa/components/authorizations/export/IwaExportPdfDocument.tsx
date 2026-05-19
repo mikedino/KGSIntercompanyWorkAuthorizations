@@ -242,9 +242,12 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
     const totalOvertimeHours = model.laborDetails.reduce((total, row) => total + row.overtimeHours, 0);
     const totalThisLabel = model.mod ? "TOTAL THIS MOD" : "TOTAL BASE";
     const detailItems = [
-        ["DONOR ENTITY", authorization.donorEntity || "-", authorization.donorEntityAbbr],
-        ["RECIPIENT ENTITY", authorization.receivingEntity || "-", authorization.receivingEntityAbbr],
-        ["OPERATING GROUP", authorization.og || "-", authorization.lob],
+        ["ENTITY A (DONOR)", authorization.donorEntity || "-", authorization.donorEntityAbbr],
+        ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity || "-", authorization.receivingEntityAbbr],
+        ["OG", authorization.og || "-", ""],
+        ["LOB", authorization.lob || "-", ""],
+        ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
+        ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
         ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
         ["CONTRACT NAME", authorization.contractName || "-", ""],
         ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],
@@ -263,7 +266,7 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                         <Text style={styles.badge}>{headerLabel}</Text>
                     </View>
                     <View style={styles.headerSubtitleRow}>
-                        <Text style={styles.subtitle}>{authorization.donorEntity || "-"} providing services to {authorization.receivingEntity || "-"}</Text>
+                        <Text style={styles.subtitle}>Entity A: {authorization.donorEntity || "-"} providing services to Entity B: {authorization.receivingEntity || "-"}</Text>
                         <Text style={styles.approvedText}>PDF Generated {formatDate(pdfGeneratedOn, true)}</Text>
                     </View>
                 </View>
