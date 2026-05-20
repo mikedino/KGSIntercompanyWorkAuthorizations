@@ -1,7 +1,7 @@
 import * as React from "react";
 import {
     Box, BottomNavigation, BottomNavigationAction, Button, Chip, CircularProgress, Divider, Dialog, DialogActions,
-    DialogContent, DialogTitle, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+    DialogContent, DialogTitle, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
     TableRow, TextField, Tooltip, Typography
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -15,7 +15,7 @@ import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { useIwa } from "../data/iwaContext";
-import { formatDate, formatError, formatRelationship, formatSinceDate } from "../common/utils";
+import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship, formatSinceDate, getFirstNameFromDisplayName } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
 import { useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
@@ -40,24 +40,55 @@ interface IMyWorkSummaryCardProps {
     value: number;
     helperText: string;
     icon: React.ReactNode;
+    isSelected: boolean;
+    onClick: () => void;
 }
 
 const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
     title,
     value,
     helperText,
-    icon
+    icon,
+    isSelected,
+    onClick
 }): JSX.Element => {
     const theme = useTheme();
     const isCompact = useMediaQuery(theme.breakpoints.down("lg"));
     const hideHelperText = useMediaQuery(theme.breakpoints.down("md"));
 
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onClick();
+        }
+    };
+
     return (
         <Paper
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={handleKeyDown}
             sx={{
                 p: { xs: 1.25, sm: 1.5, md: 1.75 },
                 borderRadius: 3,
-                height: "100%"
+                height: "100%",
+                cursor: "pointer",
+                border: "1px solid",
+                borderColor: isSelected ? "primary.main" : "transparent",
+                backgroundColor: isSelected ? alpha(theme.palette.primary.main, 0.08) : "background.paper",
+                transition: "background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
+                "&:hover": {
+                    borderColor: isSelected ? "primary.main" : alpha(theme.palette.primary.main, 0.55),
+                    backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.14 : 0.08),
+                    boxShadow: theme.palette.mode === "dark"
+                        ? "inset 0 0 0 1px rgba(255,255,255,0.04)"
+                        : "inset 0 0 0 1px rgba(255,255,255,0.45)"
+                },
+                "&:focus-visible": {
+                    outline: `2px solid ${theme.palette.primary.main}`,
+                    outlineOffset: 2
+                }
             }}
         >
             <Stack spacing={isCompact ? 1 : 1.5}>
@@ -72,15 +103,15 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
                     <Stack direction="row" spacing={0.25} alignItems="center">
                         {hideHelperText && (
                             <Tooltip title={helperText} arrow placement="top">
-                                <IconButton
-                                    size="small"
+                                <Box
                                     sx={{
                                         color: "text.secondary",
+                                        display: "flex",
                                         p: 0.25
                                     }}
                                 >
                                     <InfoOutlinedIcon fontSize="inherit" />
-                                </IconButton>
+                                </Box>
                             </Tooltip>
                         )}
                         <Box
@@ -119,6 +150,7 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
 
 const presetViews: Array<{ value: MyWorkPresetView; label: string; }> = [
     { value: "needsAction", label: "Needs My Action" },
+    { value: "backupCoverage", label: "Backup Coverage" },
     { value: "created", label: "Created By Me" },
     { value: "activity", label: "My Activity" },
     { value: "activeWorkflow", label: "Active Workflow" },
@@ -131,6 +163,8 @@ const defaultPresetView: MyWorkPresetView = "needsAction";
 const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
     return presetViews.some((view) => view.value === value);
 };
+
+const formatPresetViewLabel = (label: string, count: number): string => `${label} (${count})`;
 
 const hasModIndicator = (row: IMyWorkRow): boolean => {
     return row.isModDraft || row.currentRun?.runType === "mod" || (row.authorization.modCount ?? 0) > 0;
@@ -338,6 +372,22 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         sessionStorage.setItem("iwa:lastReturnLocation", `/my-work/${selectedView}`);
     }, [selectedView]);
 
+    React.useEffect((): void => {
+        const userId = currentUser?.user?.Id;
+
+        if (!userId || !consumeWorkflowListsStale()) {
+            return;
+        }
+
+        refresh(true).catch((error: unknown) => {
+            console.error("Error refreshing My Work after workflow action", error);
+        });
+
+        loadMyActions(userId, true).catch((error: unknown) => {
+            console.error("Error refreshing My Work actions after workflow action", error);
+        });
+    }, [currentUser?.user?.Id, loadMyActions, refresh]);
+
     // My Work needs both the user's prior actions and the backup user graph.
     React.useEffect((): void => {
         const userId = currentUser?.user?.Id;
@@ -410,21 +460,36 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         history.push(`/authorizations/view/${authorizationId}`);
     }, [history]);
 
-    const handleChangeView = React.useCallback((_event: React.SyntheticEvent, value: MyWorkPresetView): void => {
+    const handleSelectView = React.useCallback((value: MyWorkPresetView): void => {
         history.push(`/my-work/${value}`);
     }, [history]);
+
+    const handleChangeView = React.useCallback((_event: React.SyntheticEvent, value: MyWorkPresetView): void => {
+        handleSelectView(value);
+    }, [handleSelectView]);
 
     const filteredRows = React.useMemo((): IMyWorkRow[] => {
         return filterMyWorkRows(myWorkSummary.rows, selectedView, searchText);
     }, [myWorkSummary.rows, searchText, selectedView]);
 
-    const selectedViewLabel = presetViews.find((view) => view.value === selectedView)?.label ?? "All My Work";
+    const presetViewCounts = React.useMemo((): Record<MyWorkPresetView, number> => {
+        return presetViews.reduce((counts, presetView) => {
+            counts[presetView.value] = filterMyWorkRows(myWorkSummary.rows, presetView.value, "").length;
+            return counts;
+        }, {} as Record<MyWorkPresetView, number>);
+    }, [myWorkSummary.rows]);
+
+    const currentUserFirstName = getFirstNameFromDisplayName(currentUser?.user?.Title);
+    const selectedPresetView = presetViews.find((presetView) => presetView.value === selectedView);
+    const selectedViewLabel = selectedPresetView
+        ? formatPresetViewLabel(selectedPresetView.label, presetViewCounts[selectedPresetView.value] ?? 0)
+        : formatPresetViewLabel("All My Work", presetViewCounts.all ?? 0);
 
     return (
         <Stack spacing={3}>
             <PageHeader
-                title="My Work"
-                subtitle="Track the IWAs you created, the workflow items waiting on you or your backup coverage, and the items you have already acted on."
+                title={`Welcome Back${currentUserFirstName ? `, ${currentUserFirstName}` : ""}!`}
+                subtitle="Here's a summary of IWA's you created, the workflow items waiting on you or your backup coverage, and the items you have already acted on."
             />
 
             <Box
@@ -442,24 +507,32 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                     value={myWorkSummary.needsMyActionCount}
                     helperText="Active workflow items directly assigned to you."
                     icon={<AssignmentTurnedInOutlinedIcon />}
+                    isSelected={selectedView === "needsAction"}
+                    onClick={() => handleSelectView("needsAction")}
                 />
                 <MyWorkSummaryCard
                     title="Backup Coverage"
                     value={myWorkSummary.backupCoverageCount}
                     helperText="Items where you are covering for another approver."
                     icon={<ContentPasteGoOutlinedIcon />}
+                    isSelected={selectedView === "backupCoverage"}
+                    onClick={() => handleSelectView("backupCoverage")}
                 />
                 <MyWorkSummaryCard
                     title="Created By Me"
                     value={myWorkSummary.createdByMeCount}
                     helperText="Authorizations and drafts where you are the requestor/author."
                     icon={<EditNoteOutlinedIcon />}
+                    isSelected={selectedView === "created"}
+                    onClick={() => handleSelectView("created")}
                 />
                 <MyWorkSummaryCard
                     title="I Acted On"
                     value={myWorkSummary.actedOnByMeCount}
                     helperText="Authorizations where you have a workflow action history."
                     icon={<FactCheckOutlinedIcon />}
+                    isSelected={selectedView === "activity"}
+                    onClick={() => handleSelectView("activity")}
                 />
             </Box>
 
@@ -533,7 +606,11 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                     })}
                 >
                     {presetViews.map((view) => (
-                        <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
+                        <BottomNavigationAction
+                            key={view.value}
+                            value={view.value}
+                            label={formatPresetViewLabel(view.label, presetViewCounts[view.value] ?? 0)}
+                        />
                     ))}
                 </BottomNavigation>
             </Paper>
@@ -592,17 +669,17 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                 </Stack>
                             ) : (
                                 <TableContainer>
-                                    <Table size="small">
+                                    <Table size="small" sx={{ minWidth: 1260, tableLayout: "fixed" }}>
                                         <TableHead>
                                             <TableRow>
-                                                <TableCell>Authorization</TableCell>
-                                                <TableCell>Why It&apos;s Here</TableCell>
-                                                <TableCell>Status</TableCell>
-                                                <TableCell>Current Run / Mod</TableCell>
-                                                <TableCell>Pending With</TableCell>
-                                                <TableCell>My Last Action</TableCell>
-                                                <TableCell>Key Dates</TableCell>
-                                                <TableCell>Action</TableCell>
+                                                <TableCell sx={{ width: 220 }}>Authorization</TableCell>
+                                                <TableCell sx={{ width: 125 }}>Why It&apos;s Here</TableCell>
+                                                <TableCell sx={{ width: 145 }}>Status</TableCell>
+                                                <TableCell sx={{ width: 145 }}>Current Run / Mod</TableCell>
+                                                <TableCell sx={{ width: 130 }}>Pending With</TableCell>
+                                                <TableCell sx={{ width: 170 }}>My Last Action</TableCell>
+                                                <TableCell sx={{ width: 180 }}>Key Dates</TableCell>
+                                                <TableCell sx={{ width: 100 }}>Action</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -613,10 +690,10 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                     onDoubleClick={() => handleViewAuthorization(row.authorization.Id)}
                                                     sx={{ cursor: "pointer" }}
                                                 >
-                                                    <TableCell sx={{ minWidth: 260, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 220, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
-                                                                <Typography fontWeight={600}>
+                                                                <Typography fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
                                                                     {row.authorization.Title}
                                                                 </Typography>
                                                                 {hasModIndicator(row) && (
@@ -631,10 +708,10 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                     </Tooltip>
                                                                 )}
                                                             </Stack>
-                                                            <Typography variant="body2" color="text.secondary">
+                                                            <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                                                                 {row.authorization.contractName || "No contract title"}
                                                             </Typography>
-                                                            <Typography variant="caption" color="text.secondary">
+                                                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                                                                 {formatRelationship(
                                                                     row.authorization.donorEntityAbbr || row.authorization.donorEntity,
                                                                     row.authorization.receivingEntityAbbr || row.authorization.receivingEntity
@@ -642,8 +719,8 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 250, verticalAlign: "top" }}>
-                                                        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                                    <TableCell sx={{ width: 125, verticalAlign: "top" }}>
+                                                        <Stack direction="column" spacing={0.75} alignItems="flex-start">
                                                             {row.relationshipBadges.map((badge: string): JSX.Element => (
                                                                 <Chip
                                                                     key={`${row.authorization.Id}-${badge}`}
@@ -651,11 +728,12 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                     color={badge.indexOf("Needs") === 0 ? "warning" : "info"}
                                                                     size="small"
                                                                     variant={badge.indexOf("Created") >= 0 ? "outlined" : "filled"}
+                                                                    sx={{ maxWidth: "100%" }}
                                                                 />
                                                             ))}
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 145, verticalAlign: "top" }}>
                                                         <Stack spacing={0.75}>
                                                             <Chip
                                                                 label={getMyWorkStatusLabel(row)}
@@ -663,14 +741,14 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                 size="small"
                                                                 sx={{ width: "fit-content" }}
                                                             />
-                                                            <Typography variant="caption" color="text.secondary">
+                                                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                                                                 {row.authorization.og || "No OG"} | {row.authorization.lob || "No LOB"}
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 150, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 145, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
-                                                            <Typography variant="body2" fontWeight={600}>
+                                                            <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
                                                                 {getRunScopeLabel(row.currentRun)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
@@ -678,9 +756,9 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 180, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 130, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
-                                                            <Typography variant="body2">
+                                                            <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
                                                                 {row.isDraft ? "Waiting for you" : row.currentRun?.pendingApprover?.Title ?? "No current approver"}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
@@ -688,9 +766,9 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 190, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 170, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
-                                                            <Typography variant="body2">
+                                                            <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
                                                                 {row.isDraft ? "Not submitted yet" : getLatestActionSummary(row.latestMyAction)}
                                                             </Typography>
                                                             <Typography variant="caption" color="text.secondary">
@@ -700,7 +778,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 180, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 180, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="caption" color="text.secondary">
                                                                 Created: {formatDate(row.authorization.Created, true)}
@@ -713,7 +791,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ minWidth: 140, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 100, verticalAlign: "top" }}>
                                                         {canResumeDraft(row) ? (
                                                             <Stack spacing={1} alignItems="flex-start">
                                                                 <Button

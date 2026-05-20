@@ -238,7 +238,7 @@ export class DataSource {
         "Id", "Title", "authorizationStatus",
         "donorEntity", "donorEntityAbbr", "receivingEntity",
         "receivingEntityAbbr", "og", "lob",
-        "contractName", "contractId", "customerContractCode", "invoice", "contractType",
+        "contractName", "contractId", "iwaJamisProjectId", "customerContractCode", "invoice", "contractType",
         "periodStart", "periodEnd", "scopeOfWork",
         "justification", "notes", "baseLaborAmount",
         "baseTravelAmount", "baseGrandTotal", "approvedLaborAmount",

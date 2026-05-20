@@ -9,6 +9,10 @@ import { WorkflowRunService } from "./runService";
 
 type WorkflowDecision = "approved" | "rejected";
 
+interface IWorkflowDecisionOptions {
+    iwaJamisProjectId?: string;
+}
+
 export class WorkflowDecisionService {
 
     private static getNextStepKey(stepKey: WorkflowStepKey, decision: WorkflowDecision): WorkflowStepKey | undefined {
@@ -41,6 +45,7 @@ export class WorkflowDecisionService {
             lob: authorization.lob ?? "",
             contractName: authorization.contractName,
             contractId: authorization.contractId,
+            iwaJamisProjectId: authorization.iwaJamisProjectId ?? "",
             customerContractCode: authorization.customerContractCode ?? "",
             invoice: authorization.invoice ?? "",
             contractType: authorization.contractType,
@@ -59,7 +64,8 @@ export class WorkflowDecisionService {
         authorization: IAuthorizationItem,
         run: IWorkflowRunItem,
         decision: WorkflowDecision,
-        comments?: string
+        comments?: string,
+        options?: IWorkflowDecisionOptions
     ): Promise<void> {
         const toStepKey = this.getNextStepKey(run.currentStepKey, decision);
 
@@ -90,7 +96,8 @@ export class WorkflowDecisionService {
                 const approvedAmounts = await AuthorizationService.recalculateBaseAmounts(authorization.Id);
                 approvedAuthorization = {
                     ...authorization,
-                    ...approvedAmounts
+                    ...approvedAmounts,
+                    iwaJamisProjectId: options?.iwaJamisProjectId ?? authorization.iwaJamisProjectId
                 };
             }
 
@@ -113,6 +120,8 @@ export class WorkflowDecisionService {
                     approvedLaborAmount: approvedAuthorization.baseLaborAmount ?? 0,
                     approvedTravelAmount: approvedAuthorization.baseTravelAmount ?? 0,
                     approvedGrandTotal: approvedAuthorization.baseGrandTotal ?? 0
+                }, {
+                    iwaJamisProjectId: options?.iwaJamisProjectId
                 });
             }
             return;

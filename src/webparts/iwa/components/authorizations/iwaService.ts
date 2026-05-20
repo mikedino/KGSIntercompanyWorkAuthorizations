@@ -436,6 +436,9 @@ export class AuthorizationService {
       approvedLaborAmount: number;
       approvedTravelAmount: number;
       approvedGrandTotal: number;
+    },
+    options?: {
+      iwaJamisProjectId?: string;
     }
   ): Promise<void> {
 
@@ -457,6 +460,10 @@ export class AuthorizationService {
         updateBody.approvedLaborAmount = approvedAmounts.approvedLaborAmount;
         updateBody.approvedTravelAmount = approvedAmounts.approvedTravelAmount;
         updateBody.approvedGrandTotal = approvedAmounts.approvedGrandTotal;
+      }
+
+      if (options?.iwaJamisProjectId !== undefined) {
+        updateBody.iwaJamisProjectId = options.iwaJamisProjectId;
       }
     }
 

@@ -86,9 +86,10 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         ["Contract Name", authorization.contractName || "-"],
                         ["Invoice / Task Order", authorization.invoice || "Not specified"],
                         ["Customer Contract Code", authorization.customerContractCode || "-"],
-                        ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`]
+                        ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`],
+                        ["IWA JAMIS Project ID", authorization.iwaJamisProjectId || "-"]
                     ].map(([label, value], index) => (
-                        <Grid key={label} size={{ xs: 12, sm: index === 4 ? 12 : 6 }}>
+                        <Grid key={label} size={{ xs: 12, sm: 6 }}>
                             <Typography variant="caption" color="text.secondary">{label}</Typography>
                             <Typography fontWeight={500}>{value}</Typography>
                         </Grid>

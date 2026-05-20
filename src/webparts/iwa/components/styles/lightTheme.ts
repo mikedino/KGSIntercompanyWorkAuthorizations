@@ -18,7 +18,8 @@ export const lightTheme = createTheme({
       main: '#F7C25B',
     },
     info: {
-      main: '#005C6C',
+      //main: '#005C6C',
+      main: "#913f9c"
     },
     success: {
       main: '#28A70C',

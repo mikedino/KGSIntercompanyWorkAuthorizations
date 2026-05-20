@@ -253,6 +253,7 @@ export interface IAuthorizationItem extends ISystemFields {
 
   contractName: string;
   contractId: string;
+  iwaJamisProjectId?: string;
   customerContractCode?: string;
   invoice: string;
   contractType: ContractType;

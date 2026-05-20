@@ -245,15 +245,15 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
         ["ENTITY A (DONOR)", authorization.donorEntity || "-", authorization.donorEntityAbbr],
         ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity || "-", authorization.receivingEntityAbbr],
         ["OG", authorization.og || "-", ""],
-        ["LOB", authorization.lob || "-", ""],
         ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
         ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
-        ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
+        ["LOB", authorization.lob || "-", ""],
+        ["CONTRACT & INVOICE", authorization.invoice || taskOrder?.InvoiceID1 || "-", ""],
         ["CONTRACT NAME", authorization.contractName || "-", ""],
-        ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],
+        ["IWA JAMIS PROJECT ID", authorization.iwaJamisProjectId || "-", ""],
+        ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`],
         ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],
-        ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""],
-        ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`]
+        ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""]
     ];
 
     return (

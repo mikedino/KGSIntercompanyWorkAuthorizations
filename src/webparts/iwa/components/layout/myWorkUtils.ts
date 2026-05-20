@@ -16,6 +16,7 @@ import { getBackupCoverageMap } from "../workflow/workflowAccess";
 export type MyWorkPresetView =
     | "all"
     | "needsAction"
+    | "backupCoverage"
     | "created"
     | "activity"
     | "activeWorkflow"
@@ -322,7 +323,9 @@ export const filterMyWorkRows = (
 
         switch (selectedView) {
             case "needsAction":
-                return row.needsMyAction || row.backupForNames.length > 0;
+                return row.needsMyAction;
+            case "backupCoverage":
+                return row.backupForNames.length > 0;
             case "created":
                 return row.createdByMe;
             case "activity":

@@ -18,7 +18,7 @@ import { IAuthorizationItem, ILaborLineItem, IModItem, IWorkflowActionItem, IWor
 import { useIwa } from "../data/iwaContext";
 import { DataSource } from "../data/ds";
 import Strings from "../common/strings";
-import { formatCurrencyInputValue, formatDate, formatError, formatRelationship, normalizeDecimalInput, parseNumberOrUndefined } from "../common/utils";
+import { formatCurrencyInputValue, formatDate, formatError, formatRelationship, markWorkflowListsStale, normalizeDecimalInput, parseNumberOrUndefined } from "../common/utils";
 import { authorizationStatusLabels, getStatusChipColor, modStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
 import { canEditCompensation } from "../resources/laborAccess";
 import { ResourceService } from "../resources/resourceService";
@@ -107,6 +107,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const [workflowDialogMode, setWorkflowDialogMode] = React.useState<"approved" | "rejected">("approved");
     const [workflowComments, setWorkflowComments] = React.useState<string>("");
     const [workflowCommentError, setWorkflowCommentError] = React.useState<string>("");
+    const [iwaJamisProjectIdDraft, setIwaJamisProjectIdDraft] = React.useState<string>("");
+    const [iwaJamisProjectIdError, setIwaJamisProjectIdError] = React.useState<string>("");
     const [commentDialog, setCommentDialog] = React.useState<{ title: string; comments: string } | undefined>(undefined);
     const [changeDialog, setChangeDialog] = React.useState<IWorkflowActionItem | undefined>(undefined);
     const [modifyPromptOpen, setModifyPromptOpen] = React.useState<boolean>(false);
@@ -339,6 +341,9 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         return line.lineScope !== "mod";
     }, [canEditCompInHrReview, currentRun]);
     const workflowDialogDecision = workflowDecision ?? workflowDialogMode;
+    const requiresIwaJamisProjectId = workflowDialogDecision === "approved" &&
+        currentRun?.currentStepKey === "cfo" &&
+        currentRun.runType !== "mod";
     const activeStep = getCurrentStepIndex(currentRun);
     const stepperActiveStep = currentRun?.runStatus === "completed" ? -1 : activeStep;
     const workflowPermission = React.useMemo(() => {
@@ -602,12 +607,16 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         setWorkflowDialogMode(decision);
         setWorkflowComments("");
         setWorkflowCommentError("");
+        setIwaJamisProjectIdDraft(authorization?.iwaJamisProjectId ?? "");
+        setIwaJamisProjectIdError("");
     }, [authorization, currentRun, laborLines, showSnackbar]);
 
     const handleCloseWorkflowDecision = React.useCallback((): void => {
         setWorkflowDecision(undefined);
         setWorkflowComments("");
         setWorkflowCommentError("");
+        setIwaJamisProjectIdDraft("");
+        setIwaJamisProjectIdError("");
     }, []);
 
     const generateApprovedPdfExport = React.useCallback(async (run: IWorkflowRunItem): Promise<boolean> => {
@@ -673,6 +682,13 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             return;
         }
 
+        const normalizedIwaJamisProjectId = iwaJamisProjectIdDraft.trim();
+
+        if (requiresIwaJamisProjectId && !/^\d{6}$/.test(normalizedIwaJamisProjectId)) {
+            setIwaJamisProjectIdError("Enter the 6-digit IWA JAMIS Project ID before approving.");
+            return;
+        }
+
         try {
             handleCloseWorkflowDecision();
             const shouldGeneratePdf = decision === "approved" && currentRun.currentStepKey === "cfo";
@@ -680,7 +696,9 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             showBusy(decision === "approved"
                 ? shouldGeneratePdf ? "Approving workflow step and generating PDF export..." : "Approving workflow step..."
                 : "Rejecting workflow step...");
-            await WorkflowDecisionService.submitDecision(authorization, currentRun, decision, trimmedComments);
+            await WorkflowDecisionService.submitDecision(authorization, currentRun, decision, trimmedComments, {
+                iwaJamisProjectId: requiresIwaJamisProjectId ? normalizedIwaJamisProjectId : undefined
+            });
             let generatedPdf = false;
 
             if (shouldGeneratePdf) {
@@ -691,6 +709,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             await reloadAuthorizationDetailSections(authorizationId, ["mods", "runs", "actions"]);
             const latestAuthorization = await AuthorizationService.getById(authorizationId);
             patchAuthorization(authorizationId, latestAuthorization);
+            markWorkflowListsStale();
             showSuccess(decision === "approved"
                 ? generatedPdf ? "Workflow step approved. Successfully generated PDF export." : "Workflow step approved."
                 : "Workflow step rejected and returned to the submitter.");
@@ -701,7 +720,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, authorizationId, currentRun, generateApprovedPdfExport, handleCloseWorkflowDecision, hideBusy, hideSuccess, patchAuthorization, reloadAuthorizationDetailSections, showBusy, showSuccess, workflowComments, workflowDecision]);
+    }, [authorization, authorizationId, currentRun, generateApprovedPdfExport, handleCloseWorkflowDecision, hideBusy, hideSuccess, iwaJamisProjectIdDraft, patchAuthorization, reloadAuthorizationDetailSections, requiresIwaJamisProjectId, showBusy, showSuccess, workflowComments, workflowDecision]);
 
     const handleUpdateDraft = React.useCallback((lineId: number, patch: Partial<ICompDraft>): void => {
         setCompDrafts((prev) => ({
@@ -1002,7 +1021,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         </Stepper>
                     </Grid>
                     <Grid size={{ xs: 12, md: 4 }}>
-                        <Paper variant="outlined" sx={{ p: 1.5, height: "100%", borderColor: theme.palette.success.main }}>
+                        <Paper variant="outlined" sx={{ p: 1.5, height: "100%", borderColor: theme.palette.info.main }}>
                             <Stack direction={{ xs: "column", xl: "row" }} spacing={1.25} justifyContent="space-between" alignItems={{ xs: "stretch", xl: "flex-start" }}>
                                 <Box sx={{ minWidth: 0 }}>
                                     <Typography variant="caption" color="text.secondary">Pending With</Typography>
@@ -1253,10 +1272,29 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 <DialogContent>
                     <Stack spacing={1.5} sx={{ pt: 1 }}>
                         <Typography variant="body2" color="text.secondary">
-                            {workflowDialogDecision === "approved"
+                            {requiresIwaJamisProjectId
+                                ? "Enter the IWA JAMIS Project ID before approving the base IWA. Approval comments are optional."
+                                : workflowDialogDecision === "approved"
                                 ? "Approval comments are optional."
                                 : "Reject comments are required and will be shown to the submitter."}
                         </Typography>
+                        {requiresIwaJamisProjectId && (
+                            <TextField
+                                label="IWA JAMIS Project ID"
+                                value={iwaJamisProjectIdDraft}
+                                onChange={(event) => {
+                                    setIwaJamisProjectIdDraft(event.target.value.replace(/\D/g, "").slice(0, 6));
+                                    if (iwaJamisProjectIdError) {
+                                        setIwaJamisProjectIdError("");
+                                    }
+                                }}
+                                error={!!iwaJamisProjectIdError}
+                                helperText={iwaJamisProjectIdError || "Enter the 6-digit project ID assigned in JAMIS."}
+                                required
+                                fullWidth
+                                autoFocus
+                            />
+                        )}
                         <TextField
                             label="Comments"
                             value={workflowComments}
@@ -1270,7 +1308,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                             minRows={4}
                             error={!!workflowCommentError}
                             helperText={workflowCommentError || " "}
-                            autoFocus
+                            autoFocus={!requiresIwaJamisProjectId}
                             fullWidth
                         />
                     </Stack>

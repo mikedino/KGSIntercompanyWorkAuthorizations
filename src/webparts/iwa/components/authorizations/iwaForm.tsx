@@ -38,7 +38,7 @@ import {
 } from "../data/props";
 import Strings from "../common/strings";
 import { formatDate, formatError } from "../common/utils";
-import { authorizationStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
+import { authorizationStatusLabels, modStatusLabels, workflowRunStatusLabels } from "../layout/allAuthorizationsUtils";
 import { AuthorizationService } from "./iwaService";
 import { ApproverResolver } from "../workflow/defaultApprovers";
 import { WorkflowRunService } from "../workflow/runService";
@@ -216,7 +216,8 @@ const readSessionModId = (authorizationId?: number): number | undefined => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const editableModStatuses: IModItem["modStatus"][] = ["draft", "rejected"];
+const editableModStatuses: IModItem["modStatus"][] = ["draft", "underReview", "rejected"];
+const modDraftStatuses: IModItem["modStatus"][] = ["draft", "rejected"];
 
 const sortModsNewestFirst = (left: IModItem, right: IModItem): number => {
     const leftModified = Date.parse(left.Modified ?? left.Created ?? "");
@@ -299,7 +300,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         return getEditableModId(editableMods);
     }, [editableMods, item?.Id]);
-    const activeModDraftId = routeModId ?? storedModId ?? latestEditableModId ?? activeRunModId;
+    const activeModDraftId = routeModId ?? storedModId ?? activeRunModId ?? latestEditableModId;
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -342,7 +343,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const isDraftAuthorization = isDraftStatus(form.authorizationStatus);
     const activeModId = currentMod?.Id;
     const isModEditMode = mode === "edit" && !!activeModId;
-    const isModDraftMode = isModEditMode && (currentMod?.modStatus ?? "draft") === "draft";
+    const isModDraftMode = isModEditMode && modDraftStatuses.includes(currentMod?.modStatus ?? "draft");
     const canSaveProgress = !isExistingSubmittedEdit && !isModDraftMode;
     const isBaselineLocked = isModEditMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
     const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
@@ -2180,7 +2181,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
                             <Chip label={`IWA STATUS: ${String(form.authorizationStatus ?? "draft").toUpperCase()}`} color="info" size="small" variant="filled" />
                             {isModEditMode && (
-                                <Chip label={`MOD ${currentMod?.modNumber ?? ""}: ${String(currentMod?.modStatus ?? "draft").toUpperCase()}`} color={currentMod?.modStatus === "rejected" ? "error" : "secondary"} size="small" />
+                                <Chip
+                                    label={`MOD ${currentMod?.modNumber ?? ""}: ${String(modStatusLabels[currentMod?.modStatus ?? "draft"] ?? currentMod?.modStatus ?? "Draft").toUpperCase()}`}
+                                    color={currentMod?.modStatus === "rejected" ? "error" : "secondary"}
+                                    size="small"
+                                />
                             )}
                             {(isDraftAuthorization || isModDraftMode) && (
                                 <Button

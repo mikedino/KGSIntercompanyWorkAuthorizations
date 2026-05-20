@@ -42,7 +42,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import AlertDialog from "../ui/Alert";
 import { PageHeader } from "../ui/PageHeader";
-import { formatDate, formatError, formatRelationship } from "../common/utils";
+import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
 import { IModItem, workflowRoleLabels } from "../data/props";
 import { useHistory, useParams } from "react-router-dom";
@@ -102,6 +102,8 @@ const defaultPresetView: AllAuthorizationsPresetView = "all";
 const isPresetView = (value: string | undefined): value is AllAuthorizationsPresetView => {
     return presetViews.some((view) => view.value === value);
 };
+
+const formatPresetViewLabel = (label: string, count: number): string => `${label} (${count})`;
 
 const columnConfigs: IColumnConfig[] = [
     { key: "title", label: "Authorization", sortField: "title", minWidth: 205, defaultWidth: 220 },
@@ -314,6 +316,13 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         return filterAllAuthorizationRows(visibleRows, selectedView, filters);
     }, [filters, selectedView, visibleRows]);
 
+    const presetViewCounts = React.useMemo((): Record<AllAuthorizationsPresetView, number> => {
+        return presetViews.reduce((counts, presetView) => {
+            counts[presetView.value] = filterAllAuthorizationRows(visibleRows, presetView.value, defaultFilters).length;
+            return counts;
+        }, {} as Record<AllAuthorizationsPresetView, number>);
+    }, [visibleRows]);
+
     const sortedRows = React.useMemo((): IAllAuthorizationsRow[] => {
         return sortAllAuthorizationRows(filteredRows, sortField, sortDirection);
     }, [filteredRows, sortDirection, sortField]);
@@ -371,6 +380,16 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const hideDialog = React.useCallback((): void => {
         setShowDialog(false);
     }, []);
+
+    React.useEffect((): void => {
+        if (!consumeWorkflowListsStale()) {
+            return;
+        }
+
+        refresh(true).catch((error: unknown) => {
+            showFeatureDialog("Refresh Error", formatError(error));
+        });
+    }, [refresh, showFeatureDialog]);
 
     React.useEffect((): (() => void) => {
         let isMounted = true;
@@ -697,7 +716,11 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                         })}
                     >
                         {presetViews.map((view) => (
-                            <BottomNavigationAction key={view.value} value={view.value} label={view.label} />
+                            <BottomNavigationAction
+                                key={view.value}
+                                value={view.value}
+                                label={formatPresetViewLabel(view.label, presetViewCounts[view.value] ?? 0)}
+                            />
                         ))}
                     </BottomNavigation>
                     <Tooltip title={showDrafts ? "Base draft authorizations are visible." : "Base draft authorizations are hidden. Mod drafts remain visible."}>
@@ -725,7 +748,10 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     >
                         <Box>
                             <Typography variant="h6" fontWeight={600}>
-                                {presetViews.find((view) => view.value === selectedView)?.label ?? "All"}
+                                {formatPresetViewLabel(
+                                    presetViews.find((view) => view.value === selectedView)?.label ?? "All",
+                                    presetViewCounts[selectedView] ?? 0
+                                )}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                                 {sortedRows.length} item{sortedRows.length === 1 ? "" : "s"} shown • double-click a row to open details

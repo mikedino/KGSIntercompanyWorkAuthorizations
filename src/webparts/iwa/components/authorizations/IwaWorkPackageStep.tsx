@@ -110,6 +110,8 @@ const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
     comments: ""
 });
 
+const requestedHoursHelperText = "Enter total hours requested during this period";
+
 type RemoveConfirmation = {
     id: string;
     message: string;
@@ -763,6 +765,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 <DialogTitle>{resourceDraft.id ? "Edit Resource" : "Add Resource"}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={3} sx={{ pt: 1 }}>
+                        <Alert severity="info">
+                            {showPriorResources
+                                ? "For Mods, enter only the resource details and hours being added for this Mod. T&M hours entered here are for this Mod only and do not include previously approved hours."
+                                : "For T&M resources, enter the total standard and overtime hours requested during this period."}
+                        </Alert>
                         <Grid container spacing={2}>
                             <Grid size={{ xs: 12 }}>
                                 <Box
@@ -805,7 +812,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                 fullWidth
                                                 required
                                                 error={Boolean(resourceDraftErrors.state)}
-                                                helperText={resourceDraftErrors.state}
+                                                helperText={resourceDraftErrors.state || "Employee State of Residence"}
                                             />
                                         )}
                                     />
@@ -830,7 +837,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             </Grid>
                             {contractType === "tm" && (
                                 <>
-                                    <Grid size={{ xs: 12, md: 5 }}>
+                                    <Grid size={{ xs: 12, md: 4 }}>
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
@@ -850,7 +857,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             )}
                                         />
                                     </Grid>
-                                    <Grid size={{ xs: 12, md: 3 }}>
+                                    <Grid size={{ xs: 12, md: 4 }}>
                                         <TextField
                                             label="Enter Standard Hours"
                                             fullWidth
@@ -858,17 +865,17 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             value={resourceDraft.standardHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, standardHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.standardHours)}
-                                            helperText={resourceDraftErrors.standardHours || ""}
+                                            helperText={resourceDraftErrors.standardHours || requestedHoursHelperText}
                                         />
                                     </Grid>
-                                    <Grid size={{ xs: 12, md: 3 }}>
+                                    <Grid size={{ xs: 12, md: 4 }}>
                                         <TextField
                                             label="(Optional) Overtime Hours"
                                             fullWidth
                                             value={resourceDraft.overtimeHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, overtimeHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.overtimeHours)}
-                                            helperText={resourceDraftErrors.overtimeHours || ""}
+                                            helperText={resourceDraftErrors.overtimeHours || requestedHoursHelperText}
                                         />
                                     </Grid>
                                 </>

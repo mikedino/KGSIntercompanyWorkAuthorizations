@@ -376,15 +376,15 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                     ["ENTITY A (DONOR)", authorization.donorEntity, authorization.donorEntityAbbr],
                                     ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity, authorization.receivingEntityAbbr],
                                     ["OG", authorization.og || "-", ""],
-                                    ["LOB", authorization.lob || "-", ""],
                                     ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
                                     ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
-                                    ["CONTRACT ID", authorization.contractId || "-", authorization.customerContractCode],
+                                    ["LOB", authorization.lob || "-", ""],
+                                    ["CONTRACT & INVOICE", authorization.invoice || taskOrder?.InvoiceID1 || "-", ""],
                                     ["CONTRACT NAME", authorization.contractName || "-", ""],
-                                    ["TASK ORDER", taskOrder?.field_14 || authorization.invoice || "-", taskOrder?.field_42],
+                                    ["IWA JAMIS PROJECT ID", authorization.iwaJamisProjectId || "-", ""],
+                                    ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`],
                                     ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],
-                                    ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""],
-                                    ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`]
+                                    ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""]
                                 ].map(([label, value, detail]) => (
                                     <Grid key={label} spacing={0} size={{ xs: 12, md: 4 }}>
                                         <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: "block", lineHeight: 1.05, mb: 0.5 }}>{label}</Typography>

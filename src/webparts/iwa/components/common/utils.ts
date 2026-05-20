@@ -11,14 +11,53 @@ dayjs.extend(utc);
 export type ThemeModePreference = "light" | "dark";
 
 const themeStorageKey = "iwa_theme";
+const workflowListsStaleKey = "iwa:workflowListsStale";
 
 export const RELATIONSHIP_SEPARATOR = "▸";
+
+export const markWorkflowListsStale = (): void => {
+    try {
+        sessionStorage.setItem(workflowListsStaleKey, new Date().toISOString());
+    } catch {
+        // Ignore storage access issues; the detail page still patches itself.
+    }
+};
+
+export const consumeWorkflowListsStale = (): boolean => {
+    try {
+        const isStale = !!sessionStorage.getItem(workflowListsStaleKey);
+
+        if (isStale) {
+            sessionStorage.removeItem(workflowListsStaleKey);
+        }
+
+        return isStale;
+    } catch {
+        return false;
+    }
+};
 
 export const formatRelationship = (
     left?: string,
     right?: string,
     separator: string = RELATIONSHIP_SEPARATOR
 ): string => `${left || "—"} ${separator} ${right || "—"}`;
+
+export const getFirstNameFromDisplayName = (displayName?: string): string | undefined => {
+    const trimmedName = (displayName ?? "").trim();
+
+    if (!trimmedName) {
+        return undefined;
+    }
+
+    const nameWithoutSuffix = trimmedName.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+    const firstNameSource = nameWithoutSuffix.indexOf(",") >= 0
+        ? nameWithoutSuffix.split(",")[1]?.trim()
+        : nameWithoutSuffix;
+    const firstName = firstNameSource?.split(/\s+/)[0]?.trim();
+
+    return firstName || undefined;
+};
 
 /**
  * Read the saved theme preference without throwing when browser storage is

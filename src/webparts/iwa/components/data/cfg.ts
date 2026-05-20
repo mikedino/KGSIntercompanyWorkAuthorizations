@@ -84,6 +84,11 @@ export const Configuration = Helper.SPConfig({
           indexed: true
         },
         {
+          name: "iwaJamisProjectId",
+          title: "IWA JAMIS Project ID",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
           name: "customerContractCode",
           title: "Customer Contract Code",
           type: Helper.SPCfgFieldType.Text
@@ -261,6 +266,7 @@ export const Configuration = Helper.SPConfig({
             "Author",
             "pm",
             "contractId",
+            "iwaJamisProjectId",
             "customerContractCode",
             "invoice",
             "receivingEntity",
