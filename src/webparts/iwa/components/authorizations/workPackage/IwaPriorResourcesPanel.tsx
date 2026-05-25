@@ -43,7 +43,7 @@ export const IwaPriorResourcesPanel: React.FC<IIwaPriorResourcesPanelProps> = ({
                             Prior Resources
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                            Copy approved base resources into this mod with zero hours, then enter the changed hours.
+                            Copy approved resources into this mod with zero hours, then enter the changed hours.
                         </Typography>
                     </Box>
                     <Button size="small" color="success" variant="outlined" startIcon={<ContentCopyOutlinedIcon />} onClick={onCopyAll}>
@@ -71,9 +71,9 @@ export const IwaPriorResourcesPanel: React.FC<IIwaPriorResourcesPanelProps> = ({
                                         </Stack>
                                     </TableCell>
                                     <TableCell>
-                                        {row.approvedStandardHours + row.approvedOvertimeHours}
+                                        {row.approvedTotalStandardHours + row.approvedTotalOvertimeHours}
                                         <Typography component="span" variant="caption" color="text.secondary">
-                                            {" "}({row.approvedStandardHours} std / {row.approvedOvertimeHours} OT)
+                                            {" "}({row.approvedTotalStandardHours} std / {row.approvedTotalOvertimeHours} OT)
                                         </Typography>
                                     </TableCell>
                                     <TableCell align="right">

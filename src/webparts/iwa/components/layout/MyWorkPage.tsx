@@ -1,7 +1,7 @@
 import * as React from "react";
 import {
     Box, BottomNavigation, BottomNavigationAction, Button, Chip, CircularProgress, Divider, Dialog, DialogActions,
-    DialogContent, DialogTitle, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
+    DialogContent, DialogTitle, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
     TableRow, TextField, Tooltip, Typography
 } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -17,7 +17,7 @@ import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { useIwa } from "../data/iwaContext";
 import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship, formatSinceDate, getFirstNameFromDisplayName } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
-import { useHistory, useParams } from "react-router-dom";
+import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 import { ModService } from "../mods/modService";
@@ -150,12 +150,12 @@ const MyWorkSummaryCard: React.FC<IMyWorkSummaryCardProps> = ({
 
 const presetViews: Array<{ value: MyWorkPresetView; label: string; }> = [
     { value: "needsAction", label: "Needs My Action" },
+    { value: "all", label: "All My Work" },
     { value: "backupCoverage", label: "Backup Coverage" },
     { value: "created", label: "Created By Me" },
     { value: "activity", label: "My Activity" },
     { value: "activeWorkflow", label: "Active Workflow" },
-    { value: "closed", label: "Recently Closed" },
-    { value: "all", label: "All My Work" }
+    { value: "closed", label: "Recently Closed" }
 ];
 
 const defaultPresetView: MyWorkPresetView = "needsAction";
@@ -251,9 +251,17 @@ const MyWorkMobileCard: React.FC<{
             <Stack spacing={1.5}>
                 <Stack spacing={0.5}>
                     <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography variant="h6" fontWeight={600}>
+                        <Link
+                            component={RouterLink}
+                            to={`/authorizations/view/${row.authorization.Id}`}
+                            variant="h6"
+                            fontWeight={600}
+                            underline="hover"
+                            color="primary"
+                            sx={{ overflowWrap: "anywhere" }}
+                        >
                             {row.authorization.Title}
-                        </Typography>
+                        </Link>
                         {hasModIndicator(row) && (
                             <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
                                 <Chip
@@ -688,14 +696,24 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                     key={row.authorization.Id}
                                                     hover
                                                     onDoubleClick={() => handleViewAuthorization(row.authorization.Id)}
-                                                    sx={{ cursor: "pointer" }}
                                                 >
                                                     <TableCell sx={{ width: 220, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
-                                                                <Typography fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
+                                                                <Link
+                                                                    component={RouterLink}
+                                                                    to={`/authorizations/view/${row.authorization.Id}`}
+                                                                    fontWeight={600}
+                                                                    underline="hover"
+                                                                    color="primary"
+                                                                    sx={{
+                                                                        fontSize: "1rem",
+                                                                        lineHeight: 1.3,
+                                                                        overflowWrap: "anywhere"
+                                                                    }}
+                                                                >
                                                                     {row.authorization.Title}
-                                                                </Typography>
+                                                                </Link>
                                                                 {hasModIndicator(row) && (
                                                                     <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
                                                                         <Chip

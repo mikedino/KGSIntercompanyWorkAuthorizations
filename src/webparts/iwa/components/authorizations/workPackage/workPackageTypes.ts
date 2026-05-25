@@ -41,4 +41,6 @@ export interface IPriorResourceRow {
     laborCategory: string;
     approvedStandardHours: number;
     approvedOvertimeHours: number;
+    approvedTotalStandardHours: number;
+    approvedTotalOvertimeHours: number;
 }

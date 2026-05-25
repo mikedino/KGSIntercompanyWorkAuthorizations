@@ -16,9 +16,28 @@ export interface IIwaWebPartProps {
   description: string;
 }
 
+const ensureSharePointWebViewMode = (): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const currentUrl = new URL(window.location.href);
+
+  if (currentUrl.searchParams.get("env") === "WebView") {
+    return false;
+  }
+
+  currentUrl.searchParams.set("env", "WebView");
+  window.location.replace(currentUrl.toString());
+  return true;
+};
+
 export default class IwaWebPart extends BaseClientSideWebPart<IIwaWebPartProps> {
 
   public render(): void {
+    if (ensureSharePointWebViewMode()) {
+      return;
+    }
 
     // set the context
     setContext(this.context);

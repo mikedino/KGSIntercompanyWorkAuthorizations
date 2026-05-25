@@ -587,10 +587,43 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         const sortedResources = [...resourceScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
         const sortedLaborLines = [...laborScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
         const sortedTravelOdcs = [...travelScope].sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
-        const baseResources = [...(resources ?? [])]
-            .filter((resource) => resource.lineScope !== "mod")
-            .sort((left, right) => (left.displayOrder ?? 0) - (right.displayOrder ?? 0));
-        const baseLaborLines = (laborLines ?? []).filter((line) => line.lineScope !== "mod");
+        const priorResources = [...(resources ?? [])]
+            .filter((resource) => modId ? resource.mod?.Id !== modId : resource.lineScope !== "mod")
+            .sort((left, right) =>
+                Date.parse(left.Modified ?? left.Created ?? "") - Date.parse(right.Modified ?? right.Created ?? "") ||
+                (left.displayOrder ?? 0) - (right.displayOrder ?? 0)
+            );
+        const priorLaborLines = (laborLines ?? []).filter((line) => modId ? line.mod?.Id !== modId : line.lineScope !== "mod");
+        const resourcesById = new Map((resources ?? []).map((resource) => [resource.Id, resource]));
+        const approvedHoursByEmployeeId = new Map<number, { standardHours: number; overtimeHours: number }>();
+        const latestPriorResourceByEmployeeId = new Map<number, typeof priorResources[number]>();
+
+        (laborLines ?? [])
+            .filter((line) => line.pricingType === "tm" && (!modId || line.mod?.Id !== modId))
+            .forEach((line) => {
+                const resourceIds = line.resources?.results?.map((lookup) => lookup.Id) ?? [];
+
+                resourceIds.forEach((resourceId) => {
+                    const employeeId = resourcesById.get(resourceId)?.employee?.Id;
+
+                    if (!employeeId) {
+                        return;
+                    }
+
+                    const existing = approvedHoursByEmployeeId.get(employeeId) ?? { standardHours: 0, overtimeHours: 0 };
+                    approvedHoursByEmployeeId.set(employeeId, {
+                        standardHours: existing.standardHours + Number(line.standardHours ?? 0),
+                        overtimeHours: existing.overtimeHours + Number(line.overtimeHours ?? 0)
+                    });
+                });
+            });
+        priorResources.forEach((resource) => {
+            const employeeId = resource.employee?.Id;
+
+            if (employeeId) {
+                latestPriorResourceByEmployeeId.set(employeeId, resource);
+            }
+        });
 
         const tmLaborByResourceId = new Map<number, typeof sortedLaborLines[number]>();
 
@@ -625,10 +658,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         });
 
         setResourceRows(nextResources);
-        setPriorResourceRows(baseResources
+        setPriorResourceRows([...latestPriorResourceByEmployeeId.values()]
             .filter((resource) => !!resource.employee?.Id)
             .map((resource) => {
-                const labor = baseLaborLines.find((line) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
+                const labor = priorLaborLines.find((line) => line.resources?.results?.some((lookup) => lookup.Id === resource.Id));
 
                 return {
                     id: String(resource.Id),
@@ -637,7 +670,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     jobId: labor?.jobId ?? "",
                     laborCategory: resource.laborCategory ?? "",
                     approvedStandardHours: Number(labor?.standardHours ?? 0),
-                    approvedOvertimeHours: Number(labor?.overtimeHours ?? 0)
+                    approvedOvertimeHours: Number(labor?.overtimeHours ?? 0),
+                    approvedTotalStandardHours: approvedHoursByEmployeeId.get(resource.employee?.Id ?? 0)?.standardHours ?? Number(labor?.standardHours ?? 0),
+                    approvedTotalOvertimeHours: approvedHoursByEmployeeId.get(resource.employee?.Id ?? 0)?.overtimeHours ?? Number(labor?.overtimeHours ?? 0)
                 };
             }));
 
@@ -946,7 +981,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
     const getResourceStepValidationMessage = React.useCallback((): string | undefined => {
         const firstIncompleteTravelRow = travelRows.find((row) => {
+            if (!row.lineType) {
+                return true;
+            }
+
             if (!row.jobId.trim()) {
+                return true;
+            }
+
+            if (!row.description.trim()) {
                 return true;
             }
 
@@ -958,7 +1001,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         });
 
         const travelMessage = firstIncompleteTravelRow
-            ? "Complete each Travel / ODC row with a Job ID and numeric amount before continuing."
+            ? "Complete each Travel / ODC row with a Line Type, Job ID, Description, and numeric amount before continuing."
             : undefined;
 
         if (isModEditMode && resourceRows.length === 0) {

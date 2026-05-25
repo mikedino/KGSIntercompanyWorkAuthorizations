@@ -112,6 +112,11 @@ const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
 
 const requestedHoursHelperText = "Enter total hours requested during this period";
 
+const formatHours = (value: number): string => {
+    const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
+
 type RemoveConfirmation = {
     id: string;
     message: string;
@@ -226,6 +231,29 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             overtimeHours: totals.overtimeHours + Number(normalizeDecimalInput(row.overtimeHours) || 0)
         }), { standardHours: 0, overtimeHours: 0 });
     }, [resourceRows]);
+    const resourceDraftApprovedHours = React.useMemo(() => {
+        const employeeId = resourceDraft.employee?.Id;
+
+        if (!employeeId) {
+            return undefined;
+        }
+
+        return priorResourceRows.find((row) => row.employee.Id === employeeId);
+    }, [priorResourceRows, resourceDraft.employee?.Id]);
+    const resourceDraftHoursPreview = React.useMemo(() => {
+        const approvedStandardHours = resourceDraftApprovedHours?.approvedTotalStandardHours ?? 0;
+        const approvedOvertimeHours = resourceDraftApprovedHours?.approvedTotalOvertimeHours ?? 0;
+        const newStandardHours = Number(normalizeDecimalInput(resourceDraft.standardHours) || 0);
+        const newOvertimeHours = Number(normalizeDecimalInput(resourceDraft.overtimeHours) || 0);
+
+        return {
+            approvedStandardHours,
+            approvedOvertimeHours,
+            approvedTotalHours: approvedStandardHours + approvedOvertimeHours,
+            newTotalHours: newStandardHours + newOvertimeHours,
+            combinedTotalHours: approvedStandardHours + approvedOvertimeHours + newStandardHours + newOvertimeHours
+        };
+    }, [resourceDraft.overtimeHours, resourceDraft.standardHours, resourceDraftApprovedHours]);
     const ffpTotal = React.useMemo(() => {
         return ffpLaborRows.reduce((total, row) => {
             const amount = Number(normalizeDecimalInput(row.lumpSumAmount) || 0);
@@ -484,8 +512,16 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         const nextErrors: Record<string, string> = {};
         const normalizedAmount = normalizeDecimalInput(travelDraft.amount);
 
+        if (!travelDraft.lineType) {
+            nextErrors.lineType = "Line Type is required.";
+        }
+
         if (!travelDraft.jobId.trim()) {
             nextErrors.jobId = "Job ID is required.";
+        }
+
+        if (!travelDraft.description.trim()) {
+            nextErrors.description = "Description is required.";
         }
 
         if (!normalizedAmount.trim()) {
@@ -535,7 +571,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     startIcon={priorResourcesOpen ? <KeyboardArrowUpOutlinedIcon /> : <KeyboardArrowDownOutlinedIcon />}
                                     onClick={() => setPriorResourcesOpen((open) => !open)}
                                 >
-                                    Prior Resources
+                                    {priorResourcesOpen ? "Hide Prior Resources" : "Show Prior Resources"}
                                 </Button>
                             )}
                             <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewResourceDialog}>
@@ -837,7 +873,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             </Grid>
                             {contractType === "tm" && (
                                 <>
-                                    <Grid size={{ xs: 12, md: 4 }}>
+                                    <Grid size={{ xs: 12, md: showPriorResources ? 5 : 4 }}>
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
@@ -853,10 +889,43 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                     required
                                                     error={Boolean(resourceDraftErrors.jobId)}
                                                     helperText={resourceDraftErrors.jobId}
+                                                    sx={{ "& .MuiInputBase-input": { textOverflow: "clip" } }}
                                                 />
                                             )}
                                         />
                                     </Grid>
+                                    {showPriorResources && (
+                                        <Grid size={{ xs: 12, md: 7 }}>
+                                            <Paper
+                                                variant="outlined"
+                                                sx={{
+                                                    px: 1.5,
+                                                    py: 1,
+                                                    minHeight: 64,
+                                                    display: "flex",
+                                                    alignItems: "center"
+                                                }}
+                                            >
+                                                {resourceDraft.employee?.Id ? (
+                                                    <Stack spacing={0.2}>
+                                                        <Typography variant="body2" color="success.main">
+                                                            Previously Approved: {formatHours(resourceDraftHoursPreview.approvedTotalHours)} hrs ({formatHours(resourceDraftHoursPreview.approvedStandardHours)} std / {formatHours(resourceDraftHoursPreview.approvedOvertimeHours)} OT)
+                                                        </Typography>
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            New on this Mod: {formatHours(resourceDraftHoursPreview.newTotalHours)} hrs
+                                                        </Typography>
+                                                        <Typography variant="body2" fontWeight={600}>
+                                                            Total after this Mod: {formatHours(resourceDraftHoursPreview.combinedTotalHours)} hrs
+                                                        </Typography>
+                                                    </Stack>
+                                                ) : (
+                                                    <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                                        Previously approved hours pending Employee selection
+                                                    </Typography>
+                                                )}
+                                            </Paper>
+                                        </Grid>
+                                    )}
                                     <Grid size={{ xs: 12, md: 4 }}>
                                         <TextField
                                             label="Enter Standard Hours"
@@ -870,7 +939,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     </Grid>
                                     <Grid size={{ xs: 12, md: 4 }}>
                                         <TextField
-                                            label="(Optional) Overtime Hours"
+                                            label="Overtime Hours"
                                             fullWidth
                                             value={resourceDraft.overtimeHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, overtimeHours: normalizeDecimalInput(event.target.value) }))}
@@ -1013,8 +1082,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     select
                                     label="Line Type"
                                     fullWidth
+                                    required
                                     value={travelDraft.lineType}
                                     onChange={(event) => setTravelDraft((prev) => ({ ...prev, lineType: event.target.value as TravelLineType }))}
+                                    error={Boolean(travelDraftErrors.lineType)}
+                                    helperText={travelDraftErrors.lineType}
                                 >
                                     {lineTypeOptions.map((option) => (
                                         <MenuItem key={option.value} value={option.value}>
@@ -1073,8 +1145,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     fullWidth
                                     multiline
                                     minRows={2}
+                                    required
                                     value={travelDraft.description}
                                     onChange={(event) => setTravelDraft((prev) => ({ ...prev, description: event.target.value }))}
+                                    error={Boolean(travelDraftErrors.description)}
+                                    helperText={travelDraftErrors.description}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12 }}>

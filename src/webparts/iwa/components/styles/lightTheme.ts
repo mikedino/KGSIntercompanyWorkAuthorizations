@@ -15,7 +15,7 @@ export const lightTheme = createTheme({
       main: '#d01319',
     },
     warning: {
-      main: '#F7C25B',
+      main: '#FFB900',
     },
     info: {
       //main: '#005C6C',

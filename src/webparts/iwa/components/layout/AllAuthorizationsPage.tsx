@@ -12,6 +12,7 @@ import {
     DialogTitle,
     FormControlLabel,
     IconButton,
+    Link,
     Menu,
     MenuItem,
     Paper,
@@ -45,7 +46,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
 import { IModItem, workflowRoleLabels } from "../data/props";
-import { useHistory, useParams } from "react-router-dom";
+import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 import { ModService } from "../mods/modService";
@@ -850,14 +851,24 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                 key={row.authorization.Id}
                                                 hover
                                                 onDoubleClick={(): void => handleRowDoubleClick(row)}
-                                                sx={{ cursor: "pointer" }}
                                             >
                                                 <TableCell sx={{ width: columnWidths.title, minWidth: columnConfigs[0].minWidth, verticalAlign: "top" }}>
                                                     <Stack spacing={0.5}>
                                                         <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
-                                                            <Typography fontWeight={600}>
+                                                            <Link
+                                                                component={RouterLink}
+                                                                to={`/authorizations/view/${row.authorization.Id}`}
+                                                                fontWeight={600}
+                                                                underline="hover"
+                                                                color="primary"
+                                                                sx={{
+                                                                    fontSize: "1rem",
+                                                                    lineHeight: 1.3,
+                                                                    overflowWrap: "anywhere"
+                                                                }}
+                                                            >
                                                                 {row.authorization.Title}
-                                                            </Typography>
+                                                            </Link>
                                                             {row.hasMods && (
                                                                 <Tooltip title={`${row.authorization.modCount ?? 0} modification(s)`}>
                                                                         <Chip
