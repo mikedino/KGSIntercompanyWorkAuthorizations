@@ -647,6 +647,12 @@ export const Configuration = Helper.SPConfig({
           defaultValue: "0"
         } as Helper.IFieldInfoNumber,
         {
+          name: "stoHours",
+          title: "STO Hours?",
+          type: Helper.SPCfgFieldType.Boolean,
+          defaultValue: "0"
+        } as Helper.IFieldInfoChoice,
+        {
           name: "overtimeHours",
           title: "Overtime Hours",
           type: Helper.SPCfgFieldType.Number,
@@ -723,6 +729,7 @@ export const Configuration = Helper.SPConfig({
             "resources",
             "jobId",
             "standardHours",
+            "stoHours",
             "overtimeHours",
             "totalAmount",
             "isActive"

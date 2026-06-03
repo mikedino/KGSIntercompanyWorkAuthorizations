@@ -16,6 +16,7 @@ import {
 export type AllAuthorizationsPresetView =
     | "all"
     | "active"
+    | "activePeriod"
     | "expiringSoon"
     | "expiredOrClosed"
     | "rejected"
@@ -51,6 +52,8 @@ export interface IAllAuthorizationsRow {
     latestMod?: IModItem;
     createdByName: string;
     createdOn?: string;
+    modifiedByName: string;
+    modifiedOn?: string;
     searchIndex: string;
 }
 
@@ -88,6 +91,21 @@ const activeAuthorizationStatuses: AuthorizationStatus[] = ["submitted", "underR
 const closedAuthorizationStatuses: AuthorizationStatus[] = ["closed", "canceled"];
 
 const normalizeText = (value?: string): string => (value ?? "").trim().toLowerCase();
+
+const toLocalDate = (value?: string): Date | undefined => {
+    const text = value?.trim();
+
+    if (!text) {
+        return undefined;
+    }
+
+    const dateOnlyMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = dateOnlyMatch
+        ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+        : new Date(text);
+
+    return Number.isNaN(date.getTime()) ? undefined : date;
+};
 
 const toSearchParts = (
     authorization: IAuthorizationItem,
@@ -215,6 +233,8 @@ export const buildAllAuthorizationRows = (
         const latestMod = latestModsByAuthorizationId.get(authorization.Id) ?? draftMod;
         const createdByName = latestMod?.Author?.Title ?? authorization.Author?.Title ?? "";
         const createdOn = latestMod?.Created ?? authorization.Created;
+        const modifiedByName = latestMod?.Editor?.Title ?? authorization.Editor?.Title ?? "";
+        const modifiedOn = latestMod?.Modified ?? authorization.Modified;
 
         return {
             authorization,
@@ -225,6 +245,8 @@ export const buildAllAuthorizationRows = (
             latestMod,
             createdByName,
             createdOn,
+            modifiedByName,
+            modifiedOn,
             searchIndex: normalizeText(toSearchParts(authorization, currentRun, createdByName).join(" | "))
         };
     });
@@ -281,6 +303,33 @@ const isExpired = (authorization: IAuthorizationItem): boolean => {
     return end.getTime() < new Date().getTime();
 };
 
+const isInActivePeriod = (authorization: IAuthorizationItem): boolean => {
+    if (!authorization.periodStart || !authorization.periodEnd) {
+        return false;
+    }
+
+    const start = toLocalDate(authorization.periodStart);
+    const end = toLocalDate(authorization.periodEnd);
+
+    if (!start || !end) {
+        return false;
+    }
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const periodStart = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const periodEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+
+    return periodStart <= todayStart && todayStart <= periodEnd;
+};
+
+const hasEverBeenApproved = (row: IAllAuthorizationsRow): boolean => {
+    return !!row.authorization.approvedOn ||
+        !!row.authorization.effectiveApprovedRun?.Id ||
+        row.authorization.authorizationStatus === "approved" ||
+        row.authorization.authorizationStatus === "closed";
+};
+
 const matchesPresetView = (
     row: IAllAuthorizationsRow,
     presetView: AllAuthorizationsPresetView
@@ -288,6 +337,8 @@ const matchesPresetView = (
     switch (presetView) {
         case "active":
             return activeAuthorizationStatuses.includes(row.authorization.authorizationStatus) || row.currentRun?.runStatus === "active";
+        case "activePeriod":
+            return hasEverBeenApproved(row) && isInActivePeriod(row.authorization);
         case "expiringSoon":
             return isExpiringSoon(row.authorization);
         case "expiredOrClosed":
@@ -377,7 +428,7 @@ const getSortValue = (
         case "periodEnd":
             return getDateValue(row.authorization.periodEnd);
         case "modified":
-            return getDateValue(row.authorization.Modified);
+            return getDateValue(row.modifiedOn);
         case "title":
         default:
             return row.authorization.Title;

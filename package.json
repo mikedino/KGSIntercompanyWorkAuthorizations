@@ -9,6 +9,9 @@
   "scripts": {
     "build": "gulp bundle",
     "clean": "gulp clean",
+    "migration:audit-raw": "node tools/migration/audit-raw-export.mjs",
+    "migration:plan": "node tools/migration/import-iwa-migration.mjs",
+    "migration:plan-raw": "node tools/migration/plan-raw-import.mjs",
     "test": "gulp test",
     "package": "gulp clean && gulp build --ship && gulp bundle --ship && gulp package-solution --ship"
   },

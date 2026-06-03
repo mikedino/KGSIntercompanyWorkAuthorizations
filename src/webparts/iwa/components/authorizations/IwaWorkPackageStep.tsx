@@ -1,13 +1,14 @@
 import * as React from "react";
 import {
-    Autocomplete,    Alert,    Box,    Button,    Dialog,    DialogActions,    DialogContent,
-    DialogTitle,    Grid,    MenuItem,    Paper,    Stack,    Table,    TableBody,    TableCell,    TableContainer,
-    TableHead,    TableRow,    TextField,    Typography
+    Autocomplete,    Alert,    Box,    Button,    Checkbox,    Dialog,    DialogActions,    DialogContent,
+    DialogTitle,    FormControlLabel,    Grid,    MenuItem,    Paper,    Stack,    Table,    TableBody,    TableCell,    TableContainer,
+    TableHead,    TableRow,    TextField,    Tooltip,    Typography
 } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import KeyboardArrowDownOutlinedIcon from "@mui/icons-material/KeyboardArrowDownOutlined";
 import KeyboardArrowUpOutlinedIcon from "@mui/icons-material/KeyboardArrowUpOutlined";
 import { IPersonaProps } from "@fluentui/react";
@@ -85,6 +86,7 @@ const createEmptyResourceDraft = (): IEditableResourceRow => ({
     jobId: "",
     laborCategory: "",
     standardHours: "",
+    stoHours: false,
     overtimeHours: "",
     annualSalary: "",
     standardRate: "",
@@ -110,12 +112,23 @@ const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
     comments: ""
 });
 
-const requestedHoursHelperText = "Enter total hours requested during this period";
-
 const formatHours = (value: number): string => {
     const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
 };
+
+const requiredLabel = (label: string): string => `${label} *`;
+
+const infoLabel = (label: string, tooltip: string, required = false): React.ReactNode => (
+    <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+        {required ? requiredLabel(label) : label}
+        <Tooltip title={tooltip} arrow placement="top">
+            <InfoOutlinedIcon
+                sx={{ color: "text.secondary", cursor: "help", fontSize: 18, verticalAlign: "middle" }}
+            />
+        </Tooltip>
+    </Box>
+);
 
 type RemoveConfirmation = {
     id: string;
@@ -268,6 +281,15 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         () => resourceRows.filter((row) => !!row.employee?.Id),
         [resourceRows]
     );
+    const availablePriorResourceRows = React.useMemo((): IPriorResourceRow[] => {
+        const copiedEmployeeIds = new Set(
+            resourceRows
+                .map((row) => row.employee?.Id)
+                .filter((value): value is number => typeof value === "number")
+        );
+
+        return priorResourceRows.filter((row) => !copiedEmployeeIds.has(row.employee.Id));
+    }, [priorResourceRows, resourceRows]);
 
     const getResourceNames = React.useCallback((resourceRowIds: string[]): string => {
         const names = resourceRowIds
@@ -294,6 +316,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             jobId: row.jobId,
             laborCategory: row.laborCategory,
             standardHours: "",
+            stoHours: false,
             overtimeHours: "",
             annualSalary: "",
             standardRate: "",
@@ -302,8 +325,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     }, [onAddResource]);
 
     const copyAllPriorResources = React.useCallback((): void => {
-        priorResourceRows.forEach(copyPriorResource);
-    }, [copyPriorResource, priorResourceRows]);
+        availablePriorResourceRows.forEach(copyPriorResource);
+    }, [availablePriorResourceRows, copyPriorResource]);
 
     const requestRemoveResource = React.useCallback((row: IEditableResourceRow): void => {
         setRemoveConfirmation({
@@ -411,12 +434,14 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             onUpdateResource(resourceDraft.id, {
                 ...resourceDraft,
                 standardHours: normalizeDecimalInput(resourceDraft.standardHours),
+                stoHours: !!resourceDraft.stoHours,
                 overtimeHours: normalizeDecimalInput(resourceDraft.overtimeHours)
             });
         } else {
             onAddResource({
                 ...resourceDraft,
                 standardHours: normalizeDecimalInput(resourceDraft.standardHours),
+                stoHours: !!resourceDraft.stoHours,
                 overtimeHours: normalizeDecimalInput(resourceDraft.overtimeHours)
             });
         }
@@ -567,7 +592,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
                             {showPriorResources && priorResourceRows.length > 0 && (
                                 <Button
-                                    variant="outlined"
+                                    variant={priorResourcesOpen ? "outlined" : "contained"}
+                                    color="info"
                                     startIcon={priorResourcesOpen ? <KeyboardArrowUpOutlinedIcon /> : <KeyboardArrowDownOutlinedIcon />}
                                     onClick={() => setPriorResourcesOpen((open) => !open)}
                                 >
@@ -583,7 +609,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     {showPriorResources && (
                         <IwaPriorResourcesPanel
                             open={priorResourcesOpen}
-                            priorResourceRows={priorResourceRows}
+                            priorResourceRows={availablePriorResourceRows}
                             onCopyAll={copyAllPriorResources}
                             onCopyResource={copyPriorResource}
                         />
@@ -797,83 +823,74 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 </Stack>
             </Paper>
 
-            <Dialog open={resourceDialogOpen} onClose={closeResourceDialog} fullWidth maxWidth="md">
+            <Dialog open={resourceDialogOpen} onClose={closeResourceDialog} fullWidth maxWidth="lg">
                 <DialogTitle>{resourceDraft.id ? "Edit Resource" : "Add Resource"}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={3} sx={{ pt: 1 }}>
                         <Alert severity="info">
                             {showPriorResources
-                                ? "For Mods, enter only the resource details and hours being added for this Mod. T&M hours entered here are for this Mod only and do not include previously approved hours."
+                                ? "For Mods, enter only the resource details and hours being added for this Mod. T&M hours entered here are for this Mod only and do not include previously approved hours. Once a previously utilized resource is selected, their previously approved hours will be visible below for reference."
                                 : "For T&M resources, enter the total standard and overtime hours requested during this period."}
                         </Alert>
                         <Grid container spacing={2}>
-                            <Grid size={{ xs: 12 }}>
-                                <Box
-                                    sx={{
-                                        display: "grid",
-                                        gridTemplateColumns: {
-                                            xs: "1fr",
-                                            md: "minmax(320px, 1fr) minmax(160px, 250px) minmax(180px, 250px)"
-                                        },
-                                        gap: 2,
-                                        alignItems: "start"
-                                    }}
-                                >
-                                    <MuiPeoplePicker
-                                        label="Employee"
-                                        context={peoplePickerContext}
-                                        value={resourceDraft.employee?.EMail ? [resourceDraft.employee.EMail] : undefined}
-                                        required
-                                        onChange={(items) => {
-                                            const employee = toPeoplePickerValue(items[0]);
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <MuiPeoplePicker
+                                    label={requiredLabel("Employee")}
+                                    context={peoplePickerContext}
+                                    value={resourceDraft.employee?.EMail ? [resourceDraft.employee.EMail] : undefined}
+                                    showtooltip
+                                    tooltipMessage="Select the employee or resource receiving the labor hours."
+                                    onChange={(items) => {
+                                        const employee = toPeoplePickerValue(items[0]);
 
-                                            setResourceDraft((prev) => ({
-                                                ...prev,
-                                                employee
-                                            }));
-                                        }}
-                                        error={Boolean(resourceDraftErrors.employee)}
-                                        helperText={resourceDraftErrors.employee}
-                                    />
-                                    <Autocomplete
-                                        freeSolo
-                                        options={states}
-                                        value={resourceDraft.state}
-                                        onChange={(_, value: string | null) => setResourceDraft((prev) => ({ ...prev, state: value ?? "" }))}
-                                        onInputChange={(_, value: string) => setResourceDraft((prev) => ({ ...prev, state: value }))}
-                                        renderInput={(params) => (
-                                            <TextField
-                                                {...params}
-                                                label="State"
-                                                fullWidth
-                                                required
-                                                error={Boolean(resourceDraftErrors.state)}
-                                                helperText={resourceDraftErrors.state || "Employee State of Residence"}
-                                            />
-                                        )}
-                                    />
-                                    <Autocomplete
-                                        freeSolo
-                                        options={laborCategoryOptions}
-                                        value={resourceDraft.laborCategory}
-                                        onInputChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value }))}
-                                        onChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value ?? "" }))}
-                                        renderInput={(params) => (
-                                            <TextField
-                                                {...params}
-                                                label="Labor Category"
-                                                fullWidth
-                                                required
-                                                error={Boolean(resourceDraftErrors.laborCategory)}
-                                                helperText={resourceDraftErrors.laborCategory || "Manually enter a Labor Cat"}
-                                            />
-                                        )}
-                                    />
-                                </Box>
+                                        setResourceDraft((prev) => ({
+                                            ...prev,
+                                            employee
+                                        }));
+                                    }}
+                                    error={Boolean(resourceDraftErrors.employee)}
+                                    helperText={resourceDraftErrors.employee}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <Autocomplete
+                                    freeSolo
+                                    options={states}
+                                    value={resourceDraft.state}
+                                    onChange={(_, value: string | null) => setResourceDraft((prev) => ({ ...prev, state: value ?? "" }))}
+                                    onInputChange={(_, value: string) => setResourceDraft((prev) => ({ ...prev, state: value }))}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label={requiredLabel("State of Residence")}
+                                            fullWidth
+                                            error={Boolean(resourceDraftErrors.state)}
+                                            helperText={resourceDraftErrors.state}
+                                        />
+                                    )}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 4 }}>
+                                <Autocomplete
+                                    freeSolo
+                                    options={laborCategoryOptions}
+                                    value={resourceDraft.laborCategory}
+                                    onInputChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value }))}
+                                    onChange={(_, value) => setResourceDraft((prev) => ({ ...prev, laborCategory: value ?? "" }))}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            label={infoLabel("Labor Category", "Manually enter a labor category.", true)}
+                                            fullWidth
+                                            error={Boolean(resourceDraftErrors.laborCategory)}
+                                            helperText={resourceDraftErrors.laborCategory}
+                                        />
+                                    )}
+                                />
                             </Grid>
                             {contractType === "tm" && (
                                 <>
-                                    <Grid size={{ xs: 12, md: showPriorResources ? 5 : 4 }}>
+                                    <Grid size={{ xs: 12, md: 5 }}>
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
@@ -885,8 +902,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             renderInput={(params) => (
                                                 <TextField
                                                     {...params}
-                                                    label="Job ID"
-                                                    required
+                                                    label={infoLabel("Job ID", "Charge code for this resource's labor hours.", true)}
                                                     error={Boolean(resourceDraftErrors.jobId)}
                                                     helperText={resourceDraftErrors.jobId}
                                                     sx={{ "& .MuiInputBase-input": { textOverflow: "clip" } }}
@@ -894,71 +910,107 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             )}
                                         />
                                     </Grid>
-                                    {showPriorResources && (
-                                        <Grid size={{ xs: 12, md: 7 }}>
-                                            <Paper
-                                                variant="outlined"
-                                                sx={{
-                                                    px: 1.5,
-                                                    py: 1,
-                                                    minHeight: 64,
-                                                    display: "flex",
-                                                    alignItems: "center"
-                                                }}
-                                            >
-                                                {resourceDraft.employee?.Id ? (
-                                                    <Stack spacing={0.2}>
-                                                        <Typography variant="body2" color="success.main">
-                                                            Previously Approved: {formatHours(resourceDraftHoursPreview.approvedTotalHours)} hrs ({formatHours(resourceDraftHoursPreview.approvedStandardHours)} std / {formatHours(resourceDraftHoursPreview.approvedOvertimeHours)} OT)
-                                                        </Typography>
-                                                        <Typography variant="body2" color="text.secondary">
-                                                            New on this Mod: {formatHours(resourceDraftHoursPreview.newTotalHours)} hrs
-                                                        </Typography>
-                                                        <Typography variant="body2" fontWeight={600}>
-                                                            Total after this Mod: {formatHours(resourceDraftHoursPreview.combinedTotalHours)} hrs
-                                                        </Typography>
-                                                    </Stack>
-                                                ) : (
-                                                    <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                                                        Previously approved hours pending Employee selection
-                                                    </Typography>
-                                                )}
-                                            </Paper>
-                                        </Grid>
-                                    )}
-                                    <Grid size={{ xs: 12, md: 4 }}>
+                                    <Grid size={{ xs: 12, sm: 5, md: 2.5 }}>
                                         <TextField
-                                            label="Enter Standard Hours"
+                                            label={infoLabel("Standard Hours", showPriorResources
+                                                ? "For Mods, enter only the standard hours being added by this Mod. Do not include previously approved hours."
+                                                : "Enter the standard hours requested for this authorization period.", true)}
                                             fullWidth
-                                            required
                                             value={resourceDraft.standardHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, standardHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.standardHours)}
-                                            helperText={resourceDraftErrors.standardHours || requestedHoursHelperText}
+                                            helperText={resourceDraftErrors.standardHours}
                                         />
                                     </Grid>
-                                    <Grid size={{ xs: 12, md: 4 }}>
+                                    <Grid size={{ xs: 12, sm: 7, md: 2 }}>
+                                        <FormControlLabel
+                                            sx={{
+                                                minHeight: 56,
+                                                alignItems: "center",
+                                                ml: 0,
+                                                px: 0,
+                                                width: "100%",
+                                                mt: 0
+                                            }}
+                                            control={
+                                                <Checkbox
+                                                    checked={!!resourceDraft.stoHours}
+                                                    onChange={(event) => setResourceDraft((prev) => ({ ...prev, stoHours: event.target.checked }))}
+                                                />
+                                            }
+                                            label={infoLabel("STO Hours?", "Check this box if any standard hours for this resource need to be marked as STO in JAMIS.")}
+                                            slotProps={{
+                                                typography: {
+                                                    variant: "body2",
+                                                    sx: { color: "text.primary" }
+                                                }
+                                            }}
+                                        />
+                                    </Grid>
+                                    <Grid size={{ xs: 12, md: 2.5 }}>
                                         <TextField
-                                            label="Overtime Hours"
+                                            label={infoLabel("Overtime Hours", showPriorResources
+                                                ? "For Mods, enter only the overtime hours being added by this Mod."
+                                                : "Enter the overtime hours requested for this authorization period.")}
                                             fullWidth
                                             value={resourceDraft.overtimeHours}
                                             onChange={(event) => setResourceDraft((prev) => ({ ...prev, overtimeHours: normalizeDecimalInput(event.target.value) }))}
                                             error={Boolean(resourceDraftErrors.overtimeHours)}
-                                            helperText={resourceDraftErrors.overtimeHours || requestedHoursHelperText}
+                                            helperText={resourceDraftErrors.overtimeHours}
                                         />
                                     </Grid>
                                 </>
                             )}
-                            <Grid size={{ xs: 12 }}>
+                            <Grid size={{ xs: 12, md: showPriorResources && contractType === "tm" ? 7 : 12 }}>
                                 <TextField
                                     label="Comments"
                                     fullWidth
                                     multiline
-                                    minRows={2}
+                                    minRows={showPriorResources && contractType === "tm" ? 3 : 2}
                                     value={resourceDraft.comments}
                                     onChange={(event) => setResourceDraft((prev) => ({ ...prev, comments: event.target.value }))}
                                 />
                             </Grid>
+                            {showPriorResources && contractType === "tm" && (
+                                <Grid size={{ xs: 12, md: 5 }}>
+                                    <Paper
+                                        variant="outlined"
+                                        sx={(theme) => ({
+                                            px: 2,
+                                            py: 1.35,
+                                            minHeight: 92,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            borderColor: "success.main",
+                                            borderLeft: `4px solid ${theme.palette.success.main}`,
+                                            backgroundColor: theme.palette.mode === "dark"
+                                                ? "rgba(50, 200, 90, 0.08)"
+                                                : "rgba(46, 125, 50, 0.06)"
+                                        })}
+                                    >
+                                        {resourceDraft.employee?.Id ? (
+                                            <Stack spacing={0.25}>
+                                                <Typography variant="caption" color="success.main" fontWeight={700} sx={{ textTransform: "uppercase" }}>
+                                                    Previously Approved Resource Hours
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    Prior approved: <strong>{formatHours(resourceDraftHoursPreview.approvedTotalHours)} hrs</strong> ({formatHours(resourceDraftHoursPreview.approvedStandardHours)} std / {formatHours(resourceDraftHoursPreview.approvedOvertimeHours)} OT)
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    New on this Mod: {formatHours(resourceDraftHoursPreview.newTotalHours)} hrs
+                                                </Typography>
+                                                <Typography variant="body2" fontWeight={700}>
+                                                    Total after this Mod: {formatHours(resourceDraftHoursPreview.combinedTotalHours)} hrs
+                                                </Typography>
+                                            </Stack>
+                                        ) : (
+                                            <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                                Select an employee to show previously approved hours.
+                                            </Typography>
+                                        )}
+                                    </Paper>
+                                </Grid>
+                            )}
                         </Grid>
                     </Stack>
                 </DialogContent>

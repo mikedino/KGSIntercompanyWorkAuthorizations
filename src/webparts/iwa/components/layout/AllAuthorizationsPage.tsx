@@ -77,6 +77,7 @@ type ColumnKey =
     | "assignedDate"
     | "period"
     | "createdDate"
+    | "modifiedDate"
     | "actions";
 
 interface IColumnConfig {
@@ -91,7 +92,8 @@ interface IColumnConfig {
 
 const presetViews: Array<{ value: AllAuthorizationsPresetView; label: string; }> = [
     { value: "all", label: "All" },
-    { value: "active", label: "Active" },
+    { value: "active", label: "Pending" },
+    { value: "activePeriod", label: "Active" },
     { value: "expiringSoon", label: "Expiring Soon" },
     { value: "expiredOrClosed", label: "Expired / Closed" },
     { value: "rejected", label: "Rejected" },
@@ -107,20 +109,28 @@ const isPresetView = (value: string | undefined): value is AllAuthorizationsPres
 const formatPresetViewLabel = (label: string, count: number): string => `${label} (${count})`;
 
 const columnConfigs: IColumnConfig[] = [
-    { key: "title", label: "Authorization", sortField: "title", minWidth: 205, defaultWidth: 220 },
-    { key: "contractDetails", label: "Contract Details", sortField: "customerContractCode", minWidth: 135, defaultWidth: 145 },
+    { key: "title", label: "Authorization", sortField: "title", minWidth: 225, defaultWidth: 240 },
+    { key: "contractDetails", label: "Contract Details", sortField: "customerContractCode", minWidth: 120, defaultWidth: 125 },
     { key: "authorizationStatus", label: "Status", sortField: "authorizationStatus", minWidth: 100, defaultWidth: 110 },
-    { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 105, defaultWidth: 115 },
-    { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 135, defaultWidth: 145 },
-    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 115, defaultWidth: 125 },
-    { key: "period", label: "Period", sortField: "periodEnd", minWidth: 100, defaultWidth: 110 },
+    { key: "workflowStatus", label: "WF Status", sortField: "workflowStatus", minWidth: 100, defaultWidth: 105 },
+    { key: "pendingRole", label: "WF Pending Role", sortField: "pendingRole", minWidth: 120, defaultWidth: 125 },
+    { key: "assignedDate", label: "Assigned Date", sortField: "assignedDate", minWidth: 110, defaultWidth: 120 },
+    { key: "period", label: "Period", sortField: "periodEnd", minWidth: 80, defaultWidth: 85 },
     {
         key: "createdDate",
         label: "Created",
         tooltip: "Shows who created the base IWA and when. If the IWA has Mods, this shows the creator and created date for the latest Mod.",
         sortField: "createdDate",
-        minWidth: 135,
-        defaultWidth: 145
+        minWidth: 85,
+        defaultWidth: 90
+    },
+    {
+        key: "modifiedDate",
+        label: "Modified",
+        tooltip: "Shows who last modified the base IWA. If the IWA has Mods, this shows the editor and modified date for the latest Mod.",
+        sortField: "modified",
+        minWidth: 110,
+        defaultWidth: 115
     },
     { key: "actions", label: "", minWidth: 56, defaultWidth: 56, align: "center" }
 ];
@@ -141,6 +151,8 @@ const getPresetSummary = (presetView: AllAuthorizationsPresetView): string => {
     switch (presetView) {
         case "active":
             return "Submitted authorizations, items under review, or anything with an active workflow run.";
+        case "activePeriod":
+            return "Authorizations that have been approved at least once and are currently within their period of performance.";
         case "expiringSoon":
             return "Authorizations whose period end date is within the next 30 days.";
         case "expiredOrClosed":
@@ -319,10 +331,10 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
 
     const presetViewCounts = React.useMemo((): Record<AllAuthorizationsPresetView, number> => {
         return presetViews.reduce((counts, presetView) => {
-            counts[presetView.value] = filterAllAuthorizationRows(visibleRows, presetView.value, defaultFilters).length;
+            counts[presetView.value] = filterAllAuthorizationRows(visibleRows, presetView.value, filters).length;
             return counts;
         }, {} as Record<AllAuthorizationsPresetView, number>);
-    }, [visibleRows]);
+    }, [filters, visibleRows]);
 
     const sortedRows = React.useMemo((): IAllAuthorizationsRow[] => {
         return sortAllAuthorizationRows(filteredRows, sortField, sortDirection);
@@ -721,6 +733,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                 key={view.value}
                                 value={view.value}
                                 label={formatPresetViewLabel(view.label, presetViewCounts[view.value] ?? 0)}
+                                title={getPresetSummary(view.value)}
                             />
                         ))}
                     </BottomNavigation>
@@ -749,22 +762,27 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     >
                         <Box>
                             <Typography variant="h6" fontWeight={600}>
-                                {formatPresetViewLabel(
-                                    presetViews.find((view) => view.value === selectedView)?.label ?? "All",
-                                    presetViewCounts[selectedView] ?? 0
-                                )}
+                                {presetViews.find((view) => view.value === selectedView)?.label ?? "All"}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                {sortedRows.length} item{sortedRows.length === 1 ? "" : "s"} shown • double-click a row to open details
+                                {getPresetSummary(selectedView)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                {getPresetSummary(selectedView)}
+                                {sortedRows.length} item{sortedRows.length === 1 ? "" : "s"} shown
                             </Typography>
                         </Box>
 
-                        <Typography variant="caption" color="text.secondary">
-                            Drag the header edges to resize columns.
-                        </Typography>
+                        <Stack spacing={0.25} alignItems={{ xs: "flex-start", md: "flex-end" }}>
+                            <Typography variant="caption" color="text.secondary">
+                                Drag the header edges to resize columns.
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Double-click a row to open details.
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                Sorted by Modified &gt; descending.
+                            </Typography>
+                        </Stack>
                     </Stack>
 
                     {isBootLoading && (
@@ -974,6 +992,17 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
                                                             {row.createdOn ? formatDate(row.createdOn, true) : ""}
+                                                        </Typography>
+                                                    </Stack>
+                                                </TableCell>
+
+                                                <TableCell sx={{ width: columnWidths.modifiedDate, verticalAlign: "top" }}>
+                                                    <Stack spacing={0.5}>
+                                                        <Typography variant="body2" noWrap>
+                                                            {row.modifiedByName || "—"}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {row.modifiedOn ? formatDate(row.modifiedOn, true) : ""}
                                                         </Typography>
                                                     </Stack>
                                                 </TableCell>

@@ -354,6 +354,7 @@ export interface ILaborLineItem extends ISystemFields {
   standardRate?: number;
   overtimeRate?: number;
   standardHours?: number;
+  stoHours?: boolean;
   overtimeHours?: number;
   standardAmount?: number;
   overtimeAmount?: number;

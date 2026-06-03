@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Box, Typography } from "@mui/material";
-import { Redirect, Route, Switch } from "react-router-dom";
+import { Redirect, Route, Switch, useLocation } from "react-router-dom";
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { WebPartContext } from "@microsoft/sp-webpart-base";
@@ -17,6 +17,52 @@ import { useIwa } from "../data/iwaContext";
 import Strings from "../common/strings";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
 
+const scrollElementToTop = (element?: Element | Window): void => {
+    if (!element) {
+        return;
+    }
+
+    if (element === window) {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        return;
+    }
+
+    (element as HTMLElement).scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    (element as HTMLElement).scrollTop = 0;
+    (element as HTMLElement).scrollLeft = 0;
+};
+
+const getScrollableAncestors = (element?: HTMLElement): HTMLElement[] => {
+    const ancestors: HTMLElement[] = [];
+    let current = element?.parentElement;
+
+    while (current) {
+        const style = window.getComputedStyle(current);
+        const canScrollY = /(auto|scroll|overlay)/i.test(style.overflowY) || current.scrollHeight > current.clientHeight;
+
+        if (canScrollY) {
+            ancestors.push(current);
+        }
+
+        current = current.parentElement;
+    }
+
+    return ancestors;
+};
+
+const scrollAppToTop = (mainElement?: HTMLElement): void => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    scrollElementToTop(document.scrollingElement ?? undefined);
+    document
+        .querySelectorAll<HTMLElement>("[data-automation-id='contentScrollRegion'], [data-automation-id='CanvasZone'], .CanvasComponent")
+        .forEach(scrollElementToTop);
+    getScrollableAncestors(mainElement).forEach(scrollElementToTop);
+    mainElement?.focus({ preventScroll: true });
+};
+
 export interface IAppFrameProps {
     context: WebPartContext;
     appTitle: string;
@@ -30,10 +76,23 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
     useDarkTheme,
     setUseDarkTheme
 }): JSX.Element => {
+    const location = useLocation();
+    const mainRef = React.useRef<HTMLElement | null>(null);
     const { appUsers, authorizations, currentUser, draftAuthorizations, isAppUsersLoading, isRefreshing } = useIwa();
     const allEditableAuthorizations = React.useMemo(() => {
         return [...draftAuthorizations, ...authorizations];
     }, [authorizations, draftAuthorizations]);
+
+    React.useEffect(() => {
+        const scroll = (): void => scrollAppToTop(mainRef.current ?? undefined);
+        const frameId = window.requestAnimationFrame(scroll);
+        const settleId = window.setTimeout(scroll, 75);
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.clearTimeout(settleId);
+        };
+    }, [location.pathname, location.search]);
 
     return (
         <>
@@ -46,11 +105,16 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
 
             <Box
                 component="main"
+                ref={mainRef}
+                tabIndex={-1}
                 sx={{
                     width: "100%",
+                    minHeight: "calc(100vh - 86px)",
+                    bgcolor: "background.default",
                     px: { xs: 2, md: 3 },
                     pt: 3,
-                    pb: 3
+                    pb: 3,
+                    outline: "none"
                 }}
             >
                 <Box sx={{ mx: "auto", maxWidth: "1600px" }}>

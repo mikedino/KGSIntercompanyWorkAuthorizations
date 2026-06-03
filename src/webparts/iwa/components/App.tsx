@@ -30,7 +30,14 @@ const AppShell: React.FC<IIwaAppProps> = ({ context }): React.ReactElement => {
     return (
         <ThemeProvider theme={useDarkTheme ? darkTheme : lightTheme}>
             <CssBaseline />
-            <Box sx={{ minHeight: "60vh", bgcolor: "background.default", color: "text.primary" }}>
+            <Box
+                sx={{
+                    "--iwa-app-bg": (theme) => theme.palette.background.default,
+                    minHeight: "100vh",
+                    bgcolor: "background.default",
+                    color: "text.primary"
+                }}
+            >
                 <AppBoot
                     context={context}
                     appTitle={Strings.ProjectName}

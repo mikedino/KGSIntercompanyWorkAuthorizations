@@ -44,7 +44,7 @@ const AppLoadState: React.FC<Pick<IAppLoadProps, "context" | "appTitle" | "setUs
 
     if (fatalError) {
         return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", bgcolor: "background.default" }}>
                 <Alert severity="error" variant="outlined" sx={{ maxWidth: 900, width: "100%" }}>
                     Failed to load application data. Please refresh the page. If the problem persists, contact support.
                 </Alert>

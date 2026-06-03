@@ -42,6 +42,7 @@ import { authorizationStatusLabels, modStatusLabels, workflowRunStatusLabels } f
 import { AuthorizationService } from "./iwaService";
 import { ApproverResolver } from "../workflow/defaultApprovers";
 import { WorkflowRunService } from "../workflow/runService";
+import { WorkflowService } from "../workflow/workflowService";
 import { WorkflowActionService } from "../workflow/actionService";
 import { captureIwaChangeSet } from "../workflow/changeCapture";
 import { IwaReviewSection } from "./IwaReviewSection";
@@ -123,6 +124,7 @@ const createEmptyResourceRow = (): IEditableResourceRow => ({
     jobId: "",
     laborCategory: "",
     standardHours: "",
+    stoHours: false,
     overtimeHours: "",
     annualSalary: "",
     standardRate: "",
@@ -267,7 +269,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const successTimeoutRef = React.useRef<number | undefined>(undefined);
     const initialAuthorizationRef = React.useRef<IAuthorizationItem | undefined>(item);
     const lastSyncedContractIdRef = React.useRef<string | undefined>(item?.contractId);
-    const returnTo = location.state?.returnTo || sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/needsAction";
+    const fallbackReturnTo = mode === "edit" && item?.Id
+        ? `/authorizations/view/${item.Id}`
+        : sessionStorage.getItem("iwa:lastReturnLocation") || "/my-work/needsAction";
+    const returnTo = location.state?.returnTo || fallbackReturnTo;
     const routeModId = location.state?.modId;
     const storedModId = readSessionModId(item?.Id);
     const editableMods = React.useMemo<IModItem[]>(() => {
@@ -435,6 +440,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 jobId: row.jobId,
                 laborCategory: row.laborCategory,
                 standardHours: row.standardHours,
+                stoHours: row.stoHours,
                 overtimeHours: row.overtimeHours,
                 annualSalary: row.annualSalary,
                 standardRate: row.standardRate,
@@ -650,6 +656,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 laborCategory: resource.laborCategory ?? "",
                 jobId: tmLabor?.jobId ?? "",
                 standardHours: tmLabor?.standardHours !== undefined && tmLabor?.standardHours !== null ? String(tmLabor.standardHours) : "",
+                stoHours: !!tmLabor?.stoHours,
                 overtimeHours: tmLabor?.overtimeHours !== undefined && tmLabor?.overtimeHours !== null ? String(tmLabor.overtimeHours) : "",
                 annualSalary: tmLabor?.annualSalary !== undefined && tmLabor?.annualSalary !== null ? String(tmLabor.annualSalary) : "",
                 standardRate: tmLabor?.standardRate !== undefined && tmLabor?.standardRate !== null ? String(tmLabor.standardRate) : "",
@@ -1272,6 +1279,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     standardRate: Number(row.standardRate || 0),
                     overtimeRate: Number(row.overtimeRate || 0),
                     standardHours: Number(row.standardHours || 0),
+                    stoHours: row.stoHours,
                     overtimeHours: Number(row.overtimeHours || 0)
                 }))
             : ffpLaborRows.map((row, index) => {
@@ -1415,6 +1423,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
         try {
             let saved: IAuthorizationItem;
+            let reusedActiveModWorkflow = false;
             const isFirstSubmit = !isModEditMode && normalizedStatus !== "draft" && isDraftStatus(form.authorizationStatus);
 
             if (isFirstSubmit) {
@@ -1469,48 +1478,100 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     afterTravelRows: travelRows,
                     afterFfpLaborRows: ffpLaborRows
                 });
-                const nextRunNumber = Math.max(0, ...(runsByAuthorizationId.get(saved.Id) ?? []).map((run) => run.runNumber ?? 0)) + 1;
+                let activeModRun = activeRun?.runType === "mod" && activeRun.mod?.Id === currentMod.Id
+                    ? activeRun
+                    : (runsByAuthorizationId.get(saved.Id) ?? []).find((run) =>
+                        run.runType === "mod" &&
+                        run.mod?.Id === currentMod.Id &&
+                        run.runStatus === "active"
+                    );
 
-                if (!options.quiet) {
-                    showBusy("Creating new workflow...");
+                if (!activeModRun) {
+                    const freshRuns = await WorkflowService.getRunsByAuthorization(saved.Id);
+                    activeModRun = freshRuns.find((run) =>
+                        run.runType === "mod" &&
+                        run.mod?.Id === currentMod.Id &&
+                        run.runStatus === "active"
+                    );
                 }
-                const modRun = await WorkflowRunService.createModRun(
-                    saved,
-                    currentMod,
-                    nextRunNumber,
-                    approvers,
-                    "Submit modification",
-                    changeSet.changeSummary
-                );
 
-                if (!options.quiet) {
-                    showBusy("Updating modification linkages...");
-                }
-                await ModService.updateDraft(currentMod.Id, {
-                    reason: modReason.trim(),
-                    changeSummary: changeSet.changeSummary,
-                    modStatus: "underReview",
-                    currentWorkflowRunId: modRun.Id
-                });
-                await AuthorizationService.updateRunId(saved.Id, modRun.Id);
-                if (activeRun?.Id && activeRun.runType === "mod" && activeRun.mod?.Id === currentMod.Id) {
-                    await WorkflowRunService.supersedeRun(activeRun.Id, "Submit modification", changeSet.changeSummary);
-                }
-                await WorkflowActionService.createSubmitted(saved, modRun, {
-                    actionType: "modified",
-                    comments: changeSet.changeSummary,
-                    changeSummary: changeSet.changeSummary,
-                    changePayloadJson: changeSet.changePayloadJson,
-                    modId: currentMod.Id
-                });
-
-                saved = {
-                    ...saved,
-                    currentWorkflowRun: {
-                        Id: modRun.Id,
-                        Title: modRun.Title
+                if (activeModRun?.Id && !activeModRun.hasDecision) {
+                    reusedActiveModWorkflow = true;
+                    if (!options.quiet) {
+                        showBusy("Saving modification updates...");
                     }
-                };
+
+                    await ModService.updateDraft(currentMod.Id, {
+                        reason: modReason.trim(),
+                        changeSummary: changeSet.changeSummary,
+                        modStatus: "underReview",
+                        currentWorkflowRunId: activeModRun.Id
+                    });
+                    await AuthorizationService.updateRunId(saved.Id, activeModRun.Id);
+
+                    const nextPmId = saved.pm?.Id ?? null;
+                    const pendingPmApproverId = activeModRun.pendingApprover?.Id ?? null;
+
+                    if (
+                        activeModRun.runStatus === "active" &&
+                        activeModRun.currentStepKey === "pm" &&
+                        typeof nextPmId === "number" &&
+                        pendingPmApproverId !== nextPmId
+                    ) {
+                        await WorkflowRunService.updatePendingApprover(activeModRun.Id, nextPmId);
+                    }
+
+                    saved = {
+                        ...saved,
+                        currentWorkflowRun: {
+                            Id: activeModRun.Id,
+                            Title: activeModRun.Title
+                        }
+                    };
+                } else {
+                    const nextRunNumber = await WorkflowRunService.getNextRunNumber(saved.Id);
+
+                    if (!options.quiet) {
+                        showBusy("Creating new workflow...");
+                    }
+                    const modRun = await WorkflowRunService.createModRun(
+                        saved,
+                        currentMod,
+                        nextRunNumber,
+                        approvers,
+                        "Submit modification",
+                        changeSet.changeSummary
+                    );
+
+                    if (!options.quiet) {
+                        showBusy("Updating modification linkages...");
+                    }
+                    await ModService.updateDraft(currentMod.Id, {
+                        reason: modReason.trim(),
+                        changeSummary: changeSet.changeSummary,
+                        modStatus: "underReview",
+                        currentWorkflowRunId: modRun.Id
+                    });
+                    await AuthorizationService.updateRunId(saved.Id, modRun.Id);
+                    if (activeModRun?.Id) {
+                        await WorkflowRunService.supersedeRun(activeModRun.Id, "Submit modification", changeSet.changeSummary);
+                    }
+                    await WorkflowActionService.createSubmitted(saved, modRun, {
+                        actionType: "modified",
+                        comments: changeSet.changeSummary,
+                        changeSummary: changeSet.changeSummary,
+                        changePayloadJson: changeSet.changePayloadJson,
+                        modId: currentMod.Id
+                    });
+
+                    saved = {
+                        ...saved,
+                        currentWorkflowRun: {
+                            Id: modRun.Id,
+                            Title: modRun.Title
+                        }
+                    };
+                }
             } else
                 if (
                     !isModEditMode &&
@@ -1540,7 +1601,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     }
                     const nextRun = await WorkflowRunService.createRestartRun(
                         saved,
-                        (activeRun.runNumber ?? 0) + 1,
+                        await WorkflowRunService.getNextRunNumber(saved.Id),
                         approvers,
                         restartReason,
                         changeSet.changeSummary
@@ -1640,7 +1701,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
             if (isSubmittingMod) {
                 showFinalSuccess(
-                    options.successMessage ?? "Modification submitted for approval.",
+                    options.successMessage ?? (reusedActiveModWorkflow ? "Modification saved successfully." : "Modification submitted for approval."),
                     () => sessionStorage.removeItem(getActiveModDraftSessionKey(saved.Id))
                 );
                 return true;
@@ -2381,7 +2442,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                                 persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
                                             }}
                                         >
-                                            {isModEditMode ? "Submit Mod" : isExistingSubmittedEdit ? "Submit Updates" : "Submit Authorization"}
+                                            {isModEditMode
+                                                ? isModDraftMode
+                                                    ? "Submit Mod"
+                                                    : "Save Mod"
+                                                : isExistingSubmittedEdit ? "Submit Updates" : "Submit Authorization"}
                                         </Button>
                                     )}
                                 </Stack>

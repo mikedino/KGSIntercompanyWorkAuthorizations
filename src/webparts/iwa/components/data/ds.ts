@@ -502,7 +502,9 @@ export class DataSource {
                 .execute(
                     (items) => {
                         const allContracts = (items?.results ?? []) as unknown as IContractItem[];
-                        this._contracts = allContracts.filter((contract) => new Date(contract.field_16) >= today);
+                        // no longer used - was filtering contracts where completion date is in the future
+                        //this._contracts = allContracts.filter((contract) => new Date(contract.field_16) >= today);
+                        this._contracts = allContracts.filter((contract) => !contract.field_20?.includes("New Business"));
                         resolve(this._contracts);
                     },
                     (error) => reject(new Error(`Error fetching Contracts: ${formatError(error)}`))

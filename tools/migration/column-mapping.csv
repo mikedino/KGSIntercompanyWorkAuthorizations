@@ -1,0 +1,51 @@
+targetList,targetField,sourceFile,sourceColumn,transformNotes
+IWAAgreements,Title,Agreements_Export_2026-06-02.csv,Sequence,"Generated as IWA-{firstEntityAbbr}-{secondEntityAbbr}-{sequenceYear}-M-{sequenceNumber} from the legacy Sequence."
+IWAAgreements,authorizationStatus,Agreements_Export_2026-06-02.csv,"Status, Workflow Status, Approval_Status","Mapped to approved/rejected/underReview/submitted."
+IWAAgreements,pm,Agreements_Export_2026-06-02.csv,ProjectManager,"Resolved to user when possible; unresolved defaults to SharePointApps@koniag-gs.com."
+IWAAgreements,donorEntity,Agreements_Export_2026-06-02.csv,EntityA,"Strips abbreviation suffix in parentheses."
+IWAAgreements,donorEntityAbbr,Agreements_Export_2026-06-02.csv,EntityA,"Extracts abbreviation in parentheses."
+IWAAgreements,donorGm,Agreements_Export_2026-06-02.csv,EntityAManager,"Resolved to user when possible; unresolved defaults to SharePointApps@koniag-gs.com."
+IWAAgreements,receivingEntity,Agreements_Export_2026-06-02.csv,EntityB,"Strips abbreviation suffix in parentheses."
+IWAAgreements,receivingEntityAbbr,Agreements_Export_2026-06-02.csv,EntityB,"Extracts abbreviation in parentheses."
+IWAAgreements,receivingGm,Agreements_Export_2026-06-02.csv,EntityBManager,"Resolved to user when possible; unresolved defaults to SharePointApps@koniag-gs.com."
+IWAAgreements,og,tools/migration/mappings/og-lob-map.csv,targetOperatingGroup,"Mapped from raw Operating Group."
+IWAAgreements,lob,tools/migration/mappings/og-lob-map.csv,lob,"Mapped from raw Operating Group."
+IWAAgreements,contractName,Agreements_Export_2026-06-02.csv,Project Name,
+IWAAgreements,contractId,Agreements_Export_2026-06-02.csv,ProjectId,"Falls back within the same family if latest row is blank; blank source rows are audited."
+IWAAgreements,iwaJamisProjectId,Agreements_Export_2026-06-02.csv,IWA Project ID,"No fallback."
+IWAAgreements,customerContractCode,Agreements_Export_2026-06-02.csv,Contract Number,
+IWAAgreements,invoice,Agreements_Export_2026-06-02.csv,Task Order Project ID,"No fallback."
+IWAAgreements,contractType,Agreements_Export_2026-06-02.csv,Contract Type,"Normalizes to tm/ffp."
+IWAAgreements,periodStart,Agreements_Export_2026-06-02.csv,Start Date,"Earliest family Start Date."
+IWAAgreements,periodEnd,Agreements_Export_2026-06-02.csv,End Date,"Latest family End Date."
+IWAAgreements,scopeOfWork,Agreements_ProjectDescription.csv,ProjectDescription,"Base-row plain text description; raw export ProjectDescription is fallback."
+IWAAgreements,justification,Agreements_ProjectDescription.csv,ProjectDescription,"Base-row plain text description; raw export ProjectDescription is fallback."
+IWAAgreements,notes,Agreements_Export_2026-06-02.csv,"Sequence, ID","Migrated from Legacy IWA list. Legacy Sequence: XXX, Legacy ID: XXX."
+IWAAgreements,baseLaborAmount,Agreements_Export_2026-06-02.csv,Amount Authorized,
+IWAAgreements,baseTravelAmount,Agreements_Export_2026-06-02.csv,"ODC Amount, GrandODC","Uses ODC Amount first, then GrandODC."
+IWAAgreements,baseGrandTotal,Agreements_Export_2026-06-02.csv,GrandTotal_Amount,"Falls back to labor + travel."
+IWAAgreements,approvedLaborAmount,Agreements_Export_2026-06-02.csv,Amount Authorized,"Sum of base row plus approved mod rows."
+IWAAgreements,approvedTravelAmount,Agreements_Export_2026-06-02.csv,"ODC Amount, GrandODC","Sum of base row plus approved mod rows."
+IWAAgreements,approvedGrandTotal,Agreements_Export_2026-06-02.csv,"Amount Authorized, ODC Amount, GrandODC","Approved Labor Amount + Approved Travel Amount."
+IWAAgreements,modCount,Agreements_Export_2026-06-02.csv,ModNumber,"Max family ModNumber."
+IWAMods,modNumber,Agreements_Export_2026-06-02.csv,ModNumber,
+IWAMods,modStatus,Agreements_Export_2026-06-02.csv,"Status, Workflow Status, Approval_Status, SignedA, SignedB","Mapped to approved/rejected/underReview."
+IWAMods,reason,Agreements_ProjectDescription.csv,ProjectDescription,"Mod-row plain text description; raw export ProjectDescription is fallback."
+IWAMods,changeSummary,Agreements_Export_2026-06-02.csv,Sequence,
+IWAMods,notes,Agreements_Export_2026-06-02.csv,"Sequence, ID","Migrated from Legacy IWA list. Legacy Sequence: XXX, Legacy ID: XXX."
+IWAMods,laborAmount,Agreements_Export_2026-06-02.csv,Amount Authorized,
+IWAMods,travelAmount,Agreements_Export_2026-06-02.csv,"ODC Amount, GrandODC","Uses ODC Amount first, then GrandODC."
+IWAMods,grandTotal,Agreements_Export_2026-06-02.csv,"Amount Authorized, ODC Amount, GrandODC","Calculated as mod laborAmount + mod travelAmount because legacy GrandTotal_Amount is often cumulative."
+IWAResources,employee,ResourceDetail_Export_2026-06-02.csv,Employee,"Employee now contains email; unresolved/non-email values default to SharePointApps@koniag-gs.com."
+IWAResources,state,ResourceDetail_Export_2026-06-02.csv,Work State,"Two-letter abbreviations are expanded to State Name (XX)."
+IWAResources,laborCategory,ResourceDetail_Export_2026-06-02.csv,Role_Position,
+IWALaborLine,jobId,ResourceDetail_Export_2026-06-02.csv,JobID,
+IWALaborLine,standardRate,ResourceDetail_Export_2026-06-02.csv,"Bill Rate, Original Cost","T&M only."
+IWALaborLine,standardHours,ResourceDetail_Export_2026-06-02.csv,"Units Quantity, Total Hours, Original","T&M only."
+IWALaborLine,standardAmount,ResourceDetail_Export_2026-06-02.csv,"Bill Rate, Units Quantity, Total Hours, Original","Calculated as standardRate x standardHours for T&M."
+IWALaborLine,totalAmount,ResourceDetail_Export_2026-06-02.csv,"Total, Original Total",
+IWATravelODC,jobId,Agreements_Export_2026-06-02.csv,ODC Job_ID,
+IWATravelODC,description,Agreements_Export_2026-06-02.csv,ODC Job_Name,
+IWATravelODC,amount,Agreements_Export_2026-06-02.csv,"ODC Amount, GrandODC",
+IWAWorkflowRuns,currentStepKey,Agreements_Export_2026-06-02.csv,Workflow Status,"Legacy status mapped to current workflow step."
+IWAWorkflowActions,actionDate,Agreements_Export_2026-06-02.csv,"Created, Modified, HR_Update, OG_Approval","Submission uses Created; approval/rejection uses Modified. T&M workflow actions are PM, HR, OGP, CFO; FFP workflow actions are PM, OGP, CFO. HR_Update and OG_Approval are preserved in action comments."

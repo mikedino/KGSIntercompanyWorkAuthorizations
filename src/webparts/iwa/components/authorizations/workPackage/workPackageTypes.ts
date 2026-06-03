@@ -8,6 +8,7 @@ export interface IEditableResourceRow {
     jobId: string;
     laborCategory: string;
     standardHours: string;
+    stoHours: boolean;
     overtimeHours: string;
     annualSalary: string;
     standardRate: string;

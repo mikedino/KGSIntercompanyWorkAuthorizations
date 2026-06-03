@@ -7,13 +7,14 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import { formatError } from "../common/utils";
 import { UsersAdminPanel } from "./UserPanel";
 import { ApproversAdminPanel } from "./ApproversPanel";
+import { MigrationTrialPanel } from "./MigrationTrialPanel";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { useTheme } from "@mui/material/styles";
 import { AppUserService } from "../users/userService";
 import { useIwa } from "../data/iwaContext";
 import { useShellUi } from "../ui/ShellUiContext";
 
-type AdminTabKey = "users" | "approvers";
+type AdminTabKey = "users" | "approvers" | "migration";
 
 interface AdminModuleProps {
   context: WebPartContext;
@@ -94,7 +95,7 @@ const AdminPage: React.FC<AdminModuleProps> = ({ context }) => {
   const handleRefreshClick = async (): Promise<void> => {
     if (tab === "users") {
       await withBusy("Refreshing users…", refreshAppUsers);
-    } else {
+    } else if (tab === "approvers") {
       await withBusy("Refreshing approver lookups…", refreshLookups);
     }
   };
@@ -151,6 +152,7 @@ const AdminPage: React.FC<AdminModuleProps> = ({ context }) => {
         >
           <Tab value="users" label="Users" />
           <Tab value="approvers" label="Approvers" />
+          <Tab value="migration" label="Migration" />
         </Tabs>
 
         {tab === "users" && (
@@ -203,6 +205,14 @@ const AdminPage: React.FC<AdminModuleProps> = ({ context }) => {
               onSuccess={showSuccess}
             />
           </>
+        )}
+
+        {tab === "migration" && (
+          <MigrationTrialPanel
+            context={context}
+            runBusy={withBusy}
+            onSuccess={showSuccess}
+          />
         )}
       </Box>
 

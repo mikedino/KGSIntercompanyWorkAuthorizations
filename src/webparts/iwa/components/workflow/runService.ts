@@ -155,6 +155,32 @@ export class WorkflowRunService {
         });
     }
 
+    static async getNextRunNumber(authorizationId: number): Promise<number> {
+        if (!authorizationId) {
+            return 1;
+        }
+
+        return new Promise<number>((resolve, reject) => {
+            Web()
+                .Lists(Strings.Sites.main.lists.WorkflowRuns)
+                .Items()
+                .query({
+                    Select: ["Id", "runNumber"],
+                    Filter: `authorization/Id eq ${authorizationId}`,
+                    OrderBy: ["runNumber desc"],
+                    Top: 1
+                })
+                .execute(
+                    (items) => {
+                        const latestRun = items?.results?.[0] as { runNumber?: number } | undefined;
+                        const maxRunNumber = Number(latestRun?.runNumber ?? 0);
+                        resolve(Number.isFinite(maxRunNumber) ? maxRunNumber + 1 : 1);
+                    },
+                    (error) => reject(new Error(`Error calculating next workflow run number: ${formatError(error)}`))
+                );
+        });
+    }
+
     static async supersedeRun(runId: number, restartReason: string, restartComment?: string): Promise<void> {
         if (!runId) {
             throw new Error("Workflow Run Id is required to supersede a workflow run.");

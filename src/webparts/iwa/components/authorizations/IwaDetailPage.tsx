@@ -57,9 +57,11 @@ import {
     getLaborDisplayName,
     getMissingCompensationMessage,
     getModScopeLabel,
+    getResourceDisplayName,
     getStepAction,
     ICompDraft,
     ICompOverrideDraft,
+    isFallbackResourceEmployee,
     roundCurrency,
     toCompDraft
 } from "./view/iwaViewUtils";
@@ -120,6 +122,9 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const authorization = React.useMemo<IAuthorizationItem | undefined>(() => {
         return [...authorizations, ...draftAuthorizations].find((item) => item.Id === authorizationId);
     }, [authorizationId, authorizations, draftAuthorizations]);
+    const detailReturnTo = React.useMemo<string>(() => {
+        return `/authorizations/view/${authorizationId}${location.search || ""}`;
+    }, [authorizationId, location.search]);
 
     const detailRuns = React.useMemo<IWorkflowRunItem[]>(() => {
         return runsByAuthorizationId.get(authorizationId) ?? [];
@@ -373,8 +378,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
     }, [laborLines]);
     const resourceRosterRows = React.useMemo(() => {
-        const employeeMap = new Map<number, {
-            key: number;
+        const employeeMap = new Map<string, {
+            key: string | number;
             title: string;
             email: string;
             labels: string[];
@@ -384,9 +389,13 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             .filter((resource) => resource.isActive !== false && !!resource.employee?.Id)
             .forEach((resource) => {
                 const employeeId = resource.employee!.Id;
-                const existing = employeeMap.get(employeeId) ?? {
-                    key: employeeId,
-                    title: resource.employee!.Title,
+                const displayName = getResourceDisplayName(resource);
+                const mapKey = isFallbackResourceEmployee(resource)
+                    ? `fallback:${displayName.trim().toLowerCase() || resource.Id}`
+                    : `employee:${employeeId}`;
+                const existing = employeeMap.get(mapKey) ?? {
+                    key: mapKey,
+                    title: displayName,
                     email: resource.employee!.EMail,
                     labels: []
                 };
@@ -407,7 +416,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     });
                 }
 
-                employeeMap.set(employeeId, existing);
+                employeeMap.set(mapKey, existing);
             });
 
         return Array.from(employeeMap.values()).sort((left, right) => left.title.localeCompare(right.title));
@@ -516,10 +525,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         }
 
         history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: `/authorizations/view/${authorization.Id}`,
+            returnTo: detailReturnTo,
             modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, canEditAuthorizationByUser, currentRun, draftMod, history]);
+    }, [authorization, canEditAuthorizationByUser, currentRun, detailReturnTo, draftMod, history]);
 
     const handleEditMod = React.useCallback((): void => {
         if (!authorization || !draftMod?.Id || !canEditDraftMod) {
@@ -528,10 +537,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(draftMod.Id));
         history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: `/authorizations/view/${authorization.Id}`,
+            returnTo: detailReturnTo,
             modId: draftMod.Id
         });
-    }, [authorization, canEditDraftMod, draftMod, history]);
+    }, [authorization, canEditDraftMod, detailReturnTo, draftMod, history]);
 
     const handleConfirmModify = React.useCallback((): void => {
         if (!authorization || !canEditAuthorizationByUser) {
@@ -540,10 +549,10 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         setModifyPromptOpen(false);
         history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: `/authorizations/view/${authorization.Id}`,
+            returnTo: detailReturnTo,
             modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
         });
-    }, [authorization, canEditAuthorizationByUser, currentRun, history]);
+    }, [authorization, canEditAuthorizationByUser, currentRun, detailReturnTo, history]);
 
     const handleOpenInitiateMod = React.useCallback((): void => {
         setModPromptOpen(true);
@@ -582,7 +591,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(mod.Id));
             hideBusy();
             history.push(`/authorizations/edit/${authorization.Id}`, {
-                returnTo: `/authorizations/view/${authorization.Id}`,
+                returnTo: detailReturnTo,
                 modId: mod.Id
             });
         } catch (error) {
@@ -591,7 +600,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, currentUser?.user?.Id, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
+    }, [authorization, currentUser?.user?.Id, detailReturnTo, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {

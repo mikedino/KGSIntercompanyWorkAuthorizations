@@ -11,7 +11,7 @@ export class LaborLineItemService {
         "lineNumber", "displayOrder", "isActive",
         "pricingType", "jobId",
         "annualSalary", "standardRate", "overtimeRate",
-        "standardHours", "overtimeHours", "standardAmount",
+        "standardHours", "stoHours", "overtimeHours", "standardAmount",
         "overtimeAmount", "chargingPeriod", "periodQty",
         "lumpSumAmount", "totalAmount", "comments",
         "authorization/Id", "authorization/Title", "mod/Id", "mod/Title",
@@ -34,6 +34,7 @@ export class LaborLineItemService {
             standardRate?: number;
             overtimeRate?: number;
             standardHours?: number;
+            stoHours?: boolean;
             overtimeHours?: number;
             chargingPeriod?: ChargingPeriod;
             periodQty?: number;
@@ -88,6 +89,7 @@ export class LaborLineItemService {
                 standardRate: row.pricingType === "tm" ? compensation.standardRate : 0,
                 overtimeRate: row.pricingType === "tm" ? compensation.overtimeRate : 0,
                 standardHours: row.pricingType === "tm" ? compensation.standardHours : 0,
+                stoHours: row.pricingType === "tm" ? !!row.stoHours : false,
                 overtimeHours: row.pricingType === "tm" ? compensation.overtimeHours : 0,
                 standardAmount: row.pricingType === "tm" ? compensation.standardAmount : 0,
                 overtimeAmount: row.pricingType === "tm" ? compensation.overtimeAmount : 0,

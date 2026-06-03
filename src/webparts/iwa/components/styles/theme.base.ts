@@ -14,8 +14,17 @@ export const baseTheme: ThemeOptions = {
         // Smooth transitions globally
         MuiCssBaseline: {
             styleOverrides: {
+                html: {
+                    minHeight: "100%",
+                    backgroundColor: "var(--iwa-app-bg)",
+                },
                 body: {
+                    minHeight: "100%",
+                    backgroundColor: "var(--iwa-app-bg)",
                     transition: "background-color 300ms ease, color 300ms ease",
+                },
+                "#spPageCanvasContent, #workbenchPageContent, .CanvasComponent, .CanvasZone, .ControlZone, .SPCanvas, .ms-Fabric": {
+                    backgroundColor: "var(--iwa-app-bg)",
                 },
             },
         },

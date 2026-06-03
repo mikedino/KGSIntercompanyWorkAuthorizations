@@ -139,10 +139,28 @@ export const getStepAction = (actions: IWorkflowActionItem[], step: WorkflowStep
     return actions.find((action) => action.stepKey === step && (action.actionType === "approved" || action.actionType === "rejected"));
 };
 
+const fallbackResourceEmail = "sharepointapps@koniag-gs.com";
+
+export const isFallbackResourceEmployee = (resource: IResourceItem): boolean => {
+    return resource.employee?.EMail?.toLowerCase() === fallbackResourceEmail;
+};
+
+export const getResourceDisplayName = (resource: IResourceItem | undefined): string => {
+    if (!resource) {
+        return "";
+    }
+
+    if (isFallbackResourceEmployee(resource) && resource.Title?.trim()) {
+        return resource.Title.trim();
+    }
+
+    return resource.employee?.Title ?? "";
+};
+
 export const getResourceNamesForLabor = (line: ILaborLineItem, resources: IResourceItem[]): string => {
     const ids = line.resources?.results?.map((resource) => resource.Id) ?? [];
     const names = ids
-        .map((id) => resources.find((resource) => resource.Id === id)?.employee?.Title)
+        .map((id) => getResourceDisplayName(resources.find((resource) => resource.Id === id)))
         .filter(Boolean) as string[];
 
     return names.length ? names.join(", ") : "-";

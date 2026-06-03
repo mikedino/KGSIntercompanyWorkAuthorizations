@@ -18,6 +18,11 @@ temp
 # Coverage directory used by tools like istanbul
 coverage
 
+# One-time migration dry-run output
+tools/migration/output/
+tools/migration/raw-audit-output/
+tools/migration/raw-plan-output*/
+
 # OSX
 .DS_Store
 

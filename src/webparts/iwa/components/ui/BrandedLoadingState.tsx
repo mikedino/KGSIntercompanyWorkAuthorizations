@@ -17,7 +17,7 @@ export const BrandedLoadingState: React.FC<IBrandedLoadingStateProps> = ({
     const logoSrc = useDarkTheme ? Strings.LogoWhite : Strings.LogoDark;
 
     return (
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", bgcolor: "background.default" }}>
             <Stack spacing={3} alignItems="center">
                 <Box
                     component="img"

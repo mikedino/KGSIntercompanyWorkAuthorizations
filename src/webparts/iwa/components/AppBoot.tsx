@@ -73,7 +73,7 @@ export const AppBoot: React.FC<IAppBootProps> = ({
 
     if (!context?.pageContext?.web) {
         return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", bgcolor: "background.default" }}>
                 <Alert severity="warning" sx={{ maxWidth: 900, width: "100%" }}>
                     Error initializing the application. Missing SharePoint context. Please refresh the browser.
                 </Alert>
@@ -87,7 +87,7 @@ export const AppBoot: React.FC<IAppBootProps> = ({
 
     if (installState === "blocked") {
         return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", bgcolor: "background.default" }}>
                 <Alert severity="info" variant="outlined" sx={{ maxWidth: 900, width: "100%" }}>
                     Installation or configuration is required before this app can run. If you are an admin, complete the setup dialog. Otherwise, contact your site admin.
                 </Alert>
@@ -97,7 +97,7 @@ export const AppBoot: React.FC<IAppBootProps> = ({
 
     if (installState === "error") {
         return (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "70vh" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", bgcolor: "background.default" }}>
                 <Alert severity="error" variant="outlined" sx={{ maxWidth: 900, width: "100%" }}>
                     Unable to validate installation/configuration. Please refresh the page. If the problem persists, contact support.
                 </Alert>

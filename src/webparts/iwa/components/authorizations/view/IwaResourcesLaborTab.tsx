@@ -32,13 +32,15 @@ type ResourceScopeFilter = "all" | "base" | `mod-${number}`;
 
 const resourcesLaborTableSx = {
     ...quietTableSx,
-    "& .resourcesLaborEmployeeCell": { minWidth: 190 },
-    "& .resourcesLaborStateCell": { minWidth: 84, width: 84 },
+    "& .resourcesLaborEmployeeCell": { minWidth: 166, width: 166 },
+    "& .resourcesLaborStateCell": { minWidth: 168, width: 168 },
     "& .resourcesLaborScopeCell": { minWidth: 72, width: 72 },
     "& .resourcesLaborJobCell": { minWidth: 172, width: 172 },
-    "& .resourcesLaborCategoryCell": { minWidth: 120, width: 120 },
-    "& .resourcesLaborHoursCell": { minWidth: 72, width: 72 },
-    "& .resourcesLaborMoneyCell": { minWidth: 106, width: 106 }
+    "& .resourcesLaborCategoryCell": { minWidth: 140, width: 140 },
+    "& .resourcesLaborHoursCell": { minWidth: 56, width: 56 },
+    "& .resourcesLaborSalaryCell": { minWidth: 88, width: 88 },
+    "& .resourcesLaborRateCell": { minWidth: 82, width: 82 },
+    "& .resourcesLaborTotalCell": { minWidth: 106, width: 106 }
 };
 
 interface IIwaResourcesLaborTabProps {
@@ -226,12 +228,12 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                 <TableCell className="resourcesLaborCategoryCell">Labor Category</TableCell>
                                 <TableCell className="resourcesLaborHoursCell" align="right">Std Hrs</TableCell>
                                 <TableCell className="resourcesLaborHoursCell" align="right">OT Hrs</TableCell>
-                                <TableCell className="resourcesLaborMoneyCell" align="right">Salary</TableCell>
-                                <TableCell className="resourcesLaborMoneyCell" align="right">Std Rate</TableCell>
-                                <TableCell className="resourcesLaborMoneyCell" align="right">OT Rate</TableCell>
+                                <TableCell className="resourcesLaborSalaryCell" align="right">Salary</TableCell>
+                                <TableCell className="resourcesLaborRateCell" align="right">Std Rate</TableCell>
+                                <TableCell className="resourcesLaborRateCell" align="right">OT Rate</TableCell>
                             </>
                         )}
-                        <TableCell className={isFfpAuthorization ? undefined : "resourcesLaborMoneyCell"} align="right">{isFfpAuthorization ? "Total Amount" : "Total"}</TableCell>
+                        <TableCell className={isFfpAuthorization ? undefined : "resourcesLaborTotalCell"} align="right">{isFfpAuthorization ? "Total Amount" : "Total"}</TableCell>
                         {canEditCompInHrReview && !isFfpAuthorization && <TableCell align="right">Action</TableCell>}
                     </TableRow>
                 </TableHead>
@@ -312,7 +314,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                         <TableCell className="resourcesLaborCategoryCell">{lineResource?.laborCategory || "-"}</TableCell>
                                         <TableCell className="resourcesLaborHoursCell" align="right">{line.standardHours ?? "-"}</TableCell>
                                         <TableCell className="resourcesLaborHoursCell" align="right">{line.overtimeHours ?? "-"}</TableCell>
-                                        <TableCell className="resourcesLaborMoneyCell" align="right">
+                                        <TableCell className="resourcesLaborSalaryCell" align="right">
                                             {isEditingComp ? (
                                                     <TextField
                                                         size="small"
@@ -324,7 +326,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.annualSalary) : maskedCurrencyText}
                                         </TableCell>
-                                        <TableCell className="resourcesLaborMoneyCell" align="right">
+                                        <TableCell className="resourcesLaborRateCell" align="right">
                                             {isEditingComp ? (
                                                     <TextField
                                                         size="small"
@@ -336,7 +338,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.standardRate) : maskedCurrencyText}
                                         </TableCell>
-                                        <TableCell className="resourcesLaborMoneyCell" align="right">
+                                        <TableCell className="resourcesLaborRateCell" align="right">
                                             {isEditingComp ? (
                                                     <TextField
                                                         size="small"
@@ -348,7 +350,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.overtimeRate) : maskedCurrencyText}
                                         </TableCell>
-                                        <TableCell className="resourcesLaborMoneyCell" align="right">{canViewFinancials ? formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount) : maskedCurrencyText}</TableCell>
+                                        <TableCell className="resourcesLaborTotalCell" align="right">{canViewFinancials ? formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount) : maskedCurrencyText}</TableCell>
                                         {canEditCompInHrReview && (
                                             <TableCell align="right">
                                                 {isEditingComp ? (
@@ -387,7 +389,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                     {!isFfpAuthorization && <TableCell />}
                                     {!isFfpAuthorization && <TableCell />}
                                     {!isFfpAuthorization && <TableCell />}
-                                    <TableCell className={isFfpAuthorization ? undefined : "resourcesLaborMoneyCell"} align="right">
+                                    <TableCell className={isFfpAuthorization ? undefined : "resourcesLaborTotalCell"} align="right">
                                         <Stack spacing={0.25} alignItems="flex-end">
                                             <Typography variant="body2" fontWeight={600}>{canViewFinancials ? formatCurrency(visibleLaborTotals.totalAmount) : maskedCurrencyText}</Typography>
                                             {visibleLaborDeltaTotal !== 0 && (

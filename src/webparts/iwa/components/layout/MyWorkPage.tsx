@@ -680,12 +680,12 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                     <Table size="small" sx={{ minWidth: 1260, tableLayout: "fixed" }}>
                                         <TableHead>
                                             <TableRow>
-                                                <TableCell sx={{ width: 220 }}>Authorization</TableCell>
+                                                <TableCell sx={{ width: 260 }}>Authorization</TableCell>
                                                 <TableCell sx={{ width: 125 }}>Why It&apos;s Here</TableCell>
                                                 <TableCell sx={{ width: 145 }}>Status</TableCell>
                                                 <TableCell sx={{ width: 145 }}>Current Run / Mod</TableCell>
                                                 <TableCell sx={{ width: 130 }}>Pending With</TableCell>
-                                                <TableCell sx={{ width: 170 }}>My Last Action</TableCell>
+                                                <TableCell sx={{ width: 130 }}>My Last Action</TableCell>
                                                 <TableCell sx={{ width: 180 }}>Key Dates</TableCell>
                                                 <TableCell sx={{ width: 100 }}>Action</TableCell>
                                             </TableRow>
@@ -697,7 +697,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                     hover
                                                     onDoubleClick={() => handleViewAuthorization(row.authorization.Id)}
                                                 >
-                                                    <TableCell sx={{ width: 220, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 260, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Stack direction="row" spacing={0.75} alignItems="center" useFlexGap flexWrap="wrap">
                                                                 <Link
@@ -784,7 +784,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ width: 170, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 130, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
                                                                 {row.isDraft ? "Not submitted yet" : getLatestActionSummary(row.latestMyAction)}
