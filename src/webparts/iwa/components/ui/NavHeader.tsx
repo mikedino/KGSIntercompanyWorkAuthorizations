@@ -238,7 +238,7 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                 top: 0,
                 zIndex: theme.zIndex.drawer + 1,
                 borderRadius: 0,
-                border: "1px solid",
+                border: "2px solid",
                 borderColor: headerBorderColor,
                 backgroundColor: headerBgColor,
                 color: headerTextColor,
@@ -303,7 +303,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                 sx={{
                     width: "100%",
                     px: { xs: 1.5, md: 2 },
-                    paddingBottom: .5,
+                    paddingBottom: 1,
+                    borderBottom: `3px solid ${theme.palette.mode === "dark" ? theme.palette.primary.main : theme.palette.secondary.main}`,
                     minHeight: 0,
                     gap: 1.5,
                     justifyContent: "space-between",

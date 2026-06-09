@@ -546,7 +546,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
 
             <Paper sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
                 <TextField
-                    placeholder="Search title, contract, entities, approver, or relationship..."
+                    placeholder="Search title, contract, JAMIS project ID, entities, approver, or relationship..."
                     value={searchText}
                     onChange={(event: React.ChangeEvent<HTMLInputElement>): void => setSearchText(event.target.value)}
                     fullWidth

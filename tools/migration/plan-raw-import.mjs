@@ -21,7 +21,7 @@ const MIGRATION_CUTOFF = new Date("2026-06-02T00:00:00-04:00");
 
 const WORKFLOW_STATUS_MAP = {
   Completed: { runStatus: "completed", outcome: "approved", currentStepKey: "cfo", pendingRole: "" },
-  "Rejected by AR": { runStatus: "rejected", outcome: "rejected", currentStepKey: "submitter", pendingRole: "" },
+  "Rejected by AR": { runStatus: "rejected", outcome: "rejected", currentStepKey: "cfo", pendingRole: "" },
   "Waiting for OG Manager Approval": { runStatus: "active", outcome: "none", currentStepKey: "ogPresident", pendingRole: "ogPresident" },
   "Sent to AR  to process": { runStatus: "active", outcome: "none", currentStepKey: "cfo", pendingRole: "cfo" },
   "Waiting for HR Approval": { runStatus: "active", outcome: "none", currentStepKey: "hr", pendingRole: "hr" },
@@ -844,7 +844,7 @@ function buildWorkflowForRow(auth, row, options) {
   const mapping = WORKFLOW_STATUS_MAP[workflowStatusForRow(row)] ?? WORKFLOW_STATUS_MAP.Completed;
   const runStatus = rowStatus === "approved" ? "completed" : rowStatus === "rejected" ? "rejected" : mapping.runStatus;
   const outcome = rowStatus === "approved" ? "approved" : rowStatus === "rejected" ? "rejected" : mapping.outcome;
-  const currentStepKey = runStatus === "completed" ? "cfo" : runStatus === "rejected" ? "submitter" : mapping.currentStepKey;
+  const currentStepKey = runStatus === "completed" ? "cfo" : mapping.currentStepKey;
   const pendingRole = runStatus === "active" ? mapping.pendingRole : "";
   const actionDate = toIso(get(row, "Modified")) || toIso(get(row, "Created")) || new Date().toISOString();
   const runKey = `${auth.migrationKey}:RUN:${options.runNumber}`;

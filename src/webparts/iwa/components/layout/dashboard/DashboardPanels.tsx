@@ -218,7 +218,7 @@ export const QuickActionsPanel: React.FC = (): JSX.Element => {
     const actions = [
         ["New IWA", "/authorizations/new"],
         ["My Work", "/my-work"],
-        ["Active Queue", "/all-authorizations/active"],
+        ["Active Queue", "/all-authorizations/pending"],
         ["Expiring Soon", "/all-authorizations/expiringSoon"],
         ["With Mods", "/all-authorizations/withMods"]
     ];

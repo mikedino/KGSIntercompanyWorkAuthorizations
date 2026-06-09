@@ -92,8 +92,8 @@ interface IColumnConfig {
 
 const presetViews: Array<{ value: AllAuthorizationsPresetView; label: string; }> = [
     { value: "all", label: "All" },
-    { value: "active", label: "Pending" },
-    { value: "activePeriod", label: "Active" },
+    { value: "pending", label: "Pending" },
+    { value: "active", label: "Active" },
     { value: "expiringSoon", label: "Expiring Soon" },
     { value: "expiredOrClosed", label: "Expired / Closed" },
     { value: "rejected", label: "Rejected" },
@@ -101,9 +101,22 @@ const presetViews: Array<{ value: AllAuthorizationsPresetView; label: string; }>
 ];
 
 const defaultPresetView: AllAuthorizationsPresetView = "all";
+const presetViewAliases: Partial<Record<string, AllAuthorizationsPresetView>> = {
+    activePeriod: "active"
+};
 
 const isPresetView = (value: string | undefined): value is AllAuthorizationsPresetView => {
-    return presetViews.some((view) => view.value === value);
+    return presetViews.some((presetView) => presetView.value === value) || !!(value && presetViewAliases[value]);
+};
+
+const normalizePresetView = (value: string | undefined): AllAuthorizationsPresetView => {
+    const alias = value ? presetViewAliases[value] : undefined;
+
+    if (alias) {
+        return alias;
+    }
+
+    return isPresetView(value) ? value : defaultPresetView;
 };
 
 const formatPresetViewLabel = (label: string, count: number): string => `${label} (${count})`;
@@ -149,8 +162,9 @@ const defaultFilters: IAllAuthorizationsFilters = {
 
 const getPresetSummary = (presetView: AllAuthorizationsPresetView): string => {
     switch (presetView) {
-        case "active":
+        case "pending":
             return "Submitted authorizations, items under review, or anything with an active workflow run.";
+        case "active":
         case "activePeriod":
             return "Authorizations that have been approved at least once and are currently within their period of performance.";
         case "expiringSoon":
@@ -270,7 +284,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [sortField, setSortField] = React.useState<AllAuthorizationsSortField>("modified");
     const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
     const [page, setPage] = React.useState<number>(0);
-    const [pageSize, setPageSize] = React.useState<number>(25);
+    const [pageSize, setPageSize] = React.useState<number>(10);
     const [columnWidths, setColumnWidths] = React.useState<Record<ColumnKey, number>>(defaultColumnWidths);
     const [menuAnchorEl, setMenuAnchorEl] = React.useState<HTMLElement | null>(null);
     const [menuRowId, setMenuRowId] = React.useState<number | undefined>(undefined);
@@ -280,13 +294,18 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
     const [latestModsByAuthorizationId, setLatestModsByAuthorizationId] = React.useState<Map<number, IModItem>>(new Map());
     const [showDrafts, setShowDrafts] = React.useState<boolean>(false);
-    const selectedView = isPresetView(view) ? view : defaultPresetView;
+    const selectedView = normalizePresetView(view);
 
     React.useEffect((): void => {
         if (!isPresetView(view)) {
             history.replace(`/all-authorizations/${defaultPresetView}`);
+            return;
         }
-    }, [history, view]);
+
+        if (view !== selectedView) {
+            history.replace(`/all-authorizations/${selectedView}`);
+        }
+    }, [history, selectedView, view]);
 
     React.useEffect((): void => {
         sessionStorage.setItem("iwa:lastReturnLocation", `/all-authorizations/${selectedView}`);
@@ -329,11 +348,11 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         return filterAllAuthorizationRows(visibleRows, selectedView, filters);
     }, [filters, selectedView, visibleRows]);
 
-    const presetViewCounts = React.useMemo((): Record<AllAuthorizationsPresetView, number> => {
+    const presetViewCounts = React.useMemo((): Partial<Record<AllAuthorizationsPresetView, number>> => {
         return presetViews.reduce((counts, presetView) => {
             counts[presetView.value] = filterAllAuthorizationRows(visibleRows, presetView.value, filters).length;
             return counts;
-        }, {} as Record<AllAuthorizationsPresetView, number>);
+        }, {} as Partial<Record<AllAuthorizationsPresetView, number>>);
     }, [filters, visibleRows]);
 
     const sortedRows = React.useMemo((): IAllAuthorizationsRow[] => {
@@ -574,7 +593,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                         }}
                     >
                         <TextField
-                            placeholder="Search title, contract, entities, invoice, approver, or status..."
+                            placeholder="Search title, contract, JAMIS project ID, entities, invoice, approver, or status..."
                             value={filters.searchText}
                             onChange={(event: React.ChangeEvent<HTMLInputElement>): void => handleFilterChange("searchText", event.target.value)}
                             fullWidth

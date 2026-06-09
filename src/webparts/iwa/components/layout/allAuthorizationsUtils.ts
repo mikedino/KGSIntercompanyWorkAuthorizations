@@ -15,6 +15,7 @@ import {
 
 export type AllAuthorizationsPresetView =
     | "all"
+    | "pending"
     | "active"
     | "activePeriod"
     | "expiringSoon"
@@ -116,6 +117,7 @@ const toSearchParts = (
         authorization.Title,
         authorization.contractName,
         authorization.contractId,
+        authorization.iwaJamisProjectId,
         authorization.customerContractCode,
         authorization.invoice,
         authorization.contractType,
@@ -335,8 +337,9 @@ const matchesPresetView = (
     presetView: AllAuthorizationsPresetView
 ): boolean => {
     switch (presetView) {
-        case "active":
+        case "pending":
             return activeAuthorizationStatuses.includes(row.authorization.authorizationStatus) || row.currentRun?.runStatus === "active";
+        case "active":
         case "activePeriod":
             return hasEverBeenApproved(row) && isInActivePeriod(row.authorization);
         case "expiringSoon":

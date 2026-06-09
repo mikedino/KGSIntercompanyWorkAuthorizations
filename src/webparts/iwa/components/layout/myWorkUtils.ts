@@ -153,6 +153,7 @@ const buildSearchIndex = (row: IMyWorkRow): string => {
         row.authorization.Title,
         row.authorization.contractName,
         row.authorization.contractId,
+        row.authorization.iwaJamisProjectId,
         row.authorization.invoice,
         row.authorization.donorEntity,
         row.authorization.receivingEntity,

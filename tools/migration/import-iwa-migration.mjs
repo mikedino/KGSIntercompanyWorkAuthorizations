@@ -23,7 +23,7 @@ const TARGET_LISTS = {
 
 const WORKFLOW_STATUS_MAP = {
   Completed: { runStatus: "completed", outcome: "approved", currentStepKey: "cfo", pendingRole: "" },
-  "Rejected by AR": { runStatus: "rejected", outcome: "rejected", currentStepKey: "submitter", pendingRole: "" },
+  "Rejected by AR": { runStatus: "rejected", outcome: "rejected", currentStepKey: "cfo", pendingRole: "" },
   "Waiting for OG Manager Approval": { runStatus: "active", outcome: "none", currentStepKey: "ogPresident", pendingRole: "ogPresident" },
   "Sent to AR  to process": { runStatus: "active", outcome: "none", currentStepKey: "cfo", pendingRole: "cfo" },
   Processing: { runStatus: "active", outcome: "none", currentStepKey: "hr", pendingRole: "hr" },
@@ -699,9 +699,7 @@ function buildWorkflowPlans(authPlan) {
       : mapping.outcome;
   const currentStepKey = runStatus === "completed"
     ? "cfo"
-    : runStatus === "rejected"
-      ? "submitter"
-      : mapping.currentStepKey;
+    : mapping.currentStepKey;
   const pendingRole = runStatus === "active" ? mapping.pendingRole : "";
   const actionDate = auth.modified || auth.created || new Date().toISOString();
 

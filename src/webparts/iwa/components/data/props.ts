@@ -236,7 +236,7 @@ export interface IConfigItem {
    ========================= */
 
 export interface IAuthorizationItem extends ISystemFields {
-  Title: string;
+  Title: string; //IWA-receivingEntityAbbr-donorEntityAbbr-year-trackingNo
   authorizationStatus: AuthorizationStatus;
 
   pm?: IPeoplePicker;

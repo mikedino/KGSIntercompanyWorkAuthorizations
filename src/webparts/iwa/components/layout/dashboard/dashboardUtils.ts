@@ -68,9 +68,9 @@ export interface IDashboardModel {
     recentIwas: IDashboardRecentIwa[];
 }
 
-const activeFundingStatuses = new Set(["approved", "submitted", "underReview"]);
-const closedStatuses = new Set(["closed", "canceled", "rejected"]);
 const queueRoles: WorkflowRole[] = ["pm", "hr", "ogPresident", "cfo"];
+const activeViewRoute = "/all-authorizations/active";
+const pendingViewRoute = "/all-authorizations/pending";
 
 const getDateValue = (value?: string): number => {
     if (!value) {
@@ -81,16 +81,50 @@ const getDateValue = (value?: string): number => {
     return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const isActiveAuthorization = (authorization: IAuthorizationItem): boolean => {
-    if (closedStatuses.has(authorization.authorizationStatus)) {
+const toLocalDate = (value?: string): Date | undefined => {
+    const text = value?.trim();
+
+    if (!text) {
+        return undefined;
+    }
+
+    const dateOnlyMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = dateOnlyMatch
+        ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+        : new Date(text);
+
+    return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const isInActivePeriod = (authorization: IAuthorizationItem): boolean => {
+    if (!authorization.periodStart || !authorization.periodEnd) {
         return false;
     }
 
-    if (!authorization.periodEnd) {
-        return activeFundingStatuses.has(authorization.authorizationStatus);
+    const start = toLocalDate(authorization.periodStart);
+    const end = toLocalDate(authorization.periodEnd);
+
+    if (!start || !end) {
+        return false;
     }
 
-    return activeFundingStatuses.has(authorization.authorizationStatus) && getDateValue(authorization.periodEnd) >= Date.now();
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const periodStart = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const periodEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+
+    return periodStart <= todayStart && todayStart <= periodEnd;
+};
+
+const hasEverBeenApproved = (authorization: IAuthorizationItem): boolean => {
+    return !!authorization.approvedOn ||
+        !!authorization.effectiveApprovedRun?.Id ||
+        authorization.authorizationStatus === "approved" ||
+        authorization.authorizationStatus === "closed";
+};
+
+const isActiveAuthorization = (authorization: IAuthorizationItem): boolean => {
+    return hasEverBeenApproved(authorization) && isInActivePeriod(authorization);
 };
 
 const isExpiringWithinDays = (authorization: IAuthorizationItem, days: number): boolean => {
@@ -212,7 +246,7 @@ export const buildDashboardModel = (
         role,
         label: workflowRoleLabels[role],
         count: activeRuns.filter((run) => run.pendingRole === role).length,
-        route: "/all-authorizations/active"
+        route: pendingViewRoute
     }));
 
     const staleRuns = activeRuns.filter((run) => {
@@ -289,22 +323,22 @@ export const buildDashboardModel = (
                 key: "active",
                 label: "Active IWA's",
                 value: String(activeAuthorizations.length),
-                detail: "Approved or under review with open periods",
-                route: "/all-authorizations/active"
+                detail: "Approved at least once and currently in period",
+                route: activeViewRoute
             },
             {
                 key: "funding",
                 label: "Active Funding",
                 value: formatCurrency(activeFunding),
                 detail: "Current approved funding across active IWA's",
-                route: "/all-authorizations/active"
+                route: activeViewRoute
             },
             {
                 key: "pending",
                 label: "Pending Approval",
                 value: String(activeRuns.length),
                 detail: "Workflow steps waiting for action",
-                route: "/all-authorizations/active"
+                route: pendingViewRoute
             },
             {
                 key: "expiring",

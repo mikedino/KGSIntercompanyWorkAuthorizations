@@ -205,6 +205,22 @@ const toIsoDate = (value?: Dayjs): string | undefined => {
 
 const normalizeUniqueValue = (value?: string): string => (value ?? "").trim().toLowerCase();
 
+const resolveEntity = (
+    entities: IEntityItem[],
+    storedTitle?: string,
+    storedAbbr?: string
+): IEntityItem | undefined => {
+    const normalizedTitle = normalizeUniqueValue(storedTitle);
+    const normalizedAbbr = normalizeUniqueValue(storedAbbr);
+
+    return entities.find((entity: IEntityItem): boolean => {
+        return (!!normalizedTitle && (
+            normalizeUniqueValue(entity.Title) === normalizedTitle ||
+            normalizeUniqueValue(entity.combinedTitle) === normalizedTitle
+        )) || (!!normalizedAbbr && normalizeUniqueValue(entity.abbr) === normalizedAbbr);
+    });
+};
+
 const getActiveModDraftSessionKey = (authorizationId: number): string => `iwa:activeModDraft:${authorizationId}`;
 
 const readSessionModId = (authorizationId?: number): number | undefined => {
@@ -386,12 +402,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     }, [invoiceOptions]);
 
     const selectedDonorEntity = React.useMemo<IEntityItem | null>(() => {
-        return entityOptions.find((entity: IEntityItem) => entity.Title === form.donorEntity) ?? null;
-    }, [entityOptions, form.donorEntity]);
+        return resolveEntity(entityOptions, form.donorEntity, form.donorEntityAbbr) ?? null;
+    }, [entityOptions, form.donorEntity, form.donorEntityAbbr]);
 
     const selectedReceivingEntity = React.useMemo<IEntityItem | null>(() => {
-        return entityOptions.find((entity: IEntityItem) => entity.Title === form.receivingEntity) ?? null;
-    }, [entityOptions, form.receivingEntity]);
+        return resolveEntity(entityOptions, form.receivingEntity, form.receivingEntityAbbr) ?? null;
+    }, [entityOptions, form.receivingEntity, form.receivingEntityAbbr]);
 
     const selectedContract = React.useMemo<IContractItem | null>(() => {
         return contractOptions.find((contract: IContractItem) => contract.field_19 === form.contractId) ?? null;
@@ -833,14 +849,24 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     // Keep entity abbreviations and GMs aligned with the selected entities so
     // downstream numbering/workflow logic can trust the header values.
     React.useEffect((): void => {
-        updateField("donorEntityAbbr", selectedDonorEntity?.abbr ?? "");
-        updateField("donorGm", selectedDonorEntity?.GM);
-    }, [selectedDonorEntity, updateField]);
+        if (selectedDonorEntity) {
+            updateField("donorEntityAbbr", selectedDonorEntity.abbr ?? "");
+            updateField("donorGm", selectedDonorEntity.GM);
+        } else if (!form.donorEntity) {
+            updateField("donorEntityAbbr", "");
+            updateField("donorGm", undefined);
+        }
+    }, [form.donorEntity, selectedDonorEntity, updateField]);
 
     React.useEffect((): void => {
-        updateField("receivingEntityAbbr", selectedReceivingEntity?.abbr ?? "");
-        updateField("receivingGm", selectedReceivingEntity?.GM);
-    }, [selectedReceivingEntity, updateField]);
+        if (selectedReceivingEntity) {
+            updateField("receivingEntityAbbr", selectedReceivingEntity.abbr ?? "");
+            updateField("receivingGm", selectedReceivingEntity.GM);
+        } else if (!form.receivingEntity) {
+            updateField("receivingEntityAbbr", "");
+            updateField("receivingGm", undefined);
+        }
+    }, [form.receivingEntity, selectedReceivingEntity, updateField]);
 
     // When the contract changes, rehydrate invoice options and auto-apply
     // the PM / OG / LOB hints that we already trust from the JAMIS source.
@@ -931,7 +957,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         updateField("lob", selectedOg.lob?.Title ?? "");
     }, [selectedOg, updateField]);
 
-    const donorEqualsReceiving = !!form.donorEntity && !!form.receivingEntity && form.donorEntity === form.receivingEntity;
+    const donorEqualsReceiving = !!selectedDonorEntity && !!selectedReceivingEntity && selectedDonorEntity.Id === selectedReceivingEntity.Id;
     const periodEndBeforeStart = !!periodStart && !!periodEnd && periodEnd.isBefore(periodStart, "day");
 
     const addResourceRow = React.useCallback((row?: IEditableResourceRow): void => {
@@ -1111,8 +1137,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const validateStep = React.useCallback((step: IwaFormStep): boolean => {
         if (step === 0) {
             return Boolean(
-                form.donorEntity &&
-                form.receivingEntity &&
+                selectedDonorEntity &&
+                selectedReceivingEntity &&
                 !donorEqualsReceiving &&
                 form.contractType &&
                 form.contractId &&
@@ -1136,7 +1162,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         }
 
         return true;
-    }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart, resourceStepIsValid]);
+    }, [donorEqualsReceiving, form, periodEnd, periodEndBeforeStart, periodStart, resourceStepIsValid, selectedDonorEntity, selectedReceivingEntity]);
 
     const getStepValidationMessage = React.useCallback((step: IwaFormStep): string => {
         if (step === 1) {
@@ -1868,8 +1894,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 {...params}
                                 label="Entity A (Donor)"
                                 required
-                                error={stepOneHasError && !form.donorEntity}
-                                helperText={stepOneHasError && !form.donorEntity ? "Donor entity is required." : "Entity providing employees or services."}
+                                error={stepOneHasError && !selectedDonorEntity}
+                                helperText={
+                                    stepOneHasError && !selectedDonorEntity
+                                        ? form.donorEntity
+                                            ? `Stored donor entity "${form.donorEntity}" does not match a configured entity.`
+                                            : "Donor entity is required."
+                                        : "Entity providing employees or services."
+                                }
                             />
                         )}
                     />
@@ -1888,12 +1920,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 {...params}
                                 label="Entity B (Receiving Services)"
                                 required
-                                error={(stepOneHasError && !form.receivingEntity) || donorEqualsReceiving}
+                                error={(stepOneHasError && !selectedReceivingEntity) || donorEqualsReceiving}
                                 helperText={
                                     donorEqualsReceiving
                                         ? "Donor and receiving entities must be different."
-                                        : stepOneHasError && !form.receivingEntity
-                                            ? "Receiving entity is required."
+                                        : stepOneHasError && !selectedReceivingEntity
+                                            ? form.receivingEntity
+                                                ? `Stored receiving entity "${form.receivingEntity}" does not match a configured entity.`
+                                                : "Receiving entity is required."
                                             : "Entity receiving the work and cost."
                                 }
                             />
