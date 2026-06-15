@@ -23,6 +23,14 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | -------- | --------- |
 | Intercompany Work Authorizations | Mike Landino, KGS |
 
+## Version History
+
+| Version | Date | Developer | Comments |
+| ------- | ------ | ------------- | ---------- |
+| 1.0.1.8 | June 16, 2026 | Landino | Initial production release |
+
+---
+
 ## Core Features
 
 - Create, save, resume, submit, and discard IWA drafts.

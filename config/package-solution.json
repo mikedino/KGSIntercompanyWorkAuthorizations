@@ -17,10 +17,10 @@
     },
     "metadata": {
       "shortDescription": {
-        "default": "Intercompany Work Authorization description"
+        "default": "Manage Intercompany Work Authorizations, modifications, approvals, resources, and funding."
       },
       "longDescription": {
-        "default": "Intercompany Work Authorization description"
+        "default": "A full-lifecycle application for creating, reviewing, approving, and managing Intercompany Work Authorizations (IWAs) and modifications. Includes workflow routing, resource and labor planning, travel and ODC tracking, funding summaries, dashboards, exports, and administrative configuration."
       },
       "screenshotPaths": [],
       "videoUrl": "",
