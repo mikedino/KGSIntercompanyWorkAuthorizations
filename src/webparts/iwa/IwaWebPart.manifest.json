@@ -19,7 +19,7 @@
     "groupId": "5c03119e-3074-46fd-976b-c60198311f70", // Advanced
     "group": { "default": "Advanced" },
     "title": { "default": "IWA" },
-    "description": { "default": "Intercompany Work Authorization (IWA) Application" },
+    "description": { "default": "Create, review, approve, and manage Intercompany Work Authorizations and modifications." },
     "officeFabricIconFontName": "ConnectContacts",
     "properties": {
       "description": "IWA"
