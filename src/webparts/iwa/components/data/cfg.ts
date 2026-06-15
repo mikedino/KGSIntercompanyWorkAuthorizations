@@ -13,7 +13,7 @@ export const Configuration = Helper.SPConfig({
         Description: "*DO NOT DELETE* Header/master records for Intercompany Work Authorizations (IWA).",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
         OnQuickLaunch: false,
-        // Hidden: true
+        Hidden: true
       },
       TitleFieldDisplayName: "Authorization Number",
       CustomFields: [
@@ -286,6 +286,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.Mods,
         Description: "*DO NOT DELETE* Modification header records for approved IWA authorizations.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Mod Label",
@@ -432,6 +433,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.Resources,
         Description: "*DO NOT DELETE* Employee roster row for base IWA authorizations and mods.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Resource Label",
@@ -543,6 +545,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.LaborLine,
         Description: "*DO NOT DELETE* Labor line items are the Billable charge row for base IWA authorizations and mods.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "LaborLineItem Label",
@@ -746,6 +749,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.TravelODC,
         Description: "*DO NOT DELETE* Travel and ODC line items for base IWA authorizations and mods.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Travel/ODC Label",
@@ -865,6 +869,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.WorkflowRuns,
         Description: "*DO NOT DELETE* Workflow run instances for base IWA authorizations and mods.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Workflow Run Label",
@@ -1046,6 +1051,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.WorkflowActions,
         Description: "*DO NOT DELETE* Workflow history/action rows for IWA authorizations and mods.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Workflow Action Label",
@@ -1194,6 +1200,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.Exports,
         Description: "*DO NOT DELETE* CFO accounting PDF exports generated after base IWA or Mod approval.",
         BaseTemplate: SPTypes.ListTemplateType.DocumentLibrary,
+        Hidden: true,
         OnQuickLaunch: false
       },
       CustomFields: [
@@ -1354,6 +1361,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.Users,
         Description: "*DO NOT DELETE* Tracks users who access the IWA app, their role, mode preference, and backup users.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "User Label",
@@ -1441,6 +1449,7 @@ export const Configuration = Helper.SPConfig({
         Title: Strings.Sites.main.lists.Counters,
         Description: "*DO NOT DELETE* Stores yearly sequence counters for smart IWA numbering.",
         BaseTemplate: SPTypes.ListTemplateType.GenericList,
+        Hidden: true,
         OnQuickLaunch: false
       },
       TitleFieldDisplayName: "Year",

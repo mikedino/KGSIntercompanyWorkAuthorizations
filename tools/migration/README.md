@@ -48,6 +48,8 @@ node tools/migration/plan-raw-import.mjs `
   --resources "C:\path\ResourceDetail_Export_2026-06-02.csv" `
   --projectDescriptions "C:\path\Agreements_ProjectDescription.csv" `
   --ogMap "tools\migration\mappings\og-lob-map.csv" `
+  --laborJobMap "tools\migration\mappings\Labor_Missing_JobID_map.csv" `
+  --travelJobMap "tools\migration\mappings\Travel_ODC_Missing_JobID_map.csv" `
   --out "tools\migration\raw-plan-output"
 ```
 
@@ -86,6 +88,8 @@ node tools/migration/plan-raw-import.mjs `
 - Missing/unresolved HR approvers default to `bmack@koniag-gs.com`.
 - CFO approvers default to `jmorris@koniag-gs.com`.
 - Invoice values come only from `Task Order Project ID`; nonblank values outside the `######-####` pattern are reported in `issues.csv`.
+- Blank raw Labor and Travel/ODC Job IDs are filled from their mapping CSVs by stable line `migrationKey` before missing-Job-ID warnings are generated. Nonblank raw Job IDs are never overwritten.
+- Blank authorization `IWA Project ID` values are filled from the Labor mapping CSV's `JAMIS Project ID` column when all populated values for that authorization agree. Nonblank raw values are never overwritten, and conflicting map values are reported in `issues.csv`.
 - Migrated workflow actions use `submit > PM > HR > OGP > CFO` for T&M rows and `submit > PM > OGP > CFO` for FFP rows. `OG_President` supplies the OGP actor and `OG_Approval` is preserved in the OGP action comments.
 - Legacy Entity A/B signatures are not recreated as workflow steps.
 - Existing PDF URLs and export records are intentionally skipped.

@@ -12,6 +12,8 @@ const DEFAULT_RESOURCES =
 const DEFAULT_PROJECT_DESCRIPTIONS =
   "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_ProjectDescription.csv";
 const DEFAULT_OG_MAP = "tools/migration/mappings/og-lob-map.csv";
+const DEFAULT_LABOR_JOB_MAP = "tools/migration/mappings/Labor_Missing_JobID_map.csv";
+const DEFAULT_TRAVEL_JOB_MAP = "tools/migration/mappings/Travel_ODC_Missing_JobID_map.csv";
 const DEFAULT_OUTPUT = "tools/migration/raw-plan-output";
 const FALLBACK_USER_EMAIL = "sharepointapps@koniag-gs.com";
 const LEGACY_FALLBACK_USER_EMAIL = "sharepointnotifications@koniag-gs.com";
@@ -44,6 +46,8 @@ function parseArgs(argv) {
     resources: DEFAULT_RESOURCES,
     projectDescriptions: DEFAULT_PROJECT_DESCRIPTIONS,
     ogMap: DEFAULT_OG_MAP,
+    laborJobMap: DEFAULT_LABOR_JOB_MAP,
+    travelJobMap: DEFAULT_TRAVEL_JOB_MAP,
     out: DEFAULT_OUTPUT,
     help: false
   };
@@ -76,6 +80,8 @@ function usage() {
     "  --resources <path>    Raw ResourceDetail_Export_2026-06-02.csv",
     "  --projectDescriptions <path>  Optional plain-text ProjectDescription export",
     "  --ogMap <path>        OG/LOB mapping CSV",
+    "  --laborJobMap <path>  Optional Labor Job ID/JAMIS Project ID override CSV",
+    "  --travelJobMap <path> Optional Travel/ODC Job ID override CSV",
     "  --out <dir>           Output folder",
     "  --help                Show this help"
   ].join("\n");
@@ -132,6 +138,12 @@ function parseCsv(text) {
       });
       return item;
     });
+}
+
+function parseMappingCsv(text) {
+  const lines = String(text ?? "").split(/\r?\n/);
+  const headerIndex = lines.findIndex((line) => line.replace(/^\uFEFF/, "").startsWith("migrationKey,"));
+  return headerIndex >= 0 ? parseCsv(lines.slice(headerIndex).join("\n")) : [];
 }
 
 function csvEscape(value) {
@@ -393,6 +405,58 @@ function loadOgMap(rows) {
   return map;
 }
 
+function buildOverrideMaps(laborRows, travelRows) {
+  const laborJobIds = new Map();
+  const travelJobIds = new Map();
+  const laborJamisValues = new Map();
+
+  laborRows.forEach((row) => {
+    const migrationKey = get(row, "migrationKey");
+    const jobId = get(row, "jobId");
+    const authorizationKey = get(row, "authorizationMigrationKey");
+    const jamisProjectId = get(row, "JAMIS Project ID");
+
+    if (migrationKey && jobId) {
+      laborJobIds.set(migrationKey, jobId);
+    }
+    if (authorizationKey && jamisProjectId) {
+      if (!laborJamisValues.has(authorizationKey)) {
+        laborJamisValues.set(authorizationKey, new Set());
+      }
+      laborJamisValues.get(authorizationKey).add(jamisProjectId);
+    }
+  });
+
+  travelRows.forEach((row) => {
+    const migrationKey = get(row, "migrationKey");
+    const jobId = get(row, "jobId");
+    if (migrationKey && jobId) {
+      travelJobIds.set(migrationKey, jobId);
+    }
+  });
+
+  const jamisProjectIds = new Map();
+  const jamisProjectIdConflicts = new Map();
+  laborJamisValues.forEach((values, authorizationKey) => {
+    const uniqueValues = Array.from(values);
+    if (uniqueValues.length === 1) {
+      jamisProjectIds.set(authorizationKey, uniqueValues[0]);
+    } else if (uniqueValues.length > 1) {
+      jamisProjectIdConflicts.set(authorizationKey, uniqueValues);
+    }
+  });
+
+  return {
+    laborJobIds,
+    travelJobIds,
+    jamisProjectIds,
+    jamisProjectIdConflicts,
+    appliedLaborJobIds: 0,
+    appliedTravelJobIds: 0,
+    appliedJamisProjectIds: 0
+  };
+}
+
 function minDate(rows, field) {
   const dates = rows.map((row) => parseDate(get(row, field))).filter(Boolean);
   return dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : undefined;
@@ -528,7 +592,7 @@ function associatedFamilyRow(resource, familyRows) {
     familyRows[0];
 }
 
-function buildAuthorization(familyRows, ogMap, issues) {
+function buildAuthorization(familyRows, ogMap, overrides, issues) {
   const sorted = sortFamily(familyRows);
   const latest = latestFamilyRow(sorted);
   const base = baseFamilyRow(sorted);
@@ -553,6 +617,24 @@ function buildAuthorization(familyRows, ogMap, issues) {
   const approvedLaborAmount = approvedRows.reduce((total, row) => total + parseMoney(get(row, "Amount Authorized")), 0);
   const approvedTravelAmount = approvedRows.reduce((total, row) => total + (parseMoney(get(row, "ODC Amount")) || parseMoney(get(row, "GrandODC"))), 0);
   const approvedGrandTotal = approvedLaborAmount + approvedTravelAmount;
+  const rawIwaJamisProjectId = get(latest, "IWA Project ID");
+  const mappedIwaJamisProjectId = overrides.jamisProjectIds.get(authNumber) ?? "";
+  const iwaJamisProjectId = rawIwaJamisProjectId || mappedIwaJamisProjectId;
+
+  if (!rawIwaJamisProjectId && mappedIwaJamisProjectId) {
+    overrides.appliedJamisProjectIds += 1;
+  }
+  if (!rawIwaJamisProjectId && overrides.jamisProjectIdConflicts.has(authNumber)) {
+    const conflictingValues = overrides.jamisProjectIdConflicts.get(authNumber);
+    issues.push({
+      issueType: "conflicting_jamis_project_id_overrides",
+      severity: "warning",
+      authNumber,
+      ...issueContext,
+      legacyId: sorted.map((row) => get(row, "ID")).join(";"),
+      message: `JAMIS Project ID is blank in the raw export, but the Labor override map contains conflicting values: ${conflictingValues.join("; ")}. No override was applied.`
+    });
+  }
 
   if (!mapped?.targetOperatingGroup || !mapped?.lob) {
     issues.push({
@@ -626,7 +708,7 @@ function buildAuthorization(familyRows, ogMap, issues) {
     rawOperatingGroup: get(latest, "Operating Group"),
     contractName: get(latest, "Project Name"),
     contractId,
-    iwaJamisProjectId: get(latest, "IWA Project ID"),
+    iwaJamisProjectId,
     customerContractCode,
     invoice,
     contractType: normalizeContractType(get(latest, "Contract Type")),
@@ -699,7 +781,7 @@ function buildMods(auth, familyRows, issues) {
   });
 }
 
-function buildLines(auth, familyRows, resourceRows, issues) {
+function buildLines(auth, familyRows, resourceRows, overrides, issues) {
   const resources = [];
   const laborLines = [];
   const employees = new Map();
@@ -750,7 +832,13 @@ function buildLines(auth, familyRows, resourceRows, issues) {
     const totalAmount = parseMoney(get(resource, "Total")) || parseMoney(get(resource, "Original Total"));
     const standardHours = parseNumber(get(resource, "Units Quantity")) || parseNumber(get(resource, "Total Hours")) || parseNumber(get(resource, "Original"));
     const standardRate = parseMoney(get(resource, "Bill Rate")) || parseMoney(get(resource, "Original Cost"));
-    const jobId = get(resource, "JobID");
+    const laborMigrationKey = `${resourceKey}:LABOR`;
+    const rawJobId = get(resource, "JobID");
+    const mappedJobId = overrides.laborJobIds.get(laborMigrationKey) ?? "";
+    const jobId = rawJobId || mappedJobId;
+    if (!rawJobId && mappedJobId) {
+      overrides.appliedLaborJobIds += 1;
+    }
     const standardAmount = roundCurrency(standardRate * standardHours);
     if (!jobId) {
       issues.push({
@@ -765,7 +853,7 @@ function buildLines(auth, familyRows, resourceRows, issues) {
       });
     }
     laborLines.push({
-      migrationKey: `${resourceKey}:LABOR`,
+      migrationKey: laborMigrationKey,
       authorizationMigrationKey: auth.migrationKey,
       resourceMigrationKey: resourceKey,
       invoice: auth.invoice,
@@ -788,10 +876,16 @@ function buildLines(auth, familyRows, resourceRows, issues) {
   return { employees: Array.from(employees.values()), laborLines, resources };
 }
 
-function buildTravel(auth, familyRows, issues) {
+function buildTravel(auth, familyRows, overrides, issues) {
   return sortFamily(familyRows).flatMap((row, index) => {
     const amount = parseMoney(get(row, "ODC Amount")) || parseMoney(get(row, "GrandODC"));
-    const jobId = get(row, "ODC Job_ID");
+    const travelMigrationKey = `${auth.migrationKey}:TRAVEL:${get(row, "ID")}`;
+    const rawJobId = get(row, "ODC Job_ID");
+    const mappedJobId = overrides.travelJobIds.get(travelMigrationKey) ?? "";
+    const jobId = rawJobId || mappedJobId;
+    if (!rawJobId && mappedJobId) {
+      overrides.appliedTravelJobIds += 1;
+    }
     if (!amount && !jobId && !isTrue(get(row, "Travel"))) {
       return [];
     }
@@ -809,7 +903,7 @@ function buildTravel(auth, familyRows, issues) {
     }
     const modNumber = isMod(row) ? parseNumber(get(row, "ModNumber")) : 0;
     return [{
-      migrationKey: `${auth.migrationKey}:TRAVEL:${get(row, "ID")}`,
+      migrationKey: travelMigrationKey,
       authorizationMigrationKey: auth.migrationKey,
       invoice: auth.invoice,
       "JAMIS Project ID": auth.iwaJamisProjectId,
@@ -992,7 +1086,7 @@ function buildWorkflows(auth, familyRows) {
   };
 }
 
-function buildPlan(rawRows, resourceRows, ogRows) {
+function buildPlan(rawRows, resourceRows, ogRows, overrides) {
   const ogMap = loadOgMap(ogRows);
   const futureParentGuids = new Set(rawRows.filter(isFutureRow).map((row) => get(row, "Parent GUID")).filter(Boolean));
   const inScopeRows = rawRows.filter((row) => futureParentGuids.has(get(row, "Parent GUID")));
@@ -1008,10 +1102,10 @@ function buildPlan(rawRows, resourceRows, ogRows) {
   const employeeMap = new Map();
 
   for (const familyRows of families.values()) {
-    const auth = buildAuthorization(familyRows, ogMap, issues);
+    const auth = buildAuthorization(familyRows, ogMap, overrides, issues);
     authorizations.push(auth);
     mods.push(...buildMods(auth, familyRows, issues));
-    const lines = buildLines(auth, familyRows, resourceRows, issues);
+    const lines = buildLines(auth, familyRows, resourceRows, overrides, issues);
     resources.push(...lines.resources);
     laborLines.push(...lines.laborLines);
     lines.employees.forEach((employee) => {
@@ -1022,7 +1116,7 @@ function buildPlan(rawRows, resourceRows, ogRows) {
       employeeMap.get(key).occurrenceCount += employee.occurrenceCount;
       employeeMap.get(key).sampleAuthNumbers.add(auth.migrationKey);
     });
-    travelOdc.push(...buildTravel(auth, familyRows, issues));
+    travelOdc.push(...buildTravel(auth, familyRows, overrides, issues));
     const workflows = buildWorkflows(auth, familyRows);
     workflowRuns.push(...workflows.runs);
     workflowActions.push(...workflows.actions);
@@ -1051,6 +1145,13 @@ function buildPlan(rawRows, resourceRows, ogRows) {
     fallbackUserEmail: FALLBACK_USER_EMAIL,
     defaultHrEmail: DEFAULT_HR_EMAIL,
     defaultCfoEmail: DEFAULT_CFO_EMAIL,
+    laborJobOverridesAvailable: overrides.laborJobIds.size,
+    laborJobOverridesApplied: overrides.appliedLaborJobIds,
+    travelJobOverridesAvailable: overrides.travelJobIds.size,
+    travelJobOverridesApplied: overrides.appliedTravelJobIds,
+    jamisProjectIdOverridesAvailable: overrides.jamisProjectIds.size,
+    jamisProjectIdOverridesApplied: overrides.appliedJamisProjectIds,
+    jamisProjectIdOverrideConflicts: overrides.jamisProjectIdConflicts.size,
     issueCounts: issues.reduce((counts, issue) => {
         counts[issue.severity] = (counts[issue.severity] ?? 0) + 1;
         return counts;
@@ -1135,19 +1236,22 @@ async function main() {
     console.log(usage());
     return;
   }
-  const [rawText, backfillText, resourceText, projectDescriptionText, ogText] = await Promise.all([
+  const [rawText, backfillText, resourceText, projectDescriptionText, ogText, laborJobMapText, travelJobMapText] = await Promise.all([
     fs.readFile(args.raw, "utf8"),
     args.backfillRaw ? fs.readFile(args.backfillRaw, "utf8").catch(() => "") : Promise.resolve(""),
     fs.readFile(args.resources, "utf8"),
     args.projectDescriptions ? fs.readFile(args.projectDescriptions, "utf8").catch(() => "") : Promise.resolve(""),
-    fs.readFile(args.ogMap, "utf8")
+    fs.readFile(args.ogMap, "utf8"),
+    args.laborJobMap ? fs.readFile(args.laborJobMap, "utf8").catch(() => "") : Promise.resolve(""),
+    args.travelJobMap ? fs.readFile(args.travelJobMap, "utf8").catch(() => "") : Promise.resolve("")
   ]);
   const primaryRows = parseCsv(rawText);
   const backfillRows = backfillText ? parseCsv(backfillText) : [];
   const descriptionRows = projectDescriptionText ? parseCsv(projectDescriptionText) : [];
   const mergedRows = backfillRows.length ? mergePrimaryWithBackfill(primaryRows, backfillRows) : primaryRows;
   const planRows = applyProjectDescriptions(mergedRows, descriptionRows);
-  const plan = buildPlan(planRows, parseCsv(resourceText), parseCsv(ogText));
+  const overrides = buildOverrideMaps(parseMappingCsv(laborJobMapText), parseMappingCsv(travelJobMapText));
+  const plan = buildPlan(planRows, parseCsv(resourceText), parseCsv(ogText), overrides);
   plan.summary.primaryRawRows = primaryRows.length;
   plan.summary.backfillRawRows = backfillRows.length;
   plan.summary.projectDescriptionRows = descriptionRows.length;
