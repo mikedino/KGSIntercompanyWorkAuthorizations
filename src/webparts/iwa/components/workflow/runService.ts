@@ -1,10 +1,12 @@
 import { ContextInfo, Web } from "gd-sprest";
 import { encodeListName, formatError } from "../common/utils";
 import Strings from "../common/strings";
+import { SharePointUserResolver } from "../common/sharePointUserResolver";
 import { DataSource } from "../data/ds";
 import {
     IAuthorizationItem,
     IModItem,
+    IPeoplePicker,
     IWorkflowRunItem,
     RunType,
     WorkflowRole,
@@ -18,15 +20,20 @@ export interface IRunDecisionResult {
     nowIso: string;
 }
 
+type WorkflowApprovers = {
+    hrId?: number;
+    OGPresidentId?: number;
+    cfoId?: number;
+    hr?: IPeoplePicker;
+    ogPresident?: IPeoplePicker;
+    cfo?: IPeoplePicker;
+};
+
 export class WorkflowRunService {
 
-    private static createRun(
+    private static async createRun(
         authorization: IAuthorizationItem,
-        approvers: {
-            hrId?: number;
-            OGPresidentId?: number;
-            cfoId?: number;
-        },
+        approvers: WorkflowApprovers,
         runNumber: number,
         restartReason?: string,
         restartComment?: string,
@@ -39,7 +46,10 @@ export class WorkflowRunService {
         const nowIso = new Date().toISOString();
         const titleBase = authorization.Title || authorization.contractName || `IWA-${authorization.Id}`;
         const creatorId = options?.runType === "mod" ? ContextInfo.userId : authorization.Author?.Id;
-        const pmId = authorization.pm?.Id;
+        const pmId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(authorization.pm, authorization.pm?.Id, "workflow PM");
+        const hrId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(approvers.hr ?? DataSource.HR, approvers.hrId ?? DataSource.HR?.Id, "workflow HR approver");
+        const ogPresidentId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(approvers.ogPresident, approvers.OGPresidentId, "workflow OG President approver");
+        const cfoId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(approvers.cfo ?? DataSource.CFO, approvers.cfoId ?? DataSource.CFO?.Id, "workflow CFO approver");
         const skipPmStep = !!pmId && !!creatorId && pmId === creatorId;
         const initialStepKey: WorkflowStepKey = skipPmStep || !pmId
             ? authorization.contractType === "tm" ? "hr" : "ogPresident"
@@ -52,8 +62,8 @@ export class WorkflowRunService {
         const initialPendingApproverId = initialStepKey === "pm"
             ? (pmId ?? null)
             : initialStepKey === "hr"
-                ? (approvers.hrId ?? DataSource.HR?.Id ?? null)
-                : (approvers.OGPresidentId ?? null);
+                ? (hrId ?? null)
+                : (ogPresidentId ?? null);
         const addBody: Record<string, unknown> = {
             __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
             Title: `${titleBase}${options?.titleSuffix ?? ""}-RUN-${runNumber}`,
@@ -70,9 +80,12 @@ export class WorkflowRunService {
             skipPmStep,
             restartReason: restartReason ?? "",
             restartComment: restartComment ?? "",
-            hrId: approvers.hrId ?? DataSource.HR?.Id ?? null,
-            ogPresidentId: approvers.OGPresidentId ?? null,
-            cfoId: approvers.cfoId ?? DataSource.CFO?.Id ?? null
+            // Person fields store User Information List IDs from this workflow
+            // site collection. HR/CFO/OG President often come from config/lookup
+            // site collections, so resolve them into this web before stamping.
+            hrId: hrId ?? null,
+            ogPresidentId: ogPresidentId ?? null,
+            cfoId: cfoId ?? null
         };
 
         if (options?.modId) {
@@ -113,11 +126,7 @@ export class WorkflowRunService {
 
     static createFirstRun(
         authorization: IAuthorizationItem,
-        approvers: {
-            hrId?: number;
-            OGPresidentId?: number;
-            cfoId?: number;
-        }
+        approvers: WorkflowApprovers
     ): Promise<IWorkflowRunItem> {
         return this.createRun(authorization, approvers, 1);
     }
@@ -125,11 +134,7 @@ export class WorkflowRunService {
     static createRestartRun(
         authorization: IAuthorizationItem,
         nextRunNumber: number,
-        approvers: {
-            hrId?: number;
-            OGPresidentId?: number;
-            cfoId?: number;
-        },
+        approvers: WorkflowApprovers,
         restartReason: string,
         restartComment?: string
     ): Promise<IWorkflowRunItem> {
@@ -140,11 +145,7 @@ export class WorkflowRunService {
         authorization: IAuthorizationItem,
         mod: IModItem,
         nextRunNumber: number,
-        approvers: {
-            hrId?: number;
-            OGPresidentId?: number;
-            cfoId?: number;
-        },
+        approvers: WorkflowApprovers,
         restartReason?: string,
         restartComment?: string
     ): Promise<IWorkflowRunItem> {
@@ -220,10 +221,16 @@ export class WorkflowRunService {
             .executeAndWait();
     }
 
-    static async updatePendingApprover(runId: number, pendingApproverId: number): Promise<void> {
+    static async updatePendingApprover(runId: number, pendingApproverId: number, pendingApprover?: IPeoplePicker): Promise<void> {
         if (!runId) {
             throw new Error("Workflow Run Id is required to update the pending approver.");
         }
+
+        const resolvedPendingApproverId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(
+            pendingApprover,
+            pendingApproverId,
+            "workflow pending approver"
+        );
 
         await Web()
             .Lists(Strings.Sites.main.lists.WorkflowRuns)
@@ -231,7 +238,7 @@ export class WorkflowRunService {
             .getById(runId)
             .update({
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
-                pendingApproverId,
+                pendingApproverId: resolvedPendingApproverId,
                 stepAssignedDate: new Date().toISOString()
             })
             .executeAndWait();
@@ -267,14 +274,16 @@ export class WorkflowRunService {
         }
     }
 
-    private static getApproverIdForStep(run: IWorkflowRunItem, stepKey: WorkflowStepKey): number | undefined {
+    private static async getApproverIdForStep(authorization: IAuthorizationItem, run: IWorkflowRunItem, stepKey: WorkflowStepKey): Promise<number | undefined> {
+        const configuredOgPresident = DataSource.OGs.find((og) => og.Title === authorization.og)?.president;
+
         switch (stepKey) {
             case "hr":
-                return run.hr?.Id ?? DataSource.HR?.Id;
+                return (await SharePointUserResolver.resolvePersonIdForCurrentWeb(run.hr ?? DataSource.HR, run.hr?.Id ?? DataSource.HR?.Id, "workflow HR decision approver")) ?? undefined;
             case "ogPresident":
-                return run.ogPresident?.Id;
+                return (await SharePointUserResolver.resolvePersonIdForCurrentWeb(run.ogPresident ?? configuredOgPresident, run.ogPresident?.Id ?? configuredOgPresident?.Id, "workflow OG President decision approver")) ?? undefined;
             case "cfo":
-                return run.cfo?.Id ?? DataSource.CFO?.Id;
+                return (await SharePointUserResolver.resolvePersonIdForCurrentWeb(run.cfo ?? DataSource.CFO, run.cfo?.Id ?? DataSource.CFO?.Id, "workflow CFO decision approver")) ?? undefined;
             default:
                 return undefined;
         }
@@ -292,6 +301,8 @@ export class WorkflowRunService {
         const nowIso = new Date().toISOString();
 
         if (decision === "rejected") {
+            const submitterId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(authorization.Author, authorization.Author?.Id, "workflow rejection submitter");
+
             await Web()
                 .Lists(Strings.Sites.main.lists.WorkflowRuns)
                 .Items()
@@ -303,7 +314,7 @@ export class WorkflowRunService {
                     hasDecision: true,
                     currentStepKey: "submitter",
                     pendingRole: "requestor",
-                    pendingApproverId: authorization.Author?.Id ?? null,
+                    pendingApproverId: submitterId ?? null,
                     stepAssignedDate: nowIso
                 })
                 .executeAndWait();
@@ -342,6 +353,8 @@ export class WorkflowRunService {
             };
         }
 
+        const nextApproverId = nextStepKey ? await this.getApproverIdForStep(authorization, run, nextStepKey) : undefined;
+
         await Web()
             .Lists(Strings.Sites.main.lists.WorkflowRuns)
             .Items()
@@ -352,7 +365,7 @@ export class WorkflowRunService {
                 currentStepKey: nextStepKey,
                 hasDecision: true,
                 pendingRole: this.getPendingRole(nextStepKey) ?? null,
-                pendingApproverId: this.getApproverIdForStep(run, nextStepKey) ?? null,
+                pendingApproverId: nextApproverId ?? null,
                 stepAssignedDate: nowIso
             })
             .executeAndWait();

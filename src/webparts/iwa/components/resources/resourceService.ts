@@ -1,7 +1,8 @@
 import { Web } from "gd-sprest";
-import { IResourceItem, LineScope } from "../data/props";
+import { IPeoplePicker, IResourceItem, LineScope } from "../data/props";
 import Strings from "../common/strings";
 import { encodeListName, formatError } from "../common/utils";
+import { SharePointUserResolver } from "../common/sharePointUserResolver";
 
 export class ResourceService {
 
@@ -22,6 +23,7 @@ export class ResourceService {
             lineNumber: number;
             displayOrder: number;
             employeeId: number;
+            employee?: IPeoplePicker;
             state: string;
             laborCategory: string;
             comments?: string;
@@ -48,6 +50,12 @@ export class ResourceService {
         }
 
         for (const row of rows) {
+            const employeeId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(
+                row.employee,
+                row.employeeId,
+                "resource employee"
+            );
+
             const addBody: Record<string, unknown> = {
                 __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Resources)}ListItem` },
                 Title: row.title,
@@ -56,7 +64,10 @@ export class ResourceService {
                 lineNumber: row.lineNumber,
                 displayOrder: row.displayOrder,
                 isActive: true,
-                employeeId: row.employeeId,
+                // Resource employees can come from copied prior rows or people
+                // pickers. Resolve before saving because the numeric User Id is
+                // scoped to the target list's site collection.
+                employeeId,
                 state: row.state,
                 laborCategory: row.laborCategory,
                 comments: row.comments ?? ""

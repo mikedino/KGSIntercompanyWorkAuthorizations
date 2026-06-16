@@ -1,10 +1,13 @@
-import { IAuthorizationItem } from "../data/props";
+import { IAuthorizationItem, IPeoplePicker } from "../data/props";
 import { DataSource } from "../data/ds";
 
 export interface IDefaultApprovers {
   OGPresidentId?: number;
   hrId?: number;
   cfoId?: number;
+  ogPresident?: IPeoplePicker;
+  hr?: IPeoplePicker;
+  cfo?: IPeoplePicker;
 }
 
 export class ApproverResolver {
@@ -20,7 +23,13 @@ export class ApproverResolver {
     return {
       OGPresidentId,
       hrId: DataSource.HR?.Id,
-      cfoId: DataSource.CFO?.Id
+      cfoId: DataSource.CFO?.Id,
+      // Keep the full person objects so the workflow service can resolve them
+      // against the workflow-run site collection. The Ids from lookup/config
+      // lists are only valid in the site collection where those lists live.
+      ogPresident: OG?.president,
+      hr: DataSource.HR,
+      cfo: DataSource.CFO
     };
   }
 }

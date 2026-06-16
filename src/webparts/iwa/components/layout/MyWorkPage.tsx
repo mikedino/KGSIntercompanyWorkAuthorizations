@@ -683,11 +683,11 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                 <TableCell sx={{ width: 260 }}>Authorization</TableCell>
                                                 <TableCell sx={{ width: 125 }}>Why It&apos;s Here</TableCell>
                                                 <TableCell sx={{ width: 145 }}>Status</TableCell>
-                                                <TableCell sx={{ width: 145 }}>Current Run / Mod</TableCell>
+                                                <TableCell sx={{ width: 135 }}>Current Run / Mod</TableCell>
                                                 <TableCell sx={{ width: 130 }}>Pending With</TableCell>
                                                 <TableCell sx={{ width: 130 }}>My Last Action</TableCell>
-                                                <TableCell sx={{ width: 180 }}>Key Dates</TableCell>
-                                                <TableCell sx={{ width: 100 }}>Action</TableCell>
+                                                <TableCell sx={{ width: 170 }}>Key Dates</TableCell>
+                                                <TableCell sx={{ width: 120 }}>Action</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -764,7 +764,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ width: 145, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 135, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="body2" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
                                                                 {getRunScopeLabel(row.currentRun)}
@@ -796,7 +796,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ width: 180, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 170, verticalAlign: "top" }}>
                                                         <Stack spacing={0.5}>
                                                             <Typography variant="caption" color="text.secondary">
                                                                 Created: {formatDate(row.authorization.Created, true)}
@@ -809,7 +809,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                             </Typography>
                                                         </Stack>
                                                     </TableCell>
-                                                    <TableCell sx={{ width: 100, verticalAlign: "top" }}>
+                                                    <TableCell sx={{ width: 120, verticalAlign: "top" }}>
                                                         {canResumeDraft(row) ? (
                                                             <Stack spacing={1} alignItems="flex-start">
                                                                 <Button

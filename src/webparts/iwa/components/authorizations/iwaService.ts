@@ -2,6 +2,7 @@ import { AuthorizationStatus, ICounterItem, IAuthorizationItem } from "../data/p
 import { Web } from "gd-sprest";
 import Strings from "../common/strings";
 import { formatError, encodeListName } from "../common/utils";
+import { SharePointUserResolver } from "../common/sharePointUserResolver";
 import dayjs from 'dayjs';
 import { DataSource } from "../data/ds";
 import { Base } from "gd-sprest/@types/intellisense";
@@ -132,23 +133,39 @@ export class AuthorizationService {
 
   // shared private updater
   private static async updateAuthorization(item: IAuthorizationItem, authorizationStatus: AuthorizationStatus, trackingTitle?: string): Promise<IAuthorizationItem> {
+    const [
+      backupRequestorId,
+      pmId,
+      donorGmId,
+      receivingGmId
+    ] = await Promise.all([
+      SharePointUserResolver.resolvePersonIdForCurrentWeb(item.backupRequestor, item.backupRequestor?.Id, "authorization backup requestor"),
+      SharePointUserResolver.resolvePersonIdForCurrentWeb(item.pm, item.pm?.Id, "authorization PM"),
+      SharePointUserResolver.resolvePersonIdForCurrentWeb(item.donorGm, item.donorGm?.Id, "authorization donor GM"),
+      SharePointUserResolver.resolvePersonIdForCurrentWeb(item.receivingGm, item.receivingGm?.Id, "authorization receiving GM")
+    ]);
 
     return new Promise<IAuthorizationItem>((resolve, reject) => {
 
       // Keep form saves limited to user-editable header fields. Derived/system
       // fields are updated by their dedicated service methods so stale form
       // state cannot overwrite newer workflow, total, Mod, or PDF values.
+      //
+      // Person fields are deliberately resolved before this payload is built.
+      // SharePoint writes FieldNameId as a site-collection-local User
+      // Information List lookup, so IDs from JAMIS/config/lookup site
+      // collections cannot be copied directly into the app site's lists.
       const updateBody: Record<string, unknown> = {
         __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
         authorizationStatus,
-        backupRequestorId: item.backupRequestor?.Id ?? null,
-        pmId: item.pm?.Id ?? null,
+        backupRequestorId,
+        pmId,
         donorEntity: item.donorEntity,
         donorEntityAbbr: item.donorEntityAbbr ?? "",
-        donorGmId: item.donorGm?.Id ?? null,
+        donorGmId,
         receivingEntity: item.receivingEntity,
         receivingEntityAbbr: item.receivingEntityAbbr ?? "",
-        receivingGmId: item.receivingGm?.Id ?? null,
+        receivingGmId,
         og: item.og ?? "",
         lob: item.lob ?? "",
         contractName: item.contractName,

@@ -1276,6 +1276,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     lineNumber,
                     displayOrder: lineNumber,
                     employeeId: row.employee!.Id,
+                    employee: row.employee,
                     state: row.state.trim(),
                     laborCategory: row.laborCategory.trim(),
                     comments: row.comments.trim()
@@ -1544,7 +1545,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         typeof nextPmId === "number" &&
                         pendingPmApproverId !== nextPmId
                     ) {
-                        await WorkflowRunService.updatePendingApprover(activeModRun.Id, nextPmId);
+                        await WorkflowRunService.updatePendingApprover(activeModRun.Id, nextPmId, saved.pm);
                     }
 
                     saved = {
@@ -1668,7 +1669,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         typeof nextPmId === "number" &&
                         pendingPmApproverId !== nextPmId
                     ) {
-                        await WorkflowRunService.updatePendingApprover(activeRun.Id, nextPmId);
+                        await WorkflowRunService.updatePendingApprover(activeRun.Id, nextPmId, saved.pm);
                     }
                 }
 

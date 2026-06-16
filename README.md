@@ -27,7 +27,8 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 
 | Version | Date | Developer | Comments |
 | ------- | ------ | ------------- | ---------- |
-| 1.0.1.8 | June 16, 2026 | Landino | Initial production release |
+| 1.0.1.8 | June 15, 2026 | Landino | Initial production release |
+| 1.0.2.0 | June 16, 2026 | Landino | Adjust how we resolve auto-stamped users. Site collections don't share same userID's, so we must ensureUser before resolving. |
 
 ---
 
