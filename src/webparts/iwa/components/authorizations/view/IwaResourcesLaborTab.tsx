@@ -3,6 +3,7 @@ import { Alert, Box, Button, Chip, Grid, IconButton, Paper, Stack, Table, TableB
 import InputAdornment from "@mui/material/InputAdornment";
 import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
+import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import { ILaborLineItem, IModItem, IResourceItem } from "../../data/props";
@@ -32,15 +33,32 @@ type ResourceScopeFilter = "all" | "base" | `mod-${number}`;
 
 const resourcesLaborTableSx = {
     ...quietTableSx,
-    "& .resourcesLaborEmployeeCell": { minWidth: 166, width: 166 },
-    "& .resourcesLaborStateCell": { minWidth: 168, width: 168 },
     "& .resourcesLaborScopeCell": { minWidth: 72, width: 72 },
+    "& .resourcesLaborEmployeeCell": { minWidth: 190, width: 190 },
+    "& .resourcesLaborStateCell": { minWidth: 52, width: 52 },
     "& .resourcesLaborJobCell": { minWidth: 172, width: 172 },
     "& .resourcesLaborCategoryCell": { minWidth: 140, width: 140 },
     "& .resourcesLaborHoursCell": { minWidth: 56, width: 56 },
+    "& .resourcesLaborStoCell": { minWidth: 42, width: 42 },
     "& .resourcesLaborSalaryCell": { minWidth: 88, width: 88 },
-    "& .resourcesLaborRateCell": { minWidth: 82, width: 82 },
+    "& .resourcesLaborRateCell": { minWidth: 70, width: 70 },
     "& .resourcesLaborTotalCell": { minWidth: 106, width: 106 }
+};
+
+const compactRateInputSx = {
+    ...compactCurrencyInputSx,
+    width: 88
+};
+
+const getStateAbbreviation = (state?: string): string => {
+    const trimmed = state?.trim();
+
+    if (!trimmed) {
+        return "-";
+    }
+
+    const match = trimmed.match(/\(([A-Z]{2})\)$/);
+    return match?.[1] ?? trimmed;
 };
 
 interface IIwaResourcesLaborTabProps {
@@ -221,12 +239,13 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                             </>
                         ) : (
                             <>
+                                <TableCell className="resourcesLaborScopeCell">Scope</TableCell>
                                 <TableCell className="resourcesLaborEmployeeCell">Employee / Resource</TableCell>
                                 <TableCell className="resourcesLaborStateCell">State</TableCell>
-                                <TableCell className="resourcesLaborScopeCell">Scope</TableCell>
                                 <TableCell className="resourcesLaborJobCell">Job ID</TableCell>
                                 <TableCell className="resourcesLaborCategoryCell">Labor Category</TableCell>
                                 <TableCell className="resourcesLaborHoursCell" align="right">Std Hrs</TableCell>
+                                <TableCell className="resourcesLaborStoCell" align="center">STO</TableCell>
                                 <TableCell className="resourcesLaborHoursCell" align="right">OT Hrs</TableCell>
                                 <TableCell className="resourcesLaborSalaryCell" align="right">Salary</TableCell>
                                 <TableCell className="resourcesLaborRateCell" align="right">Std Rate</TableCell>
@@ -240,7 +259,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 <TableBody>
                     {visibleLaborLines.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={isFfpAuthorization ? 6 : canEditCompInHrReview ? 12 : 11}>No labor lines found.</TableCell>
+                            <TableCell colSpan={isFfpAuthorization ? 6 : canEditCompInHrReview ? 13 : 12}>No labor lines found.</TableCell>
                         </TableRow>
                     ) : (
                         <>
@@ -280,6 +299,14 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
 
                                 return (
                                     <TableRow key={line.Id} hover>
+                                        <TableCell className="resourcesLaborScopeCell">
+                                            <Chip
+                                                label={getModScopeLabel(line)}
+                                                size="small"
+                                                color={getModScopeChipColor(line)}
+                                                variant="outlined"
+                                            />
+                                        </TableCell>
                                         <TableCell className="resourcesLaborEmployeeCell">
                                             <Stack direction="row" spacing={0.5} alignItems="center">
                                                 <Typography variant="body2">{getResourceNamesForLabor(line, resources)}</Typography>
@@ -300,19 +327,14 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                             </Stack>
                                         </TableCell>
                                         <TableCell className="resourcesLaborStateCell">
-                                            {line.pricingType === "tm" ? lineResource?.state ?? "-" : "Multiple"}
-                                        </TableCell>
-                                        <TableCell className="resourcesLaborScopeCell">
-                                            <Chip
-                                                label={getModScopeLabel(line)}
-                                                size="small"
-                                                color={getModScopeChipColor(line)}
-                                                variant="outlined"
-                                            />
+                                            {line.pricingType === "tm" ? getStateAbbreviation(lineResource?.state) : "Multi"}
                                         </TableCell>
                                         <TableCell className="resourcesLaborJobCell">{line.jobId || "-"}</TableCell>
                                         <TableCell className="resourcesLaborCategoryCell">{lineResource?.laborCategory || "-"}</TableCell>
                                         <TableCell className="resourcesLaborHoursCell" align="right">{line.standardHours ?? "-"}</TableCell>
+                                        <TableCell className="resourcesLaborStoCell" align="center">
+                                            {line.stoHours ? <CheckOutlinedIcon color="success" fontSize="small" /> : "-"}
+                                        </TableCell>
                                         <TableCell className="resourcesLaborHoursCell" align="right">{line.overtimeHours ?? "-"}</TableCell>
                                         <TableCell className="resourcesLaborSalaryCell" align="right">
                                             {isEditingComp ? (
@@ -333,7 +355,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         value={draft.standardRate}
                                                         onChange={(event) => handleStandardRateChange(line.Id, event.target.value)}
                                                         onBlur={() => handleCurrencyDraftBlur(line.Id, "standardRate")}
-                                                        sx={compactCurrencyInputSx}
+                                                        sx={compactRateInputSx}
                                                         slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.standardRate) : maskedCurrencyText}
@@ -345,7 +367,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         value={draft.overtimeRate}
                                                         onChange={(event) => handleOvertimeRateChange(line.Id, event.target.value)}
                                                         onBlur={() => handleCurrencyDraftBlur(line.Id, "overtimeRate")}
-                                                        sx={compactCurrencyInputSx}
+                                                        sx={compactRateInputSx}
                                                         slotProps={{ input: { startAdornment: <InputAdornment position="start">$</InputAdornment> } }}
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.overtimeRate) : maskedCurrencyText}
@@ -385,6 +407,7 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                 <TableRow sx={totalsRowSx}>
                                     <TableCell colSpan={isFfpAuthorization ? 5 : 5}>Totals</TableCell>
                                     {!isFfpAuthorization && <TableCell className="resourcesLaborHoursCell" align="right">{visibleLaborTotals.standardHours || "-"}</TableCell>}
+                                    {!isFfpAuthorization && <TableCell className="resourcesLaborStoCell" align="center">-</TableCell>}
                                     {!isFfpAuthorization && <TableCell className="resourcesLaborHoursCell" align="right">{visibleLaborTotals.overtimeHours || "-"}</TableCell>}
                                     {!isFfpAuthorization && <TableCell />}
                                     {!isFfpAuthorization && <TableCell />}

@@ -98,6 +98,11 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                 const approver = getWorkflowStepApprover(step, authorization, run);
                                 const completedBy = action?.actionBy?.Title ?? (action ? "System" : "");
                                 const isReturnedToSubmitterStep = step === "submitter" && action?.actionType === "returned";
+                                const isSubmitStep = step === "submit";
+                                const submitterActedOnBehalf = isSubmitStep &&
+                                    action?.actionBy?.Id &&
+                                    approver?.Id &&
+                                    action.actionBy.Id !== approver.Id;
                                 const actedOnBehalf = !isReturnedToSubmitterStep &&
                                     action?.actionBy?.Id &&
                                     approver?.Id &&
@@ -105,6 +110,10 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                     step !== "submit";
                                 const personDisplay = isReturnedToSubmitterStep
                                     ? `Returned to ${approver?.Title ?? "the submitter"} by ${completedBy}`
+                                    : submitterActedOnBehalf
+                                        ? `${completedBy} on behalf of ${approver?.Title ?? "the original submitter"}`
+                                        : isSubmitStep && action
+                                            ? completedBy
                                     : actedOnBehalf
                                         ? `${completedBy} on behalf of ${approver?.Title ?? "the assigned approver"}`
                                         : approver?.Title ?? "No approver assigned";

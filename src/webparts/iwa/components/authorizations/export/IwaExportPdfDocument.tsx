@@ -181,6 +181,9 @@ const styles = StyleSheet.create({
     right: {
         textAlign: "right"
     },
+    center: {
+        textAlign: "center"
+    },
     approvalGrid: {
         display: "flex",
         flexDirection: "row",
@@ -222,13 +225,14 @@ const styles = StyleSheet.create({
 
 const contractTypeLabel = (value?: string): string => value === "tm" ? "T&M" : value === "ffp" ? "FFP" : value || "-";
 
-const TableCell = ({ children, style = [], width, right = false }: {
+const TableCell = ({ children, style = [], width, right = false, center = false }: {
     children: React.ReactNode;
     style?: object | object[];
     width: string;
     right?: boolean;
+    center?: boolean;
 }): JSX.Element => (
-    <Text style={[styles.cell, { width }, right ? styles.right : {}, ...(Array.isArray(style) ? style : [style])]}>{children}</Text>
+    <Text style={[styles.cell, { width }, right ? styles.right : {}, center ? styles.center : {}, ...(Array.isArray(style) ? style : [style])]}>{children}</Text>
 );
 
 export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocumentProps): JSX.Element => {
@@ -365,28 +369,31 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                         <View style={styles.tableHeader}>
                             <TableCell width="21%" style={styles.headerCell}>Employee</TableCell>
                             <TableCell width="12%" style={styles.headerCell}>State</TableCell>
-                            <TableCell width="24%" style={styles.headerCell}>Job ID / CLIN</TableCell>
-                            <TableCell width="17%" style={styles.headerCell}>Labor Category</TableCell>
+                            <TableCell width="20%" style={styles.headerCell}>Job ID / CLIN</TableCell>
+                            <TableCell width="20%" style={styles.headerCell}>Labor Category</TableCell>
                             <TableCell width="7%" style={styles.headerCell} right>STD</TableCell>
+                            <TableCell width="4%" style={styles.headerCell} center>STO</TableCell>
                             <TableCell width="6%" style={styles.headerCell} right>OT</TableCell>
-                            <TableCell width="13%" style={styles.headerCell} right>Total</TableCell>
+                            <TableCell width="10%" style={styles.headerCell} right>Total</TableCell>
                         </View>
                         {model.laborDetails.map((row) => (
                             <View key={`${row.employeeName}-${row.jobId}-${row.laborCategory}`} style={styles.tableRow}>
                                 <TableCell width="21%">{row.employeeName}</TableCell>
                                 <TableCell width="12%">{row.state}</TableCell>
-                                <TableCell width="24%">{row.jobId}</TableCell>
-                                <TableCell width="17%">{row.laborCategory}</TableCell>
+                                <TableCell width="20%">{row.jobId}</TableCell>
+                                <TableCell width="20%">{row.laborCategory}</TableCell>
                                 <TableCell width="7%" right>{row.standardHours}</TableCell>
+                                <TableCell width="4%" center>{row.stoHours ? "✓" : "-"}</TableCell>
                                 <TableCell width="6%" right>{row.overtimeHours}</TableCell>
-                                <TableCell width="13%" right>{formatCurrency(row.totalAmount)}</TableCell>
+                                <TableCell width="10%" right>{formatCurrency(row.totalAmount)}</TableCell>
                             </View>
                         ))}
                         <View style={styles.tableTotalRow}>
-                            <TableCell width="74%" style={styles.totalCell}>Labor Totals</TableCell>
+                            <TableCell width="73%" style={styles.totalCell}>Labor Totals</TableCell>
                             <TableCell width="7%" style={styles.totalCell} right>{totalStandardHours}</TableCell>
+                            <TableCell width="4%" style={styles.totalCell} center>-</TableCell>
                             <TableCell width="6%" style={styles.totalCell} right>{totalOvertimeHours}</TableCell>
-                            <TableCell width="13%" style={styles.totalCell} right>{formatCurrency(model.modLaborTotal)}</TableCell>
+                            <TableCell width="10%" style={styles.totalCell} right>{formatCurrency(model.modLaborTotal)}</TableCell>
                         </View>
                     </View>
                 </View>

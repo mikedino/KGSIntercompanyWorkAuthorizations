@@ -6,6 +6,7 @@ import {
 } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
+import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -632,6 +633,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         {contractType === "ffp" && <TableCell>FFP Job / CLIN</TableCell>}
                                         {contractType === "tm" && <TableCell>Job ID</TableCell>}
                                         {contractType === "tm" && <TableCell>Std Hrs</TableCell>}
+                                        {contractType === "tm" && <TableCell align="center">STO</TableCell>}
                                         {contractType === "tm" && <TableCell>OT Hrs</TableCell>}
                                         <TableCell align="right">Actions</TableCell>
                                     </TableRow>
@@ -645,6 +647,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             {contractType === "ffp" && <TableCell>{getFfpLinesForResource(row.id)}</TableCell>}
                                             {contractType === "tm" && <TableCell>{row.jobId || "—"}</TableCell>}
                                             {contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
+                                            {contractType === "tm" && (
+                                                <TableCell align="center">
+                                                    {row.stoHours ? <CheckOutlinedIcon color="success" fontSize="small" /> : "—"}
+                                                </TableCell>
+                                            )}
                                             {contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                             <TableCell align="right">
                                                 <Stack direction="row" spacing={1} justifyContent="flex-end">
@@ -662,6 +669,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         <TableRow sx={totalsRowSx}>
                                             <TableCell colSpan={contractType === "tm" ? 4 : 4}>Totals</TableCell>
                                             {contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
+                                            {contractType === "tm" && <TableCell align="center">—</TableCell>}
                                             {contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
                                             <TableCell />
                                         </TableRow>
@@ -843,10 +851,22 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     onChange={(items) => {
                                         const employee = toPeoplePickerValue(items[0]);
 
-                                        setResourceDraft((prev) => ({
-                                            ...prev,
-                                            employee
-                                        }));
+                                        setResourceDraft((prev) => {
+                                            const employeeChanged = (prev.employee?.Id ?? 0) !== (employee?.Id ?? 0);
+
+                                            return {
+                                                ...prev,
+                                                employee,
+                                                // Salary and derived rates belong to the selected employee,
+                                                // not to the resource row. When a rejected Mod is corrected
+                                                // by swapping people on the same row, carrying the prior
+                                                // person's salary forward would silently price the new person
+                                                // with stale compensation.
+                                                annualSalary: employeeChanged ? "" : prev.annualSalary,
+                                                standardRate: employeeChanged ? "" : prev.standardRate,
+                                                overtimeRate: employeeChanged ? "" : prev.overtimeRate
+                                            };
+                                        });
                                     }}
                                     error={Boolean(resourceDraftErrors.employee)}
                                     helperText={resourceDraftErrors.employee}

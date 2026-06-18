@@ -42,7 +42,12 @@ export class ResourceService {
 
         for (const item of existing) {
             const matchesScope = item.lineScope === lineScope;
-            const matchesMod = lineScope === "base" || item.mod?.Id === options?.modId || !item.mod?.Id;
+            // Only replace rows that belong to the same data lane. Mod saves must
+            // never sweep up orphaned mod-scope rows, because that masks a missing
+            // Mod lookup and can make an in-flight modification appear to vanish.
+            const matchesMod = lineScope === "base"
+                ? !item.mod?.Id
+                : item.mod?.Id === options?.modId;
 
             if (matchesScope && matchesMod) {
                 await Web().Lists(Strings.Sites.main.lists.Resources).Items(item.Id).recycle().executeAndWait();

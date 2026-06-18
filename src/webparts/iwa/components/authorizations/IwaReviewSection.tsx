@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Divider, Grid, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import { Dayjs } from "dayjs";
 import { ContractType, IAuthorizationItem, IInvoiceItem, IJobItem } from "../data/props";
 import { formatCurrency, RELATIONSHIP_SEPARATOR } from "../common/utils";
@@ -209,13 +210,14 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                         <TableCell>Labor Category</TableCell>
                                         {contractType === "tm" && <TableCell>Job ID</TableCell>}
                                         {contractType === "tm" && <TableCell>Std Hrs</TableCell>}
+                                        {contractType === "tm" && <TableCell align="center" sx={{ width: 42 }}>STO</TableCell>}
                                         {contractType === "tm" && <TableCell>OT Hrs</TableCell>}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {resourceRows.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={contractType === "tm" ? 6 : 3}>No resources entered.</TableCell>
+                                            <TableCell colSpan={contractType === "tm" ? 7 : 3}>No resources entered.</TableCell>
                                         </TableRow>
                                     ) : (
                                         <>
@@ -226,6 +228,11 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                     <TableCell>{row.laborCategory || "—"}</TableCell>
                                                     {contractType === "tm" && <TableCell>{getJobLabel(row.jobId)}</TableCell>}
                                                     {contractType === "tm" && <TableCell>{row.standardHours || "—"}</TableCell>}
+                                                    {contractType === "tm" && (
+                                                        <TableCell align="center" sx={{ width: 42 }}>
+                                                            {row.stoHours ? <CheckOutlinedIcon fontSize="small" color="success" /> : "—"}
+                                                        </TableCell>
+                                                    )}
                                                     {contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>
                                             ))}
@@ -233,6 +240,7 @@ export const IwaReviewSection: React.FC<IIwaReviewSectionProps> = ({
                                                 <TableRow sx={totalsRowSx}>
                                                     <TableCell colSpan={contractType === "tm" ? 4 : 3}>Totals</TableCell>
                                                     {contractType === "tm" && <TableCell>{resourceTotals.standardHours || "—"}</TableCell>}
+                                                    {contractType === "tm" && <TableCell />}
                                                     {contractType === "tm" && <TableCell>{resourceTotals.overtimeHours || "—"}</TableCell>}
                                                 </TableRow>
                                             )}

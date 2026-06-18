@@ -262,17 +262,17 @@ export class MigrationTrialService {
 
     for (let index = 0; index < lists.length; index += 1) {
       const listName = lists[index];
-      const label = `Deleting ${listName}...`;
+      const label = `Recycling ${listName}...`;
       migrationLog(label);
       onProgress?.({ label, completed: index, total: lists.length });
       const count = await this.deleteAllItemsFromList(listName, result.failed);
-      migrationLog(`Deleted ${count} item(s) from ${listName}.`);
+      migrationLog(`Recycled ${count} item(s) from ${listName}.`);
       result.deleted.push({ listName, count });
       result.totalDeleted += count;
     }
 
-    migrationLog("Permanent delete complete.");
-    onProgress?.({ label: "Permanent delete complete.", completed: lists.length, total: lists.length });
+    migrationLog("Recycle complete.");
+    onProgress?.({ label: "Recycle complete.", completed: lists.length, total: lists.length });
     return result;
   }
 
@@ -547,7 +547,7 @@ export class MigrationTrialService {
         }
 
         try {
-          await Web().Lists(listName).Items(itemId).delete().executeAndWait();
+          await Web().Lists(listName).Items(itemId).recycle().executeAndWait();
           deleted += 1;
         } catch (error) {
           failed.push({ listName, itemId, error: this.errorMessage(error) });

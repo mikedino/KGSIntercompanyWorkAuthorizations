@@ -21,6 +21,7 @@ import {
     Typography
 } from "@mui/material";
 import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
+import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
 import PictureAsPdfOutlinedIcon from "@mui/icons-material/PictureAsPdfOutlined";
@@ -71,11 +72,12 @@ const laborTableSx = {
     ...compactTableSx,
     "& .labor-employee": { width: "21%" },
     "& .labor-state": { width: "12%", whiteSpace: "nowrap" },
-    "& .labor-job": { width: "24%" },
-    "& .labor-category": { width: "17%" },
+    "& .labor-job": { width: "20%" },
+    "& .labor-category": { width: "20%" },
     "& .labor-std": { width: "7%" },
+    "& .labor-sto": { width: "4%" },
     "& .labor-ot": { width: "6%" },
-    "& .labor-total": { width: "13%" }
+    "& .labor-total": { width: "10%" }
 };
 
 const isModelApprovedForPdf = (model: ReturnType<typeof buildIwaExportViewModel>): boolean => {
@@ -475,6 +477,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                             <TableCell className="labor-job">Job ID / CLIN</TableCell>
                                             <TableCell className="labor-category">Labor Category</TableCell>
                                             <TableCell className="labor-std" align="right">STD</TableCell>
+                                            <TableCell className="labor-sto" align="center">STO</TableCell>
                                             <TableCell className="labor-ot" align="right">OT</TableCell>
                                             <TableCell className="labor-total" align="right">Total</TableCell>
                                         </TableRow>
@@ -487,6 +490,9 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                                 <TableCell className="labor-job">{row.jobId}</TableCell>
                                                 <TableCell className="labor-category">{row.laborCategory}</TableCell>
                                                 <TableCell className="labor-std" align="right">{row.standardHours}</TableCell>
+                                                <TableCell className="labor-sto" align="center">
+                                                    {row.stoHours ? <CheckOutlinedIcon color="success" fontSize="small" /> : "-"}
+                                                </TableCell>
                                                 <TableCell className="labor-ot" align="right">{row.overtimeHours}</TableCell>
                                                 <TableCell className="labor-total" align="right">{formatCurrency(row.totalAmount)}</TableCell>
                                             </TableRow>
@@ -494,6 +500,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                         <TableRow>
                                             <TableCell sx={totalCellSx} colSpan={4}>Labor Totals</TableCell>
                                             <TableCell className="labor-std" align="right" sx={totalCellSx}>{totalStandardHours}</TableCell>
+                                            <TableCell className="labor-sto" align="center" sx={totalCellSx}>-</TableCell>
                                             <TableCell className="labor-ot" align="right" sx={totalCellSx}>{totalOvertimeHours}</TableCell>
                                             <TableCell className="labor-total" align="right" sx={totalCellSx}>{formatCurrency(model.modLaborTotal)}</TableCell>
                                         </TableRow>

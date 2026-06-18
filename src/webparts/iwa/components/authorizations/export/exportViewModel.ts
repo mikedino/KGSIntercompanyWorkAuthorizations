@@ -49,6 +49,7 @@ export interface IIwaExportLaborDetailRow {
     jobId: string;
     laborCategory: string;
     standardHours: number;
+    stoHours: boolean;
     overtimeHours: number;
     totalAmount: number;
 }
@@ -196,6 +197,7 @@ const buildLaborDetails = (laborLines: ILaborLineItem[], resources: IResourceIte
                 jobId: getJobId(line),
                 laborCategory: resource?.laborCategory ?? "-",
                 standardHours: Number(line.standardHours ?? 0),
+                stoHours: !!line.stoHours,
                 overtimeHours: Number(line.overtimeHours ?? 0),
                 totalAmount: getLaborAmount(line)
             };
