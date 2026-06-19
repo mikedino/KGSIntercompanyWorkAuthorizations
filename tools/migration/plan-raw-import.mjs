@@ -4,13 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const DEFAULT_RAW =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-02.csv";
-const DEFAULT_BACKFILL_RAW =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-01.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-18.csv";
+const DEFAULT_BACKFILL_RAW = "";
 const DEFAULT_RESOURCES =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-02.csv";
-const DEFAULT_PROJECT_DESCRIPTIONS =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_ProjectDescription.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-18.csv";
+const DEFAULT_PROJECT_DESCRIPTIONS = "";
 const DEFAULT_OG_MAP = "tools/migration/mappings/og-lob-map.csv";
 const DEFAULT_LABOR_JOB_MAP = "tools/migration/mappings/Labor_Missing_JobID_map.csv";
 const DEFAULT_TRAVEL_JOB_MAP = "tools/migration/mappings/Travel_ODC_Missing_JobID_map.csv";
@@ -19,7 +17,7 @@ const FALLBACK_USER_EMAIL = "sharepointapps@koniag-gs.com";
 const LEGACY_FALLBACK_USER_EMAIL = "sharepointnotifications@koniag-gs.com";
 const DEFAULT_HR_EMAIL = "bmack@koniag-gs.com";
 const DEFAULT_CFO_EMAIL = "jmorris@koniag-gs.com";
-const MIGRATION_CUTOFF = new Date("2026-06-02T00:00:00-04:00");
+const MIGRATION_CUTOFF = new Date("2026-06-17T00:00:00-04:00");
 
 const WORKFLOW_STATUS_MAP = {
   Completed: { runStatus: "completed", outcome: "approved", currentStepKey: "cfo", pendingRole: "" },
@@ -75,9 +73,9 @@ function usage() {
     "  node tools/migration/plan-raw-import.mjs [options]",
     "",
     "Options:",
-    "  --raw <path>          Raw Agreements_Export_2026-06-02.csv",
+    "  --raw <path>          Raw Agreements_Export_2026-06-18.csv",
     "  --backfillRaw <path>  Optional older full export for expired family rows",
-    "  --resources <path>    Raw ResourceDetail_Export_2026-06-02.csv",
+    "  --resources <path>    Raw ResourceDetail_Export_2026-06-18.csv",
     "  --projectDescriptions <path>  Optional plain-text ProjectDescription export",
     "  --ogMap <path>        OG/LOB mapping CSV",
     "  --laborJobMap <path>  Optional Labor Job ID/JAMIS Project ID override CSV",
@@ -575,20 +573,26 @@ function resourcesForFamily(resourceRows, familyRows) {
     [get(row, "GUID"), get(row, "Parent GUID"), get(row, "Mod GUID")].filter(Boolean).forEach((guid) => guids.add(guid));
   });
   return resourceRows.filter((row) => {
-    if (ids.has(get(row, "ParentID"))) {
-      return true;
+    const resourceGuids = [get(row, "ParGuid"), get(row, "Parent_GUID"), get(row, "ModGuid")].filter(Boolean);
+    if (resourceGuids.length) {
+      return resourceGuids.some((guid) => guids.has(guid));
     }
-    return [get(row, "ParGuid"), get(row, "Parent_GUID"), get(row, "ModGuid")].some((guid) => guid && guids.has(guid));
+    return ids.has(get(row, "ParentID"));
   });
 }
 
 function associatedFamilyRow(resource, familyRows) {
+  const byGuid = familyRows.find((row) => get(row, "GUID") === get(resource, "ParGuid")) ??
+    familyRows.find((row) => get(row, "Mod GUID") === get(resource, "ModGuid")) ??
+    familyRows.find((row) => get(row, "Parent GUID") === get(resource, "Parent_GUID"));
+  if (byGuid) {
+    return byGuid;
+  }
   const byId = familyRows.find((row) => get(row, "ID") === get(resource, "ParentID"));
   if (byId) {
     return byId;
   }
-  return familyRows.find((row) => get(row, "Mod GUID") === get(resource, "ModGuid")) ??
-    familyRows.find((row) => !isMod(row)) ??
+  return familyRows.find((row) => !isMod(row)) ??
     familyRows[0];
 }
 
@@ -826,7 +830,13 @@ function buildLines(auth, familyRows, resourceRows, overrides, issues) {
       employeeEmail,
       state: normalizeState(get(resource, "Work State")),
       laborCategory: get(resource, "Role_Position"),
-      comments: ""
+      comments: "",
+      created: toIso(get(resource, "Created")),
+      createdByRaw: get(resource, "Created By"),
+      createdByEmail: cleanEmailOrFallback(get(resource, "Created By")),
+      modified: toIso(get(resource, "Modified")),
+      modifiedByRaw: get(resource, "Modified By"),
+      modifiedByEmail: cleanEmailOrFallback(get(resource, "Modified By"))
     });
     const pricingType = normalizeContractType(get(resource, "Contract_Type") || auth.contractType);
     const totalAmount = parseMoney(get(resource, "Total")) || parseMoney(get(resource, "Original Total"));
@@ -870,7 +880,13 @@ function buildLines(auth, familyRows, resourceRows, overrides, issues) {
       standardAmount: pricingType === "tm" ? standardAmount : 0,
       lumpSumAmount: pricingType === "ffp" ? totalAmount : 0,
       totalAmount,
-      comments: ""
+      comments: "",
+      created: toIso(get(resource, "Created")),
+      createdByRaw: get(resource, "Created By"),
+      createdByEmail: cleanEmailOrFallback(get(resource, "Created By")),
+      modified: toIso(get(resource, "Modified")),
+      modifiedByRaw: get(resource, "Modified By"),
+      modifiedByEmail: cleanEmailOrFallback(get(resource, "Modified By"))
     });
   });
   return { employees: Array.from(employees.values()), laborLines, resources };

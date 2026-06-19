@@ -4,13 +4,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const DEFAULT_RAW =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-02.csv";
-const DEFAULT_BACKFILL_RAW =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-01.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-18.csv";
+const DEFAULT_BACKFILL_RAW = "";
 const DEFAULT_RESOURCES =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-02.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-18.csv";
 const DEFAULT_OUTPUT = "tools/migration/raw-audit-output";
-const MIGRATION_CUTOFF = new Date("2026-06-02T00:00:00-04:00");
+const MIGRATION_CUTOFF = new Date("2026-06-17T00:00:00-04:00");
 
 function parseArgs(argv) {
   const args = {
@@ -46,9 +45,9 @@ function usage() {
     "  node tools/migration/audit-raw-export.mjs [options]",
     "",
     "Options:",
-    "  --raw <path>          Raw Agreements_Export_2026-06-02.csv",
+    "  --raw <path>          Raw Agreements_Export_2026-06-18.csv",
     "  --backfillRaw <path>  Optional older full export for expired family rows",
-    "  --resources <path>    Raw ResourceDetail_Export_2026-06-02.csv",
+    "  --resources <path>    Raw ResourceDetail_Export_2026-06-18.csv",
     "  --out <dir>           Output folder for audit/template files",
     "  --ogMap <path>        Optional completed OG mapping CSV to audit against",
     "  --help                Show this help"
@@ -263,6 +262,21 @@ function mergePrimaryWithBackfill(primaryRows, backfillRows) {
   return Array.from(rowsById.values()).filter((row) => futureParentGuids.has(get(row, "Parent GUID")));
 }
 
+function resourceMatchesFamily(resource, familyRows) {
+  const ids = new Set(familyRows.map((row) => get(row, "ID")));
+  const guids = new Set();
+  familyRows.forEach((row) => {
+    [get(row, "GUID"), get(row, "Parent GUID"), get(row, "Mod GUID")].filter(Boolean).forEach((guid) => guids.add(guid));
+  });
+
+  const resourceGuids = [get(resource, "ParGuid"), get(resource, "Parent_GUID"), get(resource, "ModGuid")].filter(Boolean);
+  if (resourceGuids.length) {
+    return resourceGuids.some((guid) => guids.has(guid));
+  }
+
+  return ids.has(get(resource, "ParentID"));
+}
+
 function buildAudit(rawRows, resourceRows, ogMapRows, primaryRows = rawRows, backfillRows = []) {
   const futureRows = primaryRows.filter(isFutureRow);
   const futureParentGuids = new Set(futureRows.map((row) => get(row, "Parent GUID")).filter(Boolean));
@@ -336,7 +350,9 @@ function buildAudit(rawRows, resourceRows, ogMapRows, primaryRows = rawRows, bac
 
   const resourceParentIds = new Set(resourceRows.map((row) => get(row, "ParentID")).filter(Boolean));
   const familyLegacyIds = new Set(familyRows.map((row) => get(row, "ID")));
-  const resourceRowsInScope = resourceRows.filter((row) => familyLegacyIds.has(get(row, "ParentID")));
+  const resourceRowsInScope = resourceRows.filter((row) =>
+    Array.from(rowsByParent.values()).some((family) => resourceMatchesFamily(row, family))
+  );
 
   const ogTemplate = frequencyRows(familyRows, "Operating Group").map((row) => ({
     rawOperatingGroup: row.value,

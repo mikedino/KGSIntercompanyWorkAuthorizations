@@ -6,9 +6,9 @@ import path from "node:path";
 const DEFAULT_NORMALIZED =
   "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Normalized.csv";
 const DEFAULT_RAW =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-02.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/Agreements_Export_2026-06-18.csv";
 const DEFAULT_RESOURCES =
-  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-02.csv";
+  "C:/Users/mddin/OneDrive/Documents/Koniag/IWA/Migration/ResourceDetail_Export_2026-06-18.csv";
 const DEFAULT_OUTPUT = "tools/migration/output";
 
 const TARGET_LISTS = {
@@ -75,8 +75,8 @@ function usage() {
     "",
     "Options:",
     "  --normalized <path>   Curated Agreements_Normalized.csv",
-    "  --raw <path>          Raw Agreements_Export_2026-06-01.csv",
-    "  --resources <path>    Raw ResourceDetail_Export_2026-06-01.csv",
+    "  --raw <path>          Raw Agreements_Export_2026-06-18.csv",
+    "  --resources <path>    Raw ResourceDetail_Export_2026-06-18.csv",
     "  --out <dir>           Output folder for plan/report files",
     "  --execute             Reserved for live SPO writes after dry-run review",
     "  --help                Show this help",

@@ -4,10 +4,9 @@ This folder contains the one-time migration helper for importing legacy IWAs int
 
 The current raw-first dry-run planner reads:
 
-- `Agreements_Export_2026-06-02.csv` as the header and lineage/family source.
-- `Agreements_Export_2026-06-01.csv` as optional expired-family backfill when the 06-02 export only contains future rows.
-- `Agreements_ProjectDescription.csv` as the preferred plain-text ProjectDescription source.
-- `ResourceDetail_Export_2026-06-02.csv` as the resource/labor source, with employee emails in the `Employee` column.
+- `Agreements_Export_2026-06-18.csv` as the header, lineage/family, and ProjectDescription source.
+- No backfill export by default because the 06-18 export is expected to contain all legacy rows needed for migrated families.
+- `ResourceDetail_Export_2026-06-18.csv` as the resource/labor source, with employee emails in the `Employee` column.
 - `mappings/og-lob-map.csv` for Operating Group and LOB cleanup.
 
 It writes a proposed import plan to `tools/migration/raw-plan-output/` and does not write to SharePoint.
@@ -43,9 +42,9 @@ Optional paths:
 
 ```powershell
 node tools/migration/plan-raw-import.mjs `
-  --raw "C:\path\Agreements_Export_2026-06-02.csv" `
+  --raw "C:\path\Agreements_Export_2026-06-18.csv" `
   --backfillRaw "C:\path\Agreements_Export_2026-06-01.csv" `
-  --resources "C:\path\ResourceDetail_Export_2026-06-02.csv" `
+  --resources "C:\path\ResourceDetail_Export_2026-06-18.csv" `
   --projectDescriptions "C:\path\Agreements_ProjectDescription.csv" `
   --ogMap "tools\migration\mappings\og-lob-map.csv" `
   --laborJobMap "tools\migration\mappings\Labor_Missing_JobID_map.csv" `
@@ -72,12 +71,13 @@ node tools/migration/plan-raw-import.mjs `
 
 - Target authorization number is generated from the legacy `Sequence`, for example `IWA-KAD-KPS-2023-M-1247`.
 - Raw `Parent GUID` is the family key.
+- In-scope migration families are selected when at least one row in the final Agreements export has `End Date` after `2026-06-17`.
 - If a migrated future record belongs to a raw family with expired base/mod rows, the full raw family is used for period envelope and mod backfill.
 - `periodStart` is the earliest start across the raw family.
 - `periodEnd` is the latest end across the raw family.
 - `periodStart` and `periodEnd` are emitted as `YYYY-MM-DD` date-only values to avoid UTC day-shift during SharePoint writes.
 - Rich text `ProjectDescription` is stripped to plain text.
-- `Agreements_ProjectDescription.csv` is preferred when present because it already contains plain-text descriptions.
+- `Agreements_ProjectDescription.csv` can still be passed explicitly, but the 06-18 export's `ProjectDescription` is the default source.
 - Base-row `ProjectDescription` maps to Authorization Scope of Work and Justification.
 - Mod-row `ProjectDescription` maps to Mod Reason.
 - Legacy `ProjectId` maps to target `contractId`; blanks are reported in `contract-id-issues.csv`.
