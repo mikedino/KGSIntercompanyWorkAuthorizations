@@ -510,7 +510,50 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         history.push(fallback);
     }, [history]);
 
-    const handleEdit = React.useCallback((): void => {
+    const showMissingModLinkDialog = React.useCallback((): void => {
+        setDialogTitle("Mod Link Missing");
+        setDialogMessage("This workflow run is marked as a modification, but the run is not linked to a Mod record. Editing it would load the base IWA data, so the Mod lookup must be repaired or the missing Mod restored before changes are submitted.");
+        setDialogOpen(true);
+    }, []);
+
+    const getFreshEditNavigationState = React.useCallback(async (): Promise<{ hasDecision: boolean; modId?: number; } | undefined> => {
+        if (!authorization?.Id) {
+            return undefined;
+        }
+
+        const [freshRuns, freshMods] = await Promise.all([
+            WorkflowService.getRunsByAuthorization(authorization.Id),
+            ModService.getByAuthorization(authorization.Id)
+        ]);
+        const latestRun = freshRuns.find((run) => run.runStatus === "active") ??
+            [...freshRuns].sort((left, right) => (right.runNumber ?? 0) - (left.runNumber ?? 0))[0];
+
+        if (!latestRun) {
+            return { hasDecision: false };
+        }
+
+        if (latestRun.runType !== "mod") {
+            return { hasDecision: !!latestRun.hasDecision };
+        }
+
+        // Edit routing is a workflow boundary, so do not trust the cached run's
+        // Mod lookup here. Refetch both lists and, if needed, recover the Mod by
+        // matching the Mod's currentWorkflowRun to the latest run before routing.
+        const modId = latestRun.mod?.Id ??
+            freshMods.find((mod) => mod.currentWorkflowRun?.Id === latestRun.Id)?.Id;
+
+        if (!modId) {
+            showMissingModLinkDialog();
+            return undefined;
+        }
+
+        return {
+            hasDecision: !!latestRun.hasDecision,
+            modId
+        };
+    }, [authorization?.Id, showMissingModLinkDialog]);
+
+    const handleEdit = React.useCallback(async (): Promise<void> => {
         if (!authorization || !canEditAuthorizationByUser) {
             return;
         }
@@ -519,16 +562,31 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             return;
         }
 
-        if (currentRun?.hasDecision) {
-            setModifyPromptOpen(true);
-            return;
-        }
+        try {
+            showBusy("Checking latest workflow...");
+            const editState = await getFreshEditNavigationState();
+            hideBusy();
 
-        history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: detailReturnTo,
-            modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
-        });
-    }, [authorization, canEditAuthorizationByUser, currentRun, detailReturnTo, draftMod, history]);
+            if (!editState) {
+                return;
+            }
+
+            if (editState.hasDecision) {
+                setModifyPromptOpen(true);
+                return;
+            }
+
+            history.push(`/authorizations/edit/${authorization.Id}`, {
+                returnTo: detailReturnTo,
+                modId: editState.modId
+            });
+        } catch (error) {
+            hideBusy();
+            setDialogTitle("Edit Load Error");
+            setDialogMessage(formatError(error));
+            setDialogOpen(true);
+        }
+    }, [authorization, canEditAuthorizationByUser, detailReturnTo, draftMod, getFreshEditNavigationState, hideBusy, history, showBusy]);
 
     const handleEditMod = React.useCallback((): void => {
         if (!authorization || !draftMod?.Id || !canEditDraftMod) {
@@ -542,17 +600,33 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         });
     }, [authorization, canEditDraftMod, detailReturnTo, draftMod, history]);
 
-    const handleConfirmModify = React.useCallback((): void => {
+    const handleConfirmModify = React.useCallback(async (): Promise<void> => {
         if (!authorization || !canEditAuthorizationByUser) {
             return;
         }
 
         setModifyPromptOpen(false);
-        history.push(`/authorizations/edit/${authorization.Id}`, {
-            returnTo: detailReturnTo,
-            modId: currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined
-        });
-    }, [authorization, canEditAuthorizationByUser, currentRun, detailReturnTo, history]);
+
+        try {
+            showBusy("Checking latest workflow...");
+            const editState = await getFreshEditNavigationState();
+            hideBusy();
+
+            if (!editState) {
+                return;
+            }
+
+            history.push(`/authorizations/edit/${authorization.Id}`, {
+                returnTo: detailReturnTo,
+                modId: editState.modId
+            });
+        } catch (error) {
+            hideBusy();
+            setDialogTitle("Edit Load Error");
+            setDialogMessage(formatError(error));
+            setDialogOpen(true);
+        }
+    }, [authorization, canEditAuthorizationByUser, detailReturnTo, getFreshEditNavigationState, hideBusy, history, showBusy]);
 
     const handleOpenInitiateMod = React.useCallback((): void => {
         setModPromptOpen(true);

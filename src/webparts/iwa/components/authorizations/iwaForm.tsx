@@ -274,7 +274,6 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         laborLinesByAuthorizationId,
         loadAuthorizationDetail,
         loadMyActions,
-        modsByAuthorizationId,
         refresh,
         resourcesByAuthorizationId,
         runByAuthorizationId,
@@ -291,37 +290,14 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const returnTo = location.state?.returnTo || fallbackReturnTo;
     const routeModId = location.state?.modId;
     const storedModId = readSessionModId(item?.Id);
-    const editableMods = React.useMemo<IModItem[]>(() => {
-        if (!item?.Id) {
-            return [];
-        }
-
-        return (modsByAuthorizationId.get(item.Id) ?? []).filter((mod: IModItem): boolean => editableModStatuses.includes(mod.modStatus));
-    }, [item?.Id, modsByAuthorizationId]);
-    const activeRunModId = React.useMemo<number | undefined>(() => {
+    const currentWorkflowRunForForm = React.useMemo(() => {
         if (!item?.Id) {
             return undefined;
         }
 
-        const currentRun = runByAuthorizationId.get(item.Id) ??
+        return runByAuthorizationId.get(item.Id) ??
             (runsByAuthorizationId.get(item.Id) ?? []).find((run) => run.runStatus === "active");
-
-        if (currentRun?.runType !== "mod" || !currentRun.mod?.Id) {
-            return undefined;
-        }
-
-        return editableMods.some((mod: IModItem): boolean => mod.Id === currentRun.mod?.Id)
-            ? currentRun.mod.Id
-            : undefined;
-    }, [editableMods, item?.Id, runByAuthorizationId, runsByAuthorizationId]);
-    const latestEditableModId = React.useMemo<number | undefined>(() => {
-        if (!item?.Id) {
-            return undefined;
-        }
-
-        return getEditableModId(editableMods);
-    }, [editableMods, item?.Id]);
-    const activeModDraftId = routeModId ?? storedModId ?? activeRunModId ?? latestEditableModId;
+    }, [item?.Id, runByAuthorizationId, runsByAuthorizationId]);
 
     const [activeStep, setActiveStep] = React.useState<IwaFormStep>(0);
     const [submitted, setSubmitted] = React.useState<boolean>(false);
@@ -558,6 +534,32 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         markUserInteracted();
         updateField(key, value);
     }, [markUserInteracted, updateField]);
+
+    const updateEntitySelection = React.useCallback((
+        field: "donor" | "receiving",
+        entity: IEntityItem | null
+    ): void => {
+        markUserInteracted();
+
+        setForm((prev: IAuthorizationItem) => ({
+            ...prev,
+            // Keep title, abbreviation, and GM in the same state transition.
+            // The Autocomplete value is derived from stored title/abbr; updating
+            // only the title leaves the old abbr alive for a render and can make
+            // MUI snap back to the previous entity when the input blurs.
+            ...(field === "donor"
+                ? {
+                    donorEntity: entity?.Title ?? "",
+                    donorEntityAbbr: entity?.abbr ?? "",
+                    donorGm: entity?.GM
+                }
+                : {
+                    receivingEntity: entity?.Title ?? "",
+                    receivingEntityAbbr: entity?.abbr ?? "",
+                    receivingGm: entity?.GM
+                })
+        }));
+    }, [markUserInteracted]);
 
     const handlePeoplePicker = React.useCallback((items: IPersonaProps[], field: keyof Pick<IAuthorizationItem, "pm" | "backupRequestor">): void => {
         markUserInteracted();
@@ -804,9 +806,35 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
 
             try {
-                const mods = await ModService.getByAuthorization(item.Id);
-                const requestedMod = activeModDraftId
-                    ? mods.find((candidate: IModItem): boolean => candidate.Id === activeModDraftId)
+                const [mods, freshRuns] = await Promise.all([
+                    ModService.getByAuthorization(item.Id),
+                    WorkflowService.getRunsByAuthorization(item.Id)
+                ]);
+                const freshCurrentRun = freshRuns.find((run) => run.runStatus === "active") ??
+                    [...freshRuns].sort((left, right) => (right.runNumber ?? 0) - (left.runNumber ?? 0))[0];
+                const modIdFromFreshRun = freshCurrentRun?.runType === "mod"
+                    ? freshCurrentRun.mod?.Id ?? mods.find((candidate: IModItem): boolean => candidate.currentWorkflowRun?.Id === freshCurrentRun.Id)?.Id
+                    : undefined;
+
+                if (freshCurrentRun?.runType === "mod" && !modIdFromFreshRun) {
+                    await loadAttachments(item.Id);
+                    setCurrentMod(undefined);
+                    // Do not continue into loadWorkPackageDraft(..., undefined);
+                    // undefined intentionally means "base" elsewhere in the form.
+                    // This check uses freshly-fetched runs/mods so an old browser
+                    // tab cannot route a mod workflow back into base editing.
+                    showDialog(
+                        "Mod Link Missing",
+                        "This authorization has an active modification workflow run, but the run is not linked to a Mod record. The form cannot safely load it as a base edit. Please repair the workflow run's Mod lookup or restore the missing Mod before editing."
+                    );
+                    return;
+                }
+
+                const resolvedActiveModId = freshCurrentRun?.runType === "mod"
+                    ? modIdFromFreshRun
+                    : routeModId ?? storedModId ?? getEditableModId(mods);
+                const requestedMod = resolvedActiveModId
+                    ? mods.find((candidate: IModItem): boolean => candidate.Id === resolvedActiveModId)
                     : undefined;
                 const mod = requestedMod && editableModStatuses.includes(requestedMod.modStatus)
                     ? requestedMod
@@ -814,7 +842,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         ? await ModService.getById(getEditableModId(mods)!)
                         : undefined;
 
-                if (activeModDraftId && !mod) {
+                if (resolvedActiveModId && !mod) {
                     sessionStorage.removeItem(getActiveModDraftSessionKey(item.Id));
                     showDialog("Mod Not Editable", "That modification is no longer editable. Refresh the IWA and initiate a new Mod if needed.");
                 }
@@ -844,29 +872,49 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             showDialog("Attachment Load Error", formatError(error));
             setIsBootstrapping(false);
         });
-    }, [activeModDraftId, item?.Id, loadAttachments, loadWorkPackageDraft, mode, showDialog]);
+    }, [item?.Id, loadAttachments, loadWorkPackageDraft, mode, routeModId, showDialog, storedModId]);
 
     // Keep entity abbreviations and GMs aligned with the selected entities so
     // downstream numbering/workflow logic can trust the header values.
     React.useEffect((): void => {
         if (selectedDonorEntity) {
-            updateField("donorEntityAbbr", selectedDonorEntity.abbr ?? "");
-            updateField("donorGm", selectedDonorEntity.GM);
+            if (form.donorEntityAbbr !== selectedDonorEntity.abbr || form.donorGm?.Id !== selectedDonorEntity.GM?.Id) {
+                setForm((prev: IAuthorizationItem) => ({
+                    ...prev,
+                    donorEntityAbbr: selectedDonorEntity.abbr ?? "",
+                    donorGm: selectedDonorEntity.GM
+                }));
+            }
         } else if (!form.donorEntity) {
-            updateField("donorEntityAbbr", "");
-            updateField("donorGm", undefined);
+            if (form.donorEntityAbbr || form.donorGm) {
+                setForm((prev: IAuthorizationItem) => ({
+                    ...prev,
+                    donorEntityAbbr: "",
+                    donorGm: undefined
+                }));
+            }
         }
-    }, [form.donorEntity, selectedDonorEntity, updateField]);
+    }, [form.donorEntity, form.donorEntityAbbr, form.donorGm, selectedDonorEntity]);
 
     React.useEffect((): void => {
         if (selectedReceivingEntity) {
-            updateField("receivingEntityAbbr", selectedReceivingEntity.abbr ?? "");
-            updateField("receivingGm", selectedReceivingEntity.GM);
+            if (form.receivingEntityAbbr !== selectedReceivingEntity.abbr || form.receivingGm?.Id !== selectedReceivingEntity.GM?.Id) {
+                setForm((prev: IAuthorizationItem) => ({
+                    ...prev,
+                    receivingEntityAbbr: selectedReceivingEntity.abbr ?? "",
+                    receivingGm: selectedReceivingEntity.GM
+                }));
+            }
         } else if (!form.receivingEntity) {
-            updateField("receivingEntityAbbr", "");
-            updateField("receivingGm", undefined);
+            if (form.receivingEntityAbbr || form.receivingGm) {
+                setForm((prev: IAuthorizationItem) => ({
+                    ...prev,
+                    receivingEntityAbbr: "",
+                    receivingGm: undefined
+                }));
+            }
         }
-    }, [form.receivingEntity, selectedReceivingEntity, updateField]);
+    }, [form.receivingEntity, form.receivingEntityAbbr, form.receivingGm, selectedReceivingEntity]);
 
     // When the contract changes, rehydrate invoice options and auto-apply
     // the PM / OG / LOB hints that we already trust from the JAMIS source.
@@ -1232,7 +1280,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 .getByFileName(fileName)
                 .executeAndWait();
 
-            await file.delete().executeAndWait();
+            await file.recycleObject().executeAndWait();
             await loadAttachments(draftId);
         } catch (error) {
             showDialog("Attachment Remove Error", formatError(error));
@@ -1417,6 +1465,23 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             return false;
         }
 
+        if (
+            mode === "edit" &&
+            normalizedStatus !== "draft" &&
+            currentWorkflowRunForForm?.runType === "mod" &&
+            !currentMod?.Id
+        ) {
+            setIsSaving(false);
+            // A submitted/rejected mod must always submit with a Mod id. Without
+            // one, the normal base-save branch would create a base workflow run
+            // and make the UI look like the modification disappeared.
+            showDialog(
+                "Mod Link Missing",
+                "This active modification workflow is missing its Mod lookup, so the form cannot safely submit it as a base IWA. Please repair the workflow run's Mod lookup or restore the missing Mod before resubmitting."
+            );
+            return false;
+        }
+
         if (isSubmittingMod && !modReason.trim()) {
             setIsSaving(false);
             showDialog("Mod Reason Required", "Please enter a reason for this modification before submitting it for approval.");
@@ -1505,11 +1570,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     afterTravelRows: travelRows,
                     afterFfpLaborRows: ffpLaborRows
                 });
-                let activeModRun = activeRun?.runType === "mod" && activeRun.mod?.Id === currentMod.Id
+                const modWorkflowRunId = currentMod.currentWorkflowRun?.Id;
+                let activeModRun = activeRun?.runType === "mod" && (activeRun.mod?.Id === currentMod.Id || activeRun.Id === modWorkflowRunId)
                     ? activeRun
                     : (runsByAuthorizationId.get(saved.Id) ?? []).find((run) =>
                         run.runType === "mod" &&
-                        run.mod?.Id === currentMod.Id &&
+                        (run.mod?.Id === currentMod.Id || run.Id === modWorkflowRunId) &&
                         run.runStatus === "active"
                     );
 
@@ -1517,9 +1583,23 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     const freshRuns = await WorkflowService.getRunsByAuthorization(saved.Id);
                     activeModRun = freshRuns.find((run) =>
                         run.runType === "mod" &&
-                        run.mod?.Id === currentMod.Id &&
+                        (run.mod?.Id === currentMod.Id || run.Id === modWorkflowRunId) &&
                         run.runStatus === "active"
                     );
+                }
+
+                if (activeModRun?.Id && !activeModRun.mod?.Id) {
+                    // The Mod record still knows its current workflow run, but
+                    // the run lost the reverse lookup. Repair that link before
+                    // recording workflow actions or reusing the active run.
+                    await WorkflowRunService.updateModLookup(activeModRun.Id, currentMod.Id);
+                    activeModRun = {
+                        ...activeModRun,
+                        mod: {
+                            Id: currentMod.Id,
+                            Title: currentMod.Title
+                        }
+                    };
                 }
 
                 if (activeModRun?.Id && !activeModRun.hasDecision) {
@@ -1749,7 +1829,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             setIsSaving(false);
         }
-    }, [activeModId, clearAuthorizationDetailCache, currentMod, currentUser?.user?.Id, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, loadMyActions, modReason, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
+    }, [activeModId, clearAuthorizationDetailCache, currentMod, currentUser?.user?.Id, currentWorkflowRunForForm, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, loadMyActions, modReason, mode, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
     const getProgressSaveStatus = React.useCallback((): AuthorizationStatus => {
         if (isModDraftMode) {
@@ -1886,8 +1966,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         options={entityOptions}
                         value={selectedDonorEntity}
                         disabled={isBaselineLocked}
+                        isOptionEqualToValue={(option: IEntityItem, value: IEntityItem) => option.Id === value.Id}
                         onChange={(_, value: IEntityItem | null) => {
-                            updateUserField("donorEntity", value?.Title ?? "");
+                            updateEntitySelection("donor", value);
                         }}
                         getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
                         renderInput={(params) => (
@@ -1912,8 +1993,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         options={entityOptions}
                         value={selectedReceivingEntity}
                         disabled={isBaselineLocked}
+                        isOptionEqualToValue={(option: IEntityItem, value: IEntityItem) => option.Id === value.Id}
                         onChange={(_, value: IEntityItem | null) => {
-                            updateUserField("receivingEntity", value?.Title ?? "");
+                            updateEntitySelection("receiving", value);
                         }}
                         getOptionLabel={(option: IEntityItem) => option.combinedTitle || option.Title}
                         renderInput={(params) => (

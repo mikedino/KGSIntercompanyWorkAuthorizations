@@ -149,11 +149,37 @@ export class WorkflowRunService {
         restartReason?: string,
         restartComment?: string
     ): Promise<IWorkflowRunItem> {
+        // A mod workflow run without its Mod lookup is dangerous: the edit form
+        // cannot distinguish it from a base edit and may reload base work-package
+        // data. Fail before creating a run that would become orphaned.
+        if (!mod.Id) {
+            throw new Error("Cannot create a modification workflow run because the Mod lookup Id is missing.");
+        }
+
         return this.createRun(authorization, approvers, nextRunNumber, restartReason, restartComment, {
             runType: "mod",
             modId: mod.Id,
             titleSuffix: `-MOD-${String(mod.modNumber).padStart(2, "0")}`
         });
+    }
+
+    static async updateModLookup(runId: number, modId: number): Promise<void> {
+        // Used as a narrow repair path when an existing active mod run can be
+        // matched to a loaded Mod through the Mod's currentWorkflowRun lookup.
+        // This keeps the workflow restart path from drifting into base mode.
+        if (!runId || !modId) {
+            throw new Error("Workflow Run Id and Mod Id are required to repair the workflow run Mod lookup.");
+        }
+
+        await Web()
+            .Lists(Strings.Sites.main.lists.WorkflowRuns)
+            .Items()
+            .getById(runId)
+            .update({
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
+                modId
+            })
+            .executeAndWait();
     }
 
     static async getNextRunNumber(authorizationId: number): Promise<number> {
