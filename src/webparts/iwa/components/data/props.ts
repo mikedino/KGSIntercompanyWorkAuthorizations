@@ -228,6 +228,7 @@ export interface IConfigItem {
   Title: string;
   IsFor: string;
   User?: IPeoplePicker;
+  Acronym?: string;
 }
 
 
