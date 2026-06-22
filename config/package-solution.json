@@ -3,7 +3,7 @@
   "solution": {
     "name": "Intercompany Work Authorization",
     "id": "f95badf4-450f-4932-96b3-8e674e7ce352",
-    "version": "1.0.3.1",
+    "version": "1.0.3.2",
     "iconPath": "assets/KGS-Logo-Stacked_96x96.jpg",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
@@ -31,7 +31,7 @@
         "title": "intercompany-work-authorization Feature",
         "description": "The feature that activates elements of the intercompany-work-authorization solution.",
         "id": "f33619e1-d575-4e9d-aaad-90c9d6062f87",
-        "version": "1.0.3.1"
+        "version": "1.0.3.2"
       }
     ]
   },
