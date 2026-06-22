@@ -55,11 +55,6 @@ export class DataSource {
     private static _currentUser: IAppUserItem | undefined;
     static get CurrentUser(): IAppUserItem | undefined { return this._currentUser; }
 
-    static get UserGuide(): string | undefined {
-        const guide = this._config.find((config: IConfigItem) => config.IsFor === "UserGuide")?.Title;
-        return guide?.trim() || undefined;
-    }
-
     static setCurrentUser(user: IAppUserItem): boolean {
         this._currentUser = user;
         this.isAdmin = (user.role ?? "user").toLowerCase() === "admin";
@@ -188,6 +183,11 @@ export class DataSource {
         return this._config.find((config) => config.IsFor === "CFO")?.User;
     }
 
+    static get UserGuide(): string | undefined {
+        const guide = this._config.find((config: IConfigItem) => config.IsFor === "UserGuide" && config.Acronym === "IWA")?.Title;
+        return guide?.trim() || undefined;
+    }
+
     static get States(): string[] {
         return this._config
             .filter((config) => config.IsFor === "State")
@@ -213,7 +213,7 @@ export class DataSource {
                 .Items()
                 .query({
                     Select: [
-                        "Id", "Title", "IsFor",
+                        "Id", "Title", "IsFor", "Acronym",
                         "User/Id", "User/Title", "User/EMail"
                     ],
                     Expand: ["User"],
