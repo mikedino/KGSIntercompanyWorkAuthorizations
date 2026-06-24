@@ -20,7 +20,7 @@ export const setContext = (context: WebPartContext): void => {
  * be set before they are used.
  */
 const Strings = {
-    ProjectName: "Intercompany Work Authorization (IWA)",
+    ProjectName: "Intercompany Work Authorization (IWA) - SANDBOX",
     Sites: {
         main: {
             url: ContextInfo.webAbsoluteUrl,
