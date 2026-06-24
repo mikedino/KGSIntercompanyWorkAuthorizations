@@ -1,7 +1,7 @@
-import { Web } from "gd-sprest";
 import Strings from "../common/strings";
-import { encodeListName, formatError } from "../common/utils";
+import { encodeListName } from "../common/utils";
 import { IOgItem } from "../data/props";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 export interface IOgPayload {
     Id: number;
@@ -18,86 +18,57 @@ export interface IOgPayload {
 
 export class OgService {
 
-    static create(item: IOgPayload): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.OGs)
-                .Items()
-                .add({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
-                    Title: item.Title,
-                    presidentId: item.presidentId,
-                    lobId: item.lobId,
-                    CMId: item.CMId,
-                    SCMId: item.SCMId,
-                    ogType: item.ogType,
-                    parentOgId: item.parentOgId,
-                    isActive: item.isActive,
-                    isSelectable: item.isSelectable
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error creating OG: ${formatError(err)}`))
-                );
-        });
+    static async create(item: IOgPayload): Promise<void> {
+        await AdminLookupWriteService.addItem(
+            Strings.Sites.lookups.lists.OGs,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
+                Title: item.Title,
+                presidentId: item.presidentId,
+                lobId: item.lobId,
+                CMId: item.CMId,
+                SCMId: item.SCMId,
+                ogType: item.ogType,
+                parentOgId: item.parentOgId,
+                isActive: item.isActive,
+                isSelectable: item.isSelectable
+            }
+        );
     }
 
     static async updateApprovers(ogId: number, presidentId?: number, cmId?: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.OGs)
-                .Items()
-                .getById(ogId)
-                .update({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
-                    presidentId: presidentId ?? null,
-                    CMId: cmId ?? null
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error updating approver in OG list: ${formatError(err)}`))
-                );
-        });
+        await AdminLookupWriteService.updateItem(
+            Strings.Sites.lookups.lists.OGs,
+            ogId,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
+                presidentId: presidentId ?? null,
+                CMId: cmId ?? null
+            }
+        );
     }
 
     static async update(item: IOgPayload): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.OGs)
-                .Items()
-                .getById(item.Id)
-                .update({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
-                    Title: item.Title,
-                    presidentId: item.presidentId,
-                    lobId: item.lobId,
-                    CMId: item.CMId,
-                    SCMId: item.SCMId,
-                    ogType: item.ogType,
-                    parentOgId: item.parentOgId,
-                    isActive: item.isActive,
-                    isSelectable: item.isSelectable
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error updating OG item: ${formatError(err)}`))
-                );
-        });
+        await AdminLookupWriteService.updateItem(
+            Strings.Sites.lookups.lists.OGs,
+            item.Id,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.OGs)}ListItem` },
+                Title: item.Title,
+                presidentId: item.presidentId,
+                lobId: item.lobId,
+                CMId: item.CMId,
+                SCMId: item.SCMId,
+                ogType: item.ogType,
+                parentOgId: item.parentOgId,
+                isActive: item.isActive,
+                isSelectable: item.isSelectable
+            }
+        );
     }
 
-    static delete(ogId: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.OGs)
-                .Items()
-                .getById(ogId)
-                .recycle()
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error deleting OG: ${formatError(err)}`))
-                );
-        });
+    static async delete(ogId: number): Promise<void> {
+        await AdminLookupWriteService.recycleItem(Strings.Sites.lookups.lists.OGs, ogId);
     }
 
 }

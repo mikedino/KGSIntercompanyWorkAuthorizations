@@ -18,6 +18,7 @@ import { LobService } from "./lobService";
 import { EntityService } from "./entityService";
 import { IOgPayload, OgService } from "./ogService";
 import { ConfigService } from "./configService";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 type ApproverSection = "company" | "lobs" | "ogs" | "entities";
 type BusyRunner = <T, >(message: string, fn: () => Promise<T>) => Promise<T>;
@@ -81,7 +82,7 @@ export const ApproversAdminPanel: React.FC<ApproversAdminPanelProps> = ({
   const cfo = useMemo(() => config.find((item: IConfigItem) => item.IsFor === "CFO"), [config]);
 
   const peoplePickerContext: PeoplePickerContext = {
-    absoluteUrl: context.pageContext.web.absoluteUrl,
+    absoluteUrl: AdminLookupWriteService.lookupsAbsoluteUrl,
     msGraphClientFactory: context.msGraphClientFactory,
     spHttpClient: context.spHttpClient
   };

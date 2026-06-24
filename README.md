@@ -31,7 +31,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | 1.0.2.0 | June 16, 2026 | Landino | Adjust how we resolve auto-stamped users. Site collections don't share same userID's, so we must ensureUser before resolving. |
 | 1.0.3.1 | June 18, 2026 | Landino | Fix Mod edit/reject flow - add guard for missing Mod. Reset salary when employee changes. Add STO to displays. |
 | 1.0.3.2 | June 22, 2026 | Landino | Adjust User Guide config item to be unique to IWA |
-| 1.0.4.0 | June 24, 2026 | Landino | Add NAICS Code, Job ID Title, add STD/OT rates to export, All OGPs can see financials |
+| 1.0.4.0 | June 24, 2026 | Landino | Add NAICS Code, Job ID Title, add STD/OT rates to export, All OGPs can see financials, Admin page Add/Edit mods |
 
 ---
 

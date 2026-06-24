@@ -13,6 +13,7 @@ import { useTheme } from "@mui/material/styles";
 import { AppUserService } from "../users/userService";
 import { useIwa } from "../data/iwaContext";
 import { useShellUi } from "../ui/ShellUiContext";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 type AdminTabKey = "users" | "approvers" | "migration";
 
@@ -29,6 +30,8 @@ const AdminPage: React.FC<AdminModuleProps> = ({ context }) => {
       </Box>
     );
   }
+
+  AdminLookupWriteService.configure(context);
 
   const [tab, setTab] = useState<AdminTabKey>("users");
 

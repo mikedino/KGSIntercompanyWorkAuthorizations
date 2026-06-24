@@ -1,25 +1,19 @@
-import { Web } from "gd-sprest";
 import Strings from "../common/strings";
-import { encodeListName, formatError } from "../common/utils";
+import { encodeListName } from "../common/utils";
 import { DataSource } from "../data/ds";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 export class ConfigService {
 
-    static updateApprover(configItemId: number, userId?: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.Config)
-                .Items()
-                .getById(configItemId)
-                .update({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.Config)}ListItem` },
-                    UserId: userId ?? null
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error updating Config list approver: ${formatError(err)}`))
-                );
-        });
+    static async updateApprover(configItemId: number, userId?: number): Promise<void> {
+        await AdminLookupWriteService.updateItem(
+            Strings.Sites.lookups.lists.Config,
+            configItemId,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.Config)}ListItem` },
+                UserId: userId ?? null
+            }
+        );
     }
 
     // update config approvers real-time
