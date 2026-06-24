@@ -47,6 +47,7 @@ export class WorkflowDecisionService {
             contractId: authorization.contractId,
             iwaJamisProjectId: authorization.iwaJamisProjectId ?? "",
             customerContractCode: authorization.customerContractCode ?? "",
+            naicsCode: authorization.naicsCode ?? "",
             invoice: authorization.invoice ?? "",
             contractType: authorization.contractType,
             periodStart: authorization.periodStart || null,

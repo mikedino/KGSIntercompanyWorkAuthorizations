@@ -19,6 +19,7 @@ const headerLabels: Record<string, string> = {
     contractName: "Contract Name",
     contractId: "Contract ID",
     customerContractCode: "Customer Contract Code",
+    naicsCode: "NAICS Code",
     invoice: "Invoice",
     contractType: "Contract Type",
     periodStart: "Period Start",
@@ -45,6 +46,7 @@ const resourceLabels: Record<string, string> = {
 const laborLabels: Record<string, string> = {
     pricingType: "Pricing Type",
     jobId: "Job ID",
+    jobTitle: "Job Title",
     standardHours: "Standard Hours",
     overtimeHours: "Overtime Hours",
     annualSalary: "Annual Salary",
@@ -61,6 +63,7 @@ const laborLabels: Record<string, string> = {
 const travelLabels: Record<string, string> = {
     lineType: "Type",
     jobId: "Job ID",
+    jobTitle: "Job Title",
     description: "Description",
     amount: "Amount",
     comments: "Comments"

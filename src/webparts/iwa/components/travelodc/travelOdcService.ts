@@ -8,7 +8,7 @@ export class TravelOdcService {
     private static readonly selectQuery: string[] = [
         "Id", "Title", "lineScope",
         "lineNumber", "displayOrder", "isActive",
-        "lineType", "jobId", "description",
+        "lineType", "jobId", "jobTitle", "description",
         "amount", "comments", "authorization/Id",
         "authorization/Title", "mod/Id", "mod/Title"
     ];
@@ -23,6 +23,7 @@ export class TravelOdcService {
             displayOrder: number;
             lineType: "travel" | "odc" | "other";
             jobId: string;
+            jobTitle?: string;
             description?: string;
             amount: number;
             comments?: string;
@@ -64,6 +65,7 @@ export class TravelOdcService {
                 isActive: true,
                 lineType: row.lineType,
                 jobId: row.jobId,
+                jobTitle: row.jobTitle ?? "",
                 description: row.description ?? "",
                 amount: row.amount,
                 comments: row.comments ?? ""

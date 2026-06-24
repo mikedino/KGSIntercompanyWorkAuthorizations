@@ -36,7 +36,6 @@ export const getFinancialViewerIds = (
     workflowRuns.forEach((run) => {
         addPersonAndBackups(authorizedIds, appUsers, run.pendingApprover);
         addPersonAndBackups(authorizedIds, appUsers, run.hr);
-        addPersonAndBackups(authorizedIds, appUsers, run.ogPresident);
         addPersonAndBackups(authorizedIds, appUsers, run.cfo);
     });
 
@@ -51,12 +50,13 @@ export const canViewFinancialAmounts = (
 ): boolean => {
     const currentUserId = currentUser?.user?.Id;
     const isAdmin = DataSource.isAdmin || (currentUser?.role ?? "user").toLowerCase() === "admin";
+    const isOGP = DataSource.isOGP;
 
     if (!authorization) {
         return false;
     }
 
-    if (isAdmin) {
+    if (isAdmin || isOGP) {
         return true;
     }
 

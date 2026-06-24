@@ -6,6 +6,7 @@ export interface IEditableResourceRow {
     state: string;
     comments: string;
     jobId: string;
+    jobTitle: string;
     laborCategory: string;
     standardHours: string;
     stoHours: boolean;
@@ -19,6 +20,7 @@ export interface IEditableTravelRow {
     id: string;
     lineType: TravelLineType;
     jobId: string;
+    jobTitle: string;
     description: string;
     amount: string;
     comments: string;
@@ -27,6 +29,7 @@ export interface IEditableTravelRow {
 export interface IEditableFfpLaborRow {
     id: string;
     jobId: string;
+    jobTitle: string;
     chargingPeriod: ChargingPeriod;
     periodQty: string;
     lumpSumAmount: string;
@@ -39,6 +42,7 @@ export interface IPriorResourceRow {
     employee: IPeoplePicker;
     state: string;
     jobId: string;
+    jobTitle: string;
     laborCategory: string;
     approvedStandardHours: number;
     approvedOvertimeHours: number;

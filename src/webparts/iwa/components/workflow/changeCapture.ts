@@ -47,6 +47,7 @@ const normalizeAuthorization = (authorization?: IAuthorizationItem): Record<stri
     contractName: authorization?.contractName ?? "",
     contractId: authorization?.contractId ?? "",
     customerContractCode: authorization?.customerContractCode ?? "",
+    naicsCode: authorization?.naicsCode ?? "",
     invoice: authorization?.invoice ?? "",
     contractType: authorization?.contractType ?? "",
     periodStart: authorization?.periodStart ?? "",
@@ -103,6 +104,7 @@ const normalizeExistingLabor = (laborLines: ILaborLineItem[], resources: IResour
                 lineNumber: line.lineNumber ?? index + 1,
                 pricingType,
                 jobId: line.jobId ?? "",
+                jobTitle: line.jobTitle ?? "",
                 comments: line.comments ?? ""
             };
 
@@ -139,6 +141,7 @@ const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpRows: IEditableFfp
             lineNumber: index + 1,
             pricingType: "ffp",
             jobId: row.jobId.trim(),
+            jobTitle: row.jobTitle.trim(),
             employeeIds: row.resourceRowIds.map((resourceRowId) => employeeIdByRowId.get(resourceRowId)).filter(Boolean),
             chargingPeriod: row.chargingPeriod,
             periodQty: Number(row.periodQty || 0),
@@ -162,6 +165,7 @@ const normalizeDraftLabor = (rows: IEditableResourceRow[], ffpRows: IEditableFfp
             pricingType: "tm",
             employeeId: row.employee?.Id ?? null,
             jobId: row.jobId.trim(),
+            jobTitle: row.jobTitle.trim(),
             standardHours: compensation.standardHours,
             overtimeHours: compensation.overtimeHours,
             annualSalary: compensation.annualSalary,
@@ -180,6 +184,7 @@ const normalizeExistingTravel = (travelOdcs: ITravelOdcItem[]): Record<string, u
             lineNumber: line.lineNumber ?? index + 1,
             lineType: line.lineType,
             jobId: line.jobId ?? "",
+            jobTitle: line.jobTitle ?? "",
             description: line.description ?? "",
             amount: Number(line.amount ?? 0),
             comments: line.comments ?? ""
@@ -191,6 +196,7 @@ const normalizeDraftTravel = (rows: IEditableTravelRow[]): Record<string, unknow
         lineNumber: index + 1,
         lineType: row.lineType,
         jobId: row.jobId.trim(),
+        jobTitle: row.jobTitle.trim(),
         description: row.description.trim(),
         amount: Number(row.amount || 0),
         comments: row.comments.trim()

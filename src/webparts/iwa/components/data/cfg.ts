@@ -94,6 +94,11 @@ export const Configuration = Helper.SPConfig({
           type: Helper.SPCfgFieldType.Text
         },
         {
+          name: "naicsCode",
+          title: "NAICS Code",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
           name: "invoice",
           title: "Invoice",
           type: Helper.SPCfgFieldType.Text,
@@ -268,6 +273,7 @@ export const Configuration = Helper.SPConfig({
             "contractId",
             "iwaJamisProjectId",
             "customerContractCode",
+            "naicsCode",
             "invoice",
             "receivingEntity",
             "approvedGrandTotal",
@@ -613,6 +619,12 @@ export const Configuration = Helper.SPConfig({
           indexed: true
         },
         {
+          name: "jobTitle",
+          title: "Job Title",
+          description: "Direct Job Title from JAMIS",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
           name: "resources",
           title: "Resources",
           type: Helper.SPCfgFieldType.Lookup,
@@ -731,6 +743,7 @@ export const Configuration = Helper.SPConfig({
             "lineScope",
             "resources",
             "jobId",
+            "jobTitle",
             "standardHours",
             "stoHours",
             "overtimeHours",
@@ -817,6 +830,12 @@ export const Configuration = Helper.SPConfig({
           indexed: true
         },
         {
+          name: "jobTitle",
+          title: "Job Title",
+          description: "Direct Job Title from JAMIS",
+          type: Helper.SPCfgFieldType.Text
+        },
+        {
           name: "description",
           title: "Description",
           type: Helper.SPCfgFieldType.Note,
@@ -854,6 +873,7 @@ export const Configuration = Helper.SPConfig({
             "lineScope",
             "lineType",
             "jobId",
+            "jobTitle",
             "amount",
             "isActive"
           ]

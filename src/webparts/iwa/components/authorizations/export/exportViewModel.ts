@@ -22,6 +22,8 @@ export interface IIwaExportOption {
 
 export interface IIwaExportSummaryRow {
     jobId: string;
+    laborJobTitle: string;
+    travelJobTitle: string;
     previousLabor: number;
     modLabor: number;
     newLabor: number;
@@ -49,8 +51,10 @@ export interface IIwaExportLaborDetailRow {
     jobId: string;
     laborCategory: string;
     standardHours: number;
+    standardRate: number;
     stoHours: boolean;
     overtimeHours: number;
+    overtimeRate: number;
     totalAmount: number;
 }
 
@@ -112,6 +116,7 @@ const sum = <T,>(items: T[], selector: (item: T) => number): number => (
 const getLaborAmount = (line: ILaborLineItem): number => Number(line.totalAmount ?? 0);
 const getTravelAmount = (line: ITravelOdcItem): number => Number(line.amount ?? 0);
 const getJobId = (line: { jobId?: string }): string => line.jobId?.trim() || "Unassigned";
+const getJobTitle = (line: { jobTitle?: string }): string => line.jobTitle?.trim() ?? "";
 
 const addToMap = (map: Map<string, number>, key: string, value: number): void => {
     map.set(key, (map.get(key) ?? 0) + value);
@@ -120,6 +125,21 @@ const addToMap = (map: Map<string, number>, key: string, value: number): void =>
 const buildAmountMap = <T extends { jobId?: string }>(items: T[], selector: (item: T) => number): Map<string, number> => {
     const map = new Map<string, number>();
     items.forEach((item) => addToMap(map, getJobId(item), selector(item)));
+    return map;
+};
+
+const buildJobTitleMap = <T extends { jobId?: string; jobTitle?: string }>(items: T[]): Map<string, string> => {
+    const map = new Map<string, string>();
+
+    items.forEach((item) => {
+        const jobId = getJobId(item);
+        const jobTitle = getJobTitle(item);
+
+        if (jobTitle && !map.has(jobId)) {
+            map.set(jobId, jobTitle);
+        }
+    });
+
     return map;
 };
 
@@ -197,8 +217,10 @@ const buildLaborDetails = (laborLines: ILaborLineItem[], resources: IResourceIte
                 jobId: getJobId(line),
                 laborCategory: resource?.laborCategory ?? "-",
                 standardHours: Number(line.standardHours ?? 0),
+                standardRate: Number(line.standardRate ?? 0),
                 stoHours: !!line.stoHours,
                 overtimeHours: Number(line.overtimeHours ?? 0),
+                overtimeRate: Number(line.overtimeRate ?? 0),
                 totalAmount: getLaborAmount(line)
             };
         });
@@ -315,6 +337,8 @@ export const buildIwaExportViewModel = (
     const previousTravelByJob = buildAmountMap(previousTravelLines, getTravelAmount);
     const modLaborByJob = buildAmountMap(currentModLaborLines, getLaborAmount);
     const modTravelByJob = buildAmountMap(currentModTravelLines, getTravelAmount);
+    const laborTitleByJob = buildJobTitleMap([...currentModLaborLines, ...previousLaborLines]);
+    const travelTitleByJob = buildJobTitleMap([...currentModTravelLines, ...previousTravelLines]);
     const jobIds = Array.from(new Set([
         ...previousLaborByJob.keys(),
         ...previousTravelByJob.keys(),
@@ -331,6 +355,8 @@ export const buildIwaExportViewModel = (
 
         return {
             jobId,
+            laborJobTitle: laborTitleByJob.get(jobId) ?? "",
+            travelJobTitle: travelTitleByJob.get(jobId) ?? "",
             previousLabor,
             modLabor,
             newLabor,

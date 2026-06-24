@@ -85,6 +85,7 @@ const createEmptyResourceDraft = (): IEditableResourceRow => ({
     state: "",
     comments: "",
     jobId: "",
+    jobTitle: "",
     laborCategory: "",
     standardHours: "",
     stoHours: false,
@@ -98,6 +99,7 @@ const createEmptyTravelDraft = (): IEditableTravelRow => ({
     id: "",
     lineType: "travel",
     jobId: "",
+    jobTitle: "",
     description: "",
     amount: "",
     comments: ""
@@ -106,6 +108,7 @@ const createEmptyTravelDraft = (): IEditableTravelRow => ({
 const createEmptyFfpLaborDraft = (): IEditableFfpLaborRow => ({
     id: "",
     jobId: "",
+    jobTitle: "",
     chargingPeriod: "monthly",
     periodQty: "",
     lumpSumAmount: "",
@@ -308,6 +311,10 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         return labels.length ? labels.join(", ") : "—";
     }, [ffpLaborRows]);
 
+    const getJobTitle = React.useCallback((jobId: string, fallback?: string): string => {
+        return fallback?.trim() || jobOptions.find((job) => job.field_13 === jobId)?.field_19?.trim() || "";
+    }, [jobOptions]);
+
     const copyPriorResource = React.useCallback((row: IPriorResourceRow): void => {
         onAddResource({
             id: "",
@@ -315,6 +322,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             state: row.state,
             comments: "",
             jobId: row.jobId,
+            jobTitle: row.jobTitle,
             laborCategory: row.laborCategory,
             standardHours: "",
             stoHours: false,
@@ -914,7 +922,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
-                                            onChange={(_, value: IJobItem | null) => setResourceDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
+                                            onChange={(_, value: IJobItem | null) => setResourceDraft((prev) => ({
+                                                ...prev,
+                                                jobId: value?.field_13 ?? "",
+                                                jobTitle: value?.field_19 ?? ""
+                                            }))}
                                             filterOptions={(options, state) => filterAllJobOptions(options, state.inputValue)}
                                             getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                             isOptionEqualToValue={(option, value) => option.Id === value.Id}
@@ -924,7 +936,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                     {...params}
                                                     label={infoLabel("Job ID", "Charge code for this resource's labor hours.", true)}
                                                     error={Boolean(resourceDraftErrors.jobId)}
-                                                    helperText={resourceDraftErrors.jobId}
+                                                    helperText={resourceDraftErrors.jobId || getJobTitle(resourceDraft.jobId, resourceDraft.jobTitle) || " "}
                                                     sx={{ "& .MuiInputBase-input": { textOverflow: "clip" } }}
                                                 />
                                             )}
@@ -1049,7 +1061,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                 <Autocomplete
                                     options={jobOptions}
                                     value={jobOptions.find((job) => job.field_13 === ffpDraft.jobId) ?? null}
-                                    onChange={(_, value: IJobItem | null) => setFfpDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
+                                    onChange={(_, value: IJobItem | null) => setFfpDraft((prev) => ({
+                                        ...prev,
+                                        jobId: value?.field_13 ?? "",
+                                        jobTitle: value?.field_19 ?? ""
+                                    }))}
                                     filterOptions={(options, state) => filterJobOptions(options, state.inputValue)}
                                     getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                     isOptionEqualToValue={(option, value) => option.Id === value.Id}
@@ -1171,7 +1187,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                 <Autocomplete
                                     options={jobOptions}
                                     value={jobOptions.find((job) => job.field_13 === travelDraft.jobId) ?? null}
-                                    onChange={(_, value: IJobItem | null) => setTravelDraft((prev) => ({ ...prev, jobId: value?.field_13 ?? "" }))}
+                                    onChange={(_, value: IJobItem | null) => setTravelDraft((prev) => ({
+                                        ...prev,
+                                        jobId: value?.field_13 ?? "",
+                                        jobTitle: value?.field_19 ?? ""
+                                    }))}
                                     filterOptions={(options, state) => filterAllJobOptions(options, state.inputValue)}
                                     getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                     isOptionEqualToValue={(option, value) => option.Id === value.Id}
@@ -1182,7 +1202,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             label="Job ID"
                                             required
                                             error={Boolean(travelDraftErrors.jobId)}
-                                            helperText={travelDraftErrors.jobId}
+                                            helperText={travelDraftErrors.jobId || getJobTitle(travelDraft.jobId, travelDraft.jobTitle) || " "}
                                         />
                                     )}
                                 />
