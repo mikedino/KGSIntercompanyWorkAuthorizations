@@ -70,14 +70,14 @@ const compactTableSx = {
 
 const laborTableSx = {
     ...compactTableSx,
-    "& .labor-employee": { width: "21%" },
+    "& .labor-employee": { width: "17%" },
     "& .labor-state": { width: "12%", whiteSpace: "nowrap" },
-    "& .labor-job": { width: "20%" },
-    "& .labor-category": { width: "20%" },
-    "& .labor-std": { width: "7%" },
+    "& .labor-job": { width: "16%" },
+    "& .labor-category": { width: "16%" },
+    "& .labor-hours": { width: "5%" },
+    "& .labor-rate": { width: "8%" },
     "& .labor-sto": { width: "4%" },
-    "& .labor-ot": { width: "6%" },
-    "& .labor-total": { width: "10%" }
+    "& .labor-total": { width: "9%" }
 };
 
 const isModelApprovedForPdf = (model: ReturnType<typeof buildIwaExportViewModel>): boolean => {
@@ -375,23 +375,30 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                             <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Transaction Header</Typography>
                             <Grid container spacing={2}>
                                 {[
-                                    ["ENTITY A (DONOR)", authorization.donorEntity, authorization.donorEntityAbbr],
-                                    ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity, authorization.receivingEntityAbbr],
-                                    ["OG", authorization.og || "-", ""],
-                                    ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
-                                    ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
-                                    ["LOB", authorization.lob || "-", ""],
-                                    ["CONTRACT & INVOICE", authorization.invoice || taskOrder?.InvoiceID1 || "-", ""],
-                                    ["CONTRACT NAME", authorization.contractName || "-", ""],
-                                    ["IWA JAMIS PROJECT ID", authorization.iwaJamisProjectId || "-", ""],
-                                    ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`],
-                                    ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],
-                                    ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""]
-                                ].map(([label, value, detail]) => (
-                                    <Grid key={label} spacing={0} size={{ xs: 12, md: 4 }}>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: "block", lineHeight: 1.05, mb: 0.5 }}>{label}</Typography>
-                                        <Typography fontWeight={600} sx={{ mb: 0.15 }}>{value}</Typography>
-                                        {detail && <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.2 }}>{detail}</Typography>}
+                                    { label: "ENTITY A (DONOR)", value: authorization.donorEntity, detail: authorization.donorEntityAbbr },
+                                    { label: "ENTITY B (RECEIVES SERVICES)", value: authorization.receivingEntity, detail: authorization.receivingEntityAbbr },
+                                    { label: "OG", value: authorization.og || "-", detail: "" },
+                                    { label: "ENTITY A GM", value: authorization.donorGm?.Title || "-", detail: "" },
+                                    { label: "ENTITY B GM", value: authorization.receivingGm?.Title || "-", detail: "" },
+                                    { label: "LOB", value: authorization.lob || "-", detail: "" },
+                                    { label: "CONTRACT & INVOICE", value: authorization.invoice || taskOrder?.InvoiceID1 || "-", detail: "" },
+                                    { label: "CONTRACT NAME", value: authorization.contractName || "-", detail: "" },
+                                    { label: "PROJECT MANAGER", value: authorization.pm?.Title || "-", detail: "" },
+                                    { label: "NAICS CODE", value: authorization.naicsCode || "-", detail: "" },
+                                    { label: "IWA JAMIS PROJECT ID", value: authorization.iwaJamisProjectId || "-", detail: "" },
+                                    { label: "PERIOD", value: `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, detail: "" },
+                                    { label: "SUBMITTED", value: `Submitted by ${model.requestedBy || "-"} on ${formatDate(model.requestedOn, false)}`, detail: "", fullWidth: true, friendly: true }
+                                ].map((item) => (
+                                    <Grid key={item.label} spacing={0} size={{ xs: 12, md: item.fullWidth ? 12 : 4 }}>
+                                        {item.friendly ? (
+                                            <Typography color="text.secondary" fontWeight={500}>{item.value}</Typography>
+                                        ) : (
+                                            <>
+                                                <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: "block", lineHeight: 1.05, mb: 0.5 }}>{item.label}</Typography>
+                                                <Typography fontWeight={600} sx={{ mb: 0.15 }}>{item.value}</Typography>
+                                                {item.detail && <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.2 }}>{item.detail}</Typography>}
+                                            </>
+                                        )}
                                     </Grid>
                                 ))}
                             </Grid>
@@ -420,6 +427,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                         <TableRow>
                                             <TableCell>Line Type</TableCell>
                                             <TableCell>Job ID / CLIN</TableCell>
+                                            <TableCell>Job Title</TableCell>
                                             <TableCell align="right">Previous</TableCell>
                                             <TableCell align="right">{model.mod ? "This Mod" : "Base"}</TableCell>
                                             <TableCell align="right">New Total</TableCell>
@@ -434,6 +442,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                                     <TableRow key={`labor-${row.jobId}`}>
                                                         <TableCell>Labor</TableCell>
                                                         <TableCell>{row.jobId}</TableCell>
+                                                        <TableCell>{row.laborJobTitle || "-"}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.previousLabor)}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.modLabor)}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.newLabor)}</TableCell>
@@ -446,6 +455,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                                     <TableRow key={`travel-${row.jobId}`}>
                                                         <TableCell>Travel / ODC</TableCell>
                                                         <TableCell>{row.jobId}</TableCell>
+                                                        <TableCell>{row.travelJobTitle || "-"}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.previousTravel)}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.modTravel)}</TableCell>
                                                         <TableCell align="right">{formatCurrency(row.newTravel)}</TableCell>
@@ -456,7 +466,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                             return rows;
                                         })}
                                         <TableRow>
-                                            <TableCell sx={totalCellSx} colSpan={2}>Grand Total</TableCell>
+                                            <TableCell sx={totalCellSx} colSpan={3}>Grand Total</TableCell>
                                             <TableCell align="right" sx={totalCellSx}>{formatCurrency(model.previousGrandTotal)}</TableCell>
                                             <TableCell align="right" sx={totalCellSx}>{formatCurrency(model.modGrandTotal)}</TableCell>
                                             <TableCell align="right" sx={totalCellSx}>{formatCurrency(model.newGrandTotal)}</TableCell>
@@ -476,9 +486,11 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                             <TableCell className="labor-state">State</TableCell>
                                             <TableCell className="labor-job">Job ID / CLIN</TableCell>
                                             <TableCell className="labor-category">Labor Category</TableCell>
-                                            <TableCell className="labor-std" align="right">STD</TableCell>
+                                            <TableCell className="labor-hours" align="right">STD</TableCell>
+                                            <TableCell className="labor-rate" align="right">STD Rate</TableCell>
                                             <TableCell className="labor-sto" align="center">STO</TableCell>
-                                            <TableCell className="labor-ot" align="right">OT</TableCell>
+                                            <TableCell className="labor-hours" align="right">OT</TableCell>
+                                            <TableCell className="labor-rate" align="right">OT Rate</TableCell>
                                             <TableCell className="labor-total" align="right">Total</TableCell>
                                         </TableRow>
                                     </TableHead>
@@ -489,19 +501,23 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                                 <TableCell className="labor-state">{row.state}</TableCell>
                                                 <TableCell className="labor-job">{row.jobId}</TableCell>
                                                 <TableCell className="labor-category">{row.laborCategory}</TableCell>
-                                                <TableCell className="labor-std" align="right">{row.standardHours}</TableCell>
+                                                <TableCell className="labor-hours" align="right">{row.standardHours}</TableCell>
+                                                <TableCell className="labor-rate" align="right">{formatCurrency(row.standardRate)}</TableCell>
                                                 <TableCell className="labor-sto" align="center">
                                                     {row.stoHours ? <CheckOutlinedIcon color="success" fontSize="small" /> : "-"}
                                                 </TableCell>
-                                                <TableCell className="labor-ot" align="right">{row.overtimeHours}</TableCell>
+                                                <TableCell className="labor-hours" align="right">{row.overtimeHours}</TableCell>
+                                                <TableCell className="labor-rate" align="right">{formatCurrency(row.overtimeRate)}</TableCell>
                                                 <TableCell className="labor-total" align="right">{formatCurrency(row.totalAmount)}</TableCell>
                                             </TableRow>
                                         ))}
                                         <TableRow>
                                             <TableCell sx={totalCellSx} colSpan={4}>Labor Totals</TableCell>
-                                            <TableCell className="labor-std" align="right" sx={totalCellSx}>{totalStandardHours}</TableCell>
+                                            <TableCell className="labor-hours" align="right" sx={totalCellSx}>{totalStandardHours}</TableCell>
+                                            <TableCell className="labor-rate" align="right" sx={totalCellSx}>-</TableCell>
                                             <TableCell className="labor-sto" align="center" sx={totalCellSx}>-</TableCell>
-                                            <TableCell className="labor-ot" align="right" sx={totalCellSx}>{totalOvertimeHours}</TableCell>
+                                            <TableCell className="labor-hours" align="right" sx={totalCellSx}>{totalOvertimeHours}</TableCell>
+                                            <TableCell className="labor-rate" align="right" sx={totalCellSx}>-</TableCell>
                                             <TableCell className="labor-total" align="right" sx={totalCellSx}>{formatCurrency(model.modLaborTotal)}</TableCell>
                                         </TableRow>
                                     </TableBody>

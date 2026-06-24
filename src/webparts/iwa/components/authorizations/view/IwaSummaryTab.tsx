@@ -79,15 +79,16 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
     <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Contract</Typography>
+                <Typography variant="h6" fontWeight={600}>Contract</Typography>
                 <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
                     {[
                         ["Contract ID", authorization.contractId || "-"],
                         ["Contract Name", authorization.contractName || "-"],
                         ["Invoice / Task Order", authorization.invoice || "Not specified"],
                         ["Customer Contract Code", authorization.customerContractCode || "-"],
-                        ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`],
-                        ["IWA JAMIS Project ID", authorization.iwaJamisProjectId || "-"]
+                        ["NAICS Code", authorization.naicsCode || "-"],
+                        ["IWA JAMIS Project ID", authorization.iwaJamisProjectId || "-"],
+                        ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`]
                     ].map(([label, value], index) => (
                         <Grid key={label} size={{ xs: 12, sm: 6 }}>
                             <Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -99,15 +100,15 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Entities / Organization</Typography>
+                <Typography variant="h6" fontWeight={600}>Entities / Organization</Typography>
                 <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography variant="caption" color="text.secondary">Entity A (Donor)</Typography>
-                        <Typography fontWeight={500}>{authorization.donorEntityAbbr || authorization.donorEntity || "-"}</Typography>
+                        <Typography fontWeight={500}>{authorization.donorEntity || authorization.donorEntityAbbr || "-"}</Typography>
                     </Grid>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography variant="caption" color="text.secondary">Entity B (Receives Services)</Typography>
-                        <Typography fontWeight={500}>{authorization.receivingEntityAbbr || authorization.receivingEntity || "-"}</Typography>
+                        <Typography fontWeight={500}>{authorization.receivingEntity || authorization.receivingEntityAbbr || "-"}</Typography>
                     </Grid>
 
                     <Grid size={{ xs: 12, sm: 6 }}>
@@ -132,7 +133,7 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Contacts</Typography>
+                <Typography variant="h6" fontWeight={600}>Contacts</Typography>
                 <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
                     {[
                         ["Submitter", authorization.Author?.Title || "-"],
@@ -150,7 +151,7 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
             <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Cost Summary</Typography>
+                <Typography variant="h6" fontWeight={600}>Cost Summary</Typography>
                 <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
                     {[
                         ["Base Labor", authorization.baseLaborAmount],
@@ -176,19 +177,19 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
             <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={600}>Justification</Typography>
+                <Typography variant="h6" fontWeight={600}>Justification</Typography>
                 <Typography color="text.secondary">{authorization.justification || "-"}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
             <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Notes</Typography>
+                <Typography variant="h6" fontWeight={600}>Notes</Typography>
                 <Typography color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>{authorization.notes || "-"}</Typography>
             </Paper>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
             <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
-                <Typography variant="subtitle2" fontWeight={600}>Attachments</Typography>
+                <Typography variant="h6" fontWeight={600}>Attachments</Typography>
                 {attachments.length === 0 ? (
                     <Typography color="text.secondary">No attachments found.</Typography>
                 ) : (

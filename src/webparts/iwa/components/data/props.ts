@@ -256,6 +256,7 @@ export interface IAuthorizationItem extends ISystemFields {
   contractId: string;
   iwaJamisProjectId?: string;
   customerContractCode?: string;
+  naicsCode?: string;
   invoice: string;
   contractType: ContractType;
   periodStart?: string;
@@ -346,6 +347,7 @@ export interface ILaborLineItem extends ISystemFields {
 
   pricingType: LaborPricingType;
   jobId: string;
+  jobTitle?: string;
 
   /* employee linkage: one employee for T&M, many employees may roll up to one FFP line */
   resources?: { results: ILookupItem[] };  // lookup auto-filled from Resource line(s)
@@ -383,6 +385,7 @@ export interface ITravelOdcItem extends ISystemFields {
 
   lineType: TravelLineType;
   jobId: string;
+  jobTitle?: string;
   description?: string;
   amount: number;
   comments?: string;

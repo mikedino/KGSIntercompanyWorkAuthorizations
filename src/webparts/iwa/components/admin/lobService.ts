@@ -1,28 +1,21 @@
-import { Web } from "gd-sprest";
 import Strings from "../common/strings";
-import { encodeListName, formatError } from "../common/utils";
+import { encodeListName } from "../common/utils";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 export class LobService {
 
-    static create(Title: string, cooId?: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.LOBs)
-                .Items()
-                .add({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.LOBs)}ListItem` },
-                    Title,
-                    cooId
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error creating LOB: ${formatError(err)}`))
-                );
-        });
+    static async create(Title: string, cooId?: number): Promise<void> {
+        await AdminLookupWriteService.addItem(
+            Strings.Sites.lookups.lists.LOBs,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.LOBs)}ListItem` },
+                Title,
+                cooId
+            }
+        );
     }
 
-    static update(lobId: number, title?: string, cooId?: number | undefined): Promise<void> {
+    static async update(lobId: number, title?: string, cooId?: number | undefined): Promise<void> {
         const payload: {
             __metadata: { type: string };
             Title?: string;
@@ -39,17 +32,7 @@ export class LobService {
             payload.cooId = cooId;
         }
 
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.LOBs)
-                .Items()
-                .getById(lobId)
-                .update(payload)
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error updating LOB: ${formatError(err)}`))
-                );
-        });
+        await AdminLookupWriteService.updateItem(Strings.Sites.lookups.lists.LOBs, lobId, payload);
     }
 
     static updateCoo(lobId: number, cooId?: number): Promise<void> {
@@ -60,17 +43,7 @@ export class LobService {
         return this.update(lobId, title);
     }
 
-    static delete(lobId: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.LOBs)
-                .Items()
-                .getById(lobId)
-                .recycle()
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error deleting LOB: ${formatError(err)}`))
-                );
-        });
+    static async delete(lobId: number): Promise<void> {
+        await AdminLookupWriteService.recycleItem(Strings.Sites.lookups.lists.LOBs, lobId);
     }
 }

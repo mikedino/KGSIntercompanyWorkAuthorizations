@@ -122,6 +122,11 @@ const styles = StyleSheet.create({
         marginBottom: 9,
         paddingRight: 8
     },
+    detailItemFull: {
+        width: "100%",
+        marginBottom: 2,
+        paddingRight: 8
+    },
     detailLabel: {
         fontSize: 7,
         color: "#53627a",
@@ -137,6 +142,10 @@ const styles = StyleSheet.create({
         fontSize: 7,
         color: "#53627a",
         marginTop: 0
+    },
+    detailFriendly: {
+        fontSize: 9,
+        color: "#53627a"
     },
     summaryText: {
         fontSize: 10,
@@ -245,19 +254,20 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
     const totalStandardHours = model.laborDetails.reduce((total, row) => total + row.standardHours, 0);
     const totalOvertimeHours = model.laborDetails.reduce((total, row) => total + row.overtimeHours, 0);
     const totalThisLabel = model.mod ? "TOTAL THIS MOD" : "TOTAL BASE";
-    const detailItems = [
-        ["ENTITY A (DONOR)", authorization.donorEntity || "-", authorization.donorEntityAbbr],
-        ["ENTITY B (RECEIVES SERVICES)", authorization.receivingEntity || "-", authorization.receivingEntityAbbr],
-        ["OG", authorization.og || "-", ""],
-        ["ENTITY A GM", authorization.donorGm?.Title || "-", ""],
-        ["ENTITY B GM", authorization.receivingGm?.Title || "-", ""],
-        ["LOB", authorization.lob || "-", ""],
-        ["CONTRACT & INVOICE", authorization.invoice || taskOrder?.InvoiceID1 || "-", ""],
-        ["CONTRACT NAME", authorization.contractName || "-", ""],
-        ["IWA JAMIS PROJECT ID", authorization.iwaJamisProjectId || "-", ""],
-        ["SUBMITTER", model.requestedBy || "-", `Submitted ${formatDate(model.requestedOn, true)}`],
-        ["PROJECT MANAGER", authorization.pm?.Title || "-", ""],
-        ["PERIOD", `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, ""]
+    const detailItems: Array<{ label: string; value: string; detail: string; fullWidth?: boolean; friendly?: boolean }> = [
+        { label: "ENTITY A (DONOR)", value: authorization.donorEntity || "-", detail: authorization.donorEntityAbbr ?? "" },
+        { label: "ENTITY B (RECEIVES SERVICES)", value: authorization.receivingEntity || "-", detail: authorization.receivingEntityAbbr ?? "" },
+        { label: "OG", value: authorization.og || "-", detail: "" },
+        { label: "ENTITY A GM", value: authorization.donorGm?.Title || "-", detail: "" },
+        { label: "ENTITY B GM", value: authorization.receivingGm?.Title || "-", detail: "" },
+        { label: "LOB", value: authorization.lob || "-", detail: "" },
+        { label: "CONTRACT & INVOICE", value: authorization.invoice || taskOrder?.InvoiceID1 || "-", detail: "" },
+        { label: "CONTRACT NAME", value: authorization.contractName || "-", detail: "" },
+        { label: "PROJECT MANAGER", value: authorization.pm?.Title || "-", detail: "" },
+        { label: "NAICS CODE", value: authorization.naicsCode || "-", detail: "" },
+        { label: "IWA JAMIS PROJECT ID", value: authorization.iwaJamisProjectId || "-", detail: "" },
+        { label: "PERIOD", value: `${formatDate(model.periodStart, false)} - ${formatDate(model.periodEnd, false)}`, detail: "" },
+        { label: "SUBMITTED", value: `Submitted by ${model.requestedBy || "-"} on ${formatDate(model.requestedOn, false)}`, detail: "", fullWidth: true, friendly: true }
     ];
 
     return (
@@ -293,11 +303,17 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                 <View style={styles.section} wrap={false}>
                     <Text style={styles.sectionTitle}>Transaction Header</Text>
                     <View style={styles.detailGrid}>
-                        {detailItems.map(([label, value, detail]) => (
-                            <View key={label} style={styles.detailItem}>
-                                <Text style={styles.detailLabel}>{label}</Text>
-                                <Text style={styles.detailValue}>{value}</Text>
-                                {!!detail && <Text style={styles.detailSubtext}>{detail}</Text>}
+                        {detailItems.map((item) => (
+                            <View key={item.label} style={item.fullWidth ? styles.detailItemFull : styles.detailItem}>
+                                {item.friendly ? (
+                                    <Text style={styles.detailFriendly}>{item.value}</Text>
+                                ) : (
+                                    <>
+                                        <Text style={styles.detailLabel}>{item.label}</Text>
+                                        <Text style={styles.detailValue}>{item.value}</Text>
+                                        {!!item.detail && <Text style={styles.detailSubtext}>{item.detail}</Text>}
+                                    </>
+                                )}
                             </View>
                         ))}
                     </View>
@@ -319,11 +335,12 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                     <Text style={styles.sectionTitle}>Finance Coding Summary</Text>
                     <View style={styles.table}>
                         <View style={styles.tableHeader}>
-                            <TableCell width="18%" style={styles.headerCell}>Line Type</TableCell>
-                            <TableCell width="30%" style={styles.headerCell}>Job ID / CLIN</TableCell>
-                            <TableCell width="17%" style={styles.headerCell} right>Previous</TableCell>
-                            <TableCell width="17%" style={styles.headerCell} right>{model.mod ? "This Mod" : "Base"}</TableCell>
-                            <TableCell width="18%" style={styles.headerCell} right>New Total</TableCell>
+                            <TableCell width="15%" style={styles.headerCell}>Line Type</TableCell>
+                            <TableCell width="24%" style={styles.headerCell}>Job ID / CLIN</TableCell>
+                            <TableCell width="22%" style={styles.headerCell}>Job Title</TableCell>
+                            <TableCell width="13%" style={styles.headerCell} right>Previous</TableCell>
+                            <TableCell width="13%" style={styles.headerCell} right>{model.mod ? "This Mod" : "Base"}</TableCell>
+                            <TableCell width="13%" style={styles.headerCell} right>New Total</TableCell>
                         </View>
                         {model.rows.flatMap((row: IIwaExportSummaryRow) => {
                             const rows: JSX.Element[] = [];
@@ -331,11 +348,12 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                             if (hasLaborSummaryAmount(row)) {
                                 rows.push(
                                     <View key={`labor-${row.jobId}`} style={styles.tableRow}>
-                                        <TableCell width="18%">Labor</TableCell>
-                                        <TableCell width="30%">{row.jobId}</TableCell>
-                                        <TableCell width="17%" right>{formatCurrency(row.previousLabor)}</TableCell>
-                                        <TableCell width="17%" right>{formatCurrency(row.modLabor)}</TableCell>
-                                        <TableCell width="18%" right>{formatCurrency(row.newLabor)}</TableCell>
+                                        <TableCell width="15%">Labor</TableCell>
+                                        <TableCell width="24%">{row.jobId}</TableCell>
+                                        <TableCell width="22%">{row.laborJobTitle || "-"}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.previousLabor)}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.modLabor)}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.newLabor)}</TableCell>
                                     </View>
                                 );
                             }
@@ -343,11 +361,12 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                             if (hasTravelSummaryAmount(row)) {
                                 rows.push(
                                     <View key={`travel-${row.jobId}`} style={styles.tableRow}>
-                                        <TableCell width="18%">Travel / ODC</TableCell>
-                                        <TableCell width="30%">{row.jobId}</TableCell>
-                                        <TableCell width="17%" right>{formatCurrency(row.previousTravel)}</TableCell>
-                                        <TableCell width="17%" right>{formatCurrency(row.modTravel)}</TableCell>
-                                        <TableCell width="18%" right>{formatCurrency(row.newTravel)}</TableCell>
+                                        <TableCell width="15%">Travel / ODC</TableCell>
+                                        <TableCell width="24%">{row.jobId}</TableCell>
+                                        <TableCell width="22%">{row.travelJobTitle || "-"}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.previousTravel)}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.modTravel)}</TableCell>
+                                        <TableCell width="13%" right>{formatCurrency(row.newTravel)}</TableCell>
                                     </View>
                                 );
                             }
@@ -355,10 +374,10 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                             return rows;
                         })}
                         <View style={styles.tableTotalRow}>
-                            <TableCell width="48%" style={styles.totalCell}>Grand Total</TableCell>
-                            <TableCell width="17%" style={styles.totalCell} right>{formatCurrency(model.previousGrandTotal)}</TableCell>
-                            <TableCell width="17%" style={styles.totalCell} right>{formatCurrency(model.modGrandTotal)}</TableCell>
-                            <TableCell width="18%" style={styles.totalCell} right>{formatCurrency(model.newGrandTotal)}</TableCell>
+                            <TableCell width="61%" style={styles.totalCell}>Grand Total</TableCell>
+                            <TableCell width="13%" style={styles.totalCell} right>{formatCurrency(model.previousGrandTotal)}</TableCell>
+                            <TableCell width="13%" style={styles.totalCell} right>{formatCurrency(model.modGrandTotal)}</TableCell>
+                            <TableCell width="13%" style={styles.totalCell} right>{formatCurrency(model.newGrandTotal)}</TableCell>
                         </View>
                     </View>
                 </View>
@@ -367,33 +386,39 @@ export const IwaExportPdfDocument = ({ model, taskOrder }: IIwaExportPdfDocument
                     <Text style={styles.sectionTitle}>Labor Detail - {contractType}</Text>
                     <View style={styles.table}>
                         <View style={styles.tableHeader}>
-                            <TableCell width="21%" style={styles.headerCell}>Employee</TableCell>
+                            <TableCell width="17%" style={styles.headerCell}>Employee</TableCell>
                             <TableCell width="12%" style={styles.headerCell}>State</TableCell>
-                            <TableCell width="20%" style={styles.headerCell}>Job ID / CLIN</TableCell>
-                            <TableCell width="20%" style={styles.headerCell}>Labor Category</TableCell>
-                            <TableCell width="7%" style={styles.headerCell} right>STD</TableCell>
+                            <TableCell width="16%" style={styles.headerCell}>Job ID / CLIN</TableCell>
+                            <TableCell width="16%" style={styles.headerCell}>Labor Category</TableCell>
+                            <TableCell width="5%" style={styles.headerCell} right>STD</TableCell>
+                            <TableCell width="8%" style={styles.headerCell} right>STD Rate</TableCell>
                             <TableCell width="4%" style={styles.headerCell} center>STO</TableCell>
-                            <TableCell width="6%" style={styles.headerCell} right>OT</TableCell>
-                            <TableCell width="10%" style={styles.headerCell} right>Total</TableCell>
+                            <TableCell width="5%" style={styles.headerCell} right>OT</TableCell>
+                            <TableCell width="8%" style={styles.headerCell} right>OT Rate</TableCell>
+                            <TableCell width="9%" style={styles.headerCell} right>Total</TableCell>
                         </View>
                         {model.laborDetails.map((row) => (
                             <View key={`${row.employeeName}-${row.jobId}-${row.laborCategory}`} style={styles.tableRow}>
-                                <TableCell width="21%">{row.employeeName}</TableCell>
+                                <TableCell width="17%">{row.employeeName}</TableCell>
                                 <TableCell width="12%">{row.state}</TableCell>
-                                <TableCell width="20%">{row.jobId}</TableCell>
-                                <TableCell width="20%">{row.laborCategory}</TableCell>
-                                <TableCell width="7%" right>{row.standardHours}</TableCell>
+                                <TableCell width="16%">{row.jobId}</TableCell>
+                                <TableCell width="16%">{row.laborCategory}</TableCell>
+                                <TableCell width="5%" right>{row.standardHours}</TableCell>
+                                <TableCell width="8%" right>{formatCurrency(row.standardRate)}</TableCell>
                                 <TableCell width="4%" center>{row.stoHours ? "✓" : "-"}</TableCell>
-                                <TableCell width="6%" right>{row.overtimeHours}</TableCell>
-                                <TableCell width="10%" right>{formatCurrency(row.totalAmount)}</TableCell>
+                                <TableCell width="5%" right>{row.overtimeHours}</TableCell>
+                                <TableCell width="8%" right>{formatCurrency(row.overtimeRate)}</TableCell>
+                                <TableCell width="9%" right>{formatCurrency(row.totalAmount)}</TableCell>
                             </View>
                         ))}
                         <View style={styles.tableTotalRow}>
-                            <TableCell width="73%" style={styles.totalCell}>Labor Totals</TableCell>
-                            <TableCell width="7%" style={styles.totalCell} right>{totalStandardHours}</TableCell>
+                            <TableCell width="61%" style={styles.totalCell}>Labor Totals</TableCell>
+                            <TableCell width="5%" style={styles.totalCell} right>{totalStandardHours}</TableCell>
+                            <TableCell width="8%" style={styles.totalCell} right>-</TableCell>
                             <TableCell width="4%" style={styles.totalCell} center>-</TableCell>
-                            <TableCell width="6%" style={styles.totalCell} right>{totalOvertimeHours}</TableCell>
-                            <TableCell width="10%" style={styles.totalCell} right>{formatCurrency(model.modLaborTotal)}</TableCell>
+                            <TableCell width="5%" style={styles.totalCell} right>{totalOvertimeHours}</TableCell>
+                            <TableCell width="8%" style={styles.totalCell} right>-</TableCell>
+                            <TableCell width="9%" style={styles.totalCell} right>{formatCurrency(model.modLaborTotal)}</TableCell>
                         </View>
                     </View>
                 </View>

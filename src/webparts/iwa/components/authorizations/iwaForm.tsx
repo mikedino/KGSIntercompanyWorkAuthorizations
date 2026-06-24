@@ -122,6 +122,7 @@ const createEmptyResourceRow = (): IEditableResourceRow => ({
     state: "",
     comments: "",
     jobId: "",
+    jobTitle: "",
     laborCategory: "",
     standardHours: "",
     stoHours: false,
@@ -135,6 +136,7 @@ const createEmptyTravelRow = (): IEditableTravelRow => ({
     id: createLocalRowId(),
     lineType: "travel",
     jobId: "",
+    jobTitle: "",
     description: "",
     amount: "",
     comments: ""
@@ -143,6 +145,7 @@ const createEmptyTravelRow = (): IEditableTravelRow => ({
 const createEmptyFfpLaborRow = (): IEditableFfpLaborRow => ({
     id: createLocalRowId(),
     jobId: "",
+    jobTitle: "",
     chargingPeriod: "monthly",
     periodQty: "",
     lumpSumAmount: "",
@@ -172,6 +175,7 @@ const createEmptyAuthorization = (): IAuthorizationItem => ({
     contractName: "",
     contractId: "",
     customerContractCode: "",
+    naicsCode: "",
     invoice: "",
     contractType: "tm",
     scopeOfWork: "",
@@ -411,6 +415,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 contractName: form.contractName ?? "",
                 contractId: form.contractId ?? "",
                 customerContractCode: form.customerContractCode ?? "",
+                naicsCode: form.naicsCode ?? "",
                 invoice: form.invoice ?? "",
                 contractType: form.contractType ?? "tm",
                 pmId: toPersonId(form.pm),
@@ -430,6 +435,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 state: row.state,
                 comments: row.comments,
                 jobId: row.jobId,
+                jobTitle: row.jobTitle,
                 laborCategory: row.laborCategory,
                 standardHours: row.standardHours,
                 stoHours: row.stoHours,
@@ -442,6 +448,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 id: row.id,
                 lineType: row.lineType,
                 jobId: row.jobId,
+                jobTitle: row.jobTitle,
                 description: row.description,
                 amount: row.amount,
                 comments: row.comments
@@ -449,6 +456,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             ffpLaborRows: ffpLaborRows.map((row) => ({
                 id: row.id,
                 jobId: row.jobId,
+                jobTitle: row.jobTitle,
                 chargingPeriod: row.chargingPeriod,
                 periodQty: row.periodQty,
                 lumpSumAmount: row.lumpSumAmount,
@@ -673,6 +681,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 comments: resource.comments ?? "",
                 laborCategory: resource.laborCategory ?? "",
                 jobId: tmLabor?.jobId ?? "",
+                jobTitle: tmLabor?.jobTitle ?? "",
                 standardHours: tmLabor?.standardHours !== undefined && tmLabor?.standardHours !== null ? String(tmLabor.standardHours) : "",
                 stoHours: !!tmLabor?.stoHours,
                 overtimeHours: tmLabor?.overtimeHours !== undefined && tmLabor?.overtimeHours !== null ? String(tmLabor.overtimeHours) : "",
@@ -693,6 +702,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     employee: resource.employee,
                     state: resource.state ?? "",
                     jobId: labor?.jobId ?? "",
+                    jobTitle: labor?.jobTitle ?? "",
                     laborCategory: resource.laborCategory ?? "",
                     approvedStandardHours: Number(labor?.standardHours ?? 0),
                     approvedOvertimeHours: Number(labor?.overtimeHours ?? 0),
@@ -706,6 +716,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             .map((line) => ({
                 id: String(line.Id),
                 jobId: line.jobId ?? "",
+                jobTitle: line.jobTitle ?? "",
                 chargingPeriod: line.chargingPeriod ?? "monthly",
                 periodQty: line.periodQty !== undefined && line.periodQty !== null ? String(line.periodQty) : "",
                 lumpSumAmount: line.lumpSumAmount !== undefined && line.lumpSumAmount !== null ? String(line.lumpSumAmount) : "",
@@ -717,6 +728,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             id: String(travel.Id),
             lineType: travel.lineType,
             jobId: travel.jobId ?? "",
+            jobTitle: travel.jobTitle ?? "",
             description: travel.description ?? "",
             amount: String(travel.amount ?? ""),
             comments: travel.comments ?? ""
@@ -926,6 +938,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 setJobOptions([]);
                 updateField("contractName", "");
                 updateField("customerContractCode", "");
+                updateField("naicsCode", "");
                 updateField("invoice", "");
                 setContractOgWarning("");
                 return;
@@ -939,6 +952,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             if (!isBaselineLocked) {
                 updateField("contractName", selectedContract.field_20 ?? "");
                 updateField("customerContractCode", selectedContract.field_35 ?? "");
+                updateField("naicsCode", selectedContract.field_73 ?? "");
                 if (contractActuallyChanged) {
                     updateField("invoice", "");
                     setJobOptions([]);
@@ -1348,6 +1362,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     displayOrder: index + 1,
                     pricingType: "tm" as const,
                     jobId: row.jobId.trim(),
+                    jobTitle: row.jobTitle.trim(),
                     resourceIds: [createdByLineNumber.get(index + 1)].filter((value): value is number => typeof value === "number"),
                     comments: row.comments.trim(),
                     annualSalary: Number(row.annualSalary || 0),
@@ -1370,6 +1385,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     displayOrder: lineNumber,
                     pricingType: "ffp" as const,
                     jobId: row.jobId.trim(),
+                    jobTitle: row.jobTitle.trim(),
                     resourceIds,
                     comments: row.comments.trim(),
                     chargingPeriod: row.chargingPeriod,
@@ -1386,6 +1402,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             displayOrder: index + 1,
             lineType: row.lineType,
             jobId: row.jobId.trim(),
+            jobTitle: row.jobTitle.trim(),
             description: row.description.trim(),
             amount: Number(row.amount || 0),
             comments: row.comments.trim()
@@ -2074,6 +2091,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             updateUserField("contractId", value?.field_19 ?? "");
                             updateUserField("contractName", value?.field_20 ?? "");
                             updateUserField("customerContractCode", value?.field_35 ?? "");
+                            updateUserField("naicsCode", value?.field_73 ?? "");
                         }}
                         getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
                         filterOptions={(options, state) => {

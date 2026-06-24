@@ -51,13 +51,28 @@ export class DataSource {
     }
 
     static isAdmin: boolean = false;
+    static isOGP: boolean = false;
 
     private static _currentUser: IAppUserItem | undefined;
     static get CurrentUser(): IAppUserItem | undefined { return this._currentUser; }
 
+    private static isCurrentUserOgPresident(user: IAppUserItem): boolean {
+        const currentEmail = user.user?.EMail?.trim().toLowerCase();
+        const currentId = user.user?.Id;
+
+        return this._ogs.some((og: IOgItem): boolean => {
+            const presidentEmail = og.president?.EMail?.trim().toLowerCase();
+            const presidentId = og.president?.Id;
+
+            return (!!currentEmail && !!presidentEmail && currentEmail === presidentEmail) ||
+                (!!currentId && !!presidentId && currentId === presidentId);
+        });
+    }
+
     static setCurrentUser(user: IAppUserItem): boolean {
         this._currentUser = user;
         this.isAdmin = (user.role ?? "user").toLowerCase() === "admin";
+        this.isOGP = this.isCurrentUserOgPresident(user);
         return true;
     }
 
@@ -238,7 +253,7 @@ export class DataSource {
         "Id", "Title", "authorizationStatus",
         "donorEntity", "donorEntityAbbr", "receivingEntity",
         "receivingEntityAbbr", "og", "lob",
-        "contractName", "contractId", "iwaJamisProjectId", "customerContractCode", "invoice", "contractType",
+        "contractName", "contractId", "iwaJamisProjectId", "customerContractCode", "naicsCode", "invoice", "contractType",
         "periodStart", "periodEnd", "scopeOfWork",
         "justification", "notes", "baseLaborAmount",
         "baseTravelAmount", "baseGrandTotal", "approvedLaborAmount",
@@ -466,6 +481,9 @@ export class DataSource {
                 .execute(
                     (items) => {
                         this._ogs = (items?.results ?? []) as unknown as IOgItem[];
+                        if (this._currentUser) {
+                            this.isOGP = this.isCurrentUserOgPresident(this._currentUser);
+                        }
                         resolve(this._ogs);
                     },
                     (error) => reject(new Error(`Error fetching OGs: ${formatError(error)}`))
@@ -571,17 +589,16 @@ export class DataSource {
             const jobIdPrefix = trimmedInvoiceId.endsWith("-") ? trimmedInvoiceId : `${trimmedInvoiceId}-`;
             const escapedJobIdPrefix = jobIdPrefix.replace(/'/g, "''");
 
-            // Query jobs only for the selected task order/invoice. This keeps the
-            // startswith filter narrow enough for large SharePoint lists and matches
-            // the JAMIS job id shape: ContractID-InvoiceID-...
+            // Query jobs only for the selected task order/invoice. GetAllItems tells
+            // gd-sprest to follow SharePoint paging links, which is important because
+            // JobEndPoint can exceed the 5,000-item page/list-view threshold.
             Web(Strings.Sites.jamis.url)
                 .Lists(Strings.Sites.jamis.lists.JobEP)
                 .Items()
                 .query({
                     GetAllItems: true,
                     Select: ["Id", "field_13", "field_19"],
-                    Filter: `startswith(field_13, '${escapedJobIdPrefix}')`,
-                    Top: 5000
+                    Filter: `startswith(field_13, '${escapedJobIdPrefix}')`
                 })
                 .execute(
                     (items) => {

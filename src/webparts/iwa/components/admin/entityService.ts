@@ -1,27 +1,20 @@
-import { Web } from "gd-sprest";
 import Strings from "../common/strings";
-import { encodeListName, formatError } from "../common/utils";
+import { encodeListName } from "../common/utils";
+import { AdminLookupWriteService } from "./adminLookupWriteService";
 
 
 export class EntityService {
 
-    static create(Title: string, abbr: string, GMId?: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.Entities)
-                .Items()
-                .add({
-                    __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.Entities)}ListItem` },
-                    Title,
-                    abbr,
-                    GMId
-                })
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error creating Entity: ${formatError(err)}`))
-                );
-        });
+    static async create(Title: string, abbr: string, GMId?: number): Promise<void> {
+        await AdminLookupWriteService.addItem(
+            Strings.Sites.lookups.lists.Entities,
+            {
+                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.lookups.lists.Entities)}ListItem` },
+                Title,
+                abbr,
+                GMId
+            }
+        );
     }
 
     // Update the role for an existing App User list item
@@ -48,17 +41,7 @@ export class EntityService {
             payload.GMId = gmId;
         }
 
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.Entities)
-                .Items()
-                .getById(entityId)
-                .update(payload)
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error updating Entity: ${formatError(err)}`))
-                );
-        });
+        await AdminLookupWriteService.updateItem(Strings.Sites.lookups.lists.Entities, entityId, payload);
     }
 
     static updateGm(entityId: number, gmId?: number): Promise<void> {
@@ -69,18 +52,8 @@ export class EntityService {
         return this.update(entityId, abbr, title);
     }
 
-    static delete(entityId: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            Web(Strings.Sites.lookups.url)
-                .Lists(Strings.Sites.lookups.lists.Entities)
-                .Items()
-                .getById(entityId)
-                .recycle()
-                .execute(
-                    () => resolve(),
-                    (err) => reject(new Error(`Error deleting Entity: ${formatError(err)}`))
-                );
-        });
+    static async delete(entityId: number): Promise<void> {
+        await AdminLookupWriteService.recycleItem(Strings.Sites.lookups.lists.Entities, entityId);
     }
 
 }

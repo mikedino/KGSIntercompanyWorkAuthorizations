@@ -171,6 +171,7 @@ export class AuthorizationService {
         contractName: item.contractName,
         contractId: item.contractId,
         customerContractCode: item.customerContractCode ?? "",
+        naicsCode: item.naicsCode ?? "",
         invoice: item.invoice ?? "",
         contractType: item.contractType,
         periodStart: item.periodStart || null,

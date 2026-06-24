@@ -9,7 +9,7 @@ export class LaborLineItemService {
     private static readonly selectQuery: string[] = [
         "Id", "Title", "lineScope",
         "lineNumber", "displayOrder", "isActive",
-        "pricingType", "jobId",
+        "pricingType", "jobId", "jobTitle",
         "annualSalary", "standardRate", "overtimeRate",
         "standardHours", "stoHours", "overtimeHours", "standardAmount",
         "overtimeAmount", "chargingPeriod", "periodQty",
@@ -28,6 +28,7 @@ export class LaborLineItemService {
             displayOrder: number;
             pricingType: "tm" | "ffp";
             jobId: string;
+            jobTitle?: string;
             resourceIds: number[];
             comments?: string;
             annualSalary?: number;
@@ -88,6 +89,7 @@ export class LaborLineItemService {
                 isActive: true,
                 pricingType: row.pricingType,
                 jobId: row.jobId,
+                jobTitle: row.jobTitle ?? "",
                 resourcesId: { results: row.resourceIds },
                 comments: row.comments ?? "",
                 annualSalary: row.pricingType === "tm" ? compensation.annualSalary : 0,
