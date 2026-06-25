@@ -32,7 +32,7 @@ export const ConfirmDeleteDialog: React.FC<ConfirmDeleteDialogProps> = ({
             </DialogContent>
 
             <DialogActions>
-                <Button onClick={onClose} disabled={busy}>
+                <Button onClick={onClose} disabled={busy} aria-label="Cancel delete" title="Cancel delete">
                     Cancel
                 </Button>
                 <Button
@@ -42,6 +42,8 @@ export const ConfirmDeleteDialog: React.FC<ConfirmDeleteDialogProps> = ({
                         onConfirm().catch((err) => console.error("Delete confirm failed", err));
                     }}
                     disabled={busy}
+                    aria-label={confirmLabel}
+                    title={confirmLabel}
                 >
                     {confirmLabel}
                 </Button>

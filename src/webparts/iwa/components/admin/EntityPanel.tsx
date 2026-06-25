@@ -217,7 +217,7 @@ export const EntityDefaultsSection: React.FC<EntityDefaultsSectionProps> = ({
                     </Typography>
                 </Box>
 
-                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog}>
+                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog} aria-label="Add Entity" title="Add Entity">
                     Add Entity
                 </Button>
             </Box>
@@ -239,6 +239,7 @@ export const EntityDefaultsSection: React.FC<EntityDefaultsSectionProps> = ({
                                         <IconButton
                                             size="small"
                                             aria-label={`Edit ${ent.Title}`}
+                                            title={`Edit ${ent.Title}`}
                                             onClick={() => openEditDialog(ent)}
                                             disabled={savingKey === rowKey || !!savingKey}
                                         >

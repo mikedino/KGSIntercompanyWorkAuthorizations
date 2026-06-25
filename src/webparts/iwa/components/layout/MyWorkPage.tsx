@@ -327,6 +327,8 @@ const MyWorkMobileCard: React.FC<{
                             variant="contained"
                             color="secondary"
                             onClick={() => onResumeDraft(row.authorization.Id)}
+                            aria-label={resumeLabel}
+                            title={resumeLabel}
                         >
                             {resumeLabel}
                         </Button>
@@ -334,6 +336,8 @@ const MyWorkMobileCard: React.FC<{
                             variant="outlined"
                             color="error"
                             onClick={() => onDiscardDraft(row)}
+                            aria-label={discardLabel}
+                            title={discardLabel}
                         >
                             {discardLabel}
                         </Button>
@@ -817,6 +821,8 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                     color="secondary"
                                                                     size="small"
                                                                     onClick={() => handleResumeDraft(row.authorization.Id)}
+                                                                    aria-label={row.isModDraft ? "Resume Mod" : "Resume Draft"}
+                                                                    title={row.isModDraft ? "Resume Mod" : "Resume Draft"}
                                                                 >
                                                                     {row.isModDraft ? "Resume Mod" : "Resume Draft"}
                                                                 </Button>
@@ -825,6 +831,8 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                     color="error"
                                                                     size="small"
                                                                     onClick={() => setDiscardDraftRow(row)}
+                                                                    aria-label={row.isModDraft ? "Discard Mod" : "Discard Draft"}
+                                                                    title={row.isModDraft ? "Discard Mod" : "Discard Draft"}
                                                                 >
                                                                     {row.isModDraft ? "Discard Mod" : "Discard Draft"}
                                                                 </Button>
@@ -856,8 +864,15 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
-                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
+                    <Button onClick={() => setDiscardDraftRow(undefined)} aria-label="Cancel discard draft" title="Cancel discard draft">Cancel</Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        startIcon={<DeleteOutlineOutlinedIcon />}
+                        onClick={() => handleDiscardDraft()}
+                        aria-label={discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
+                        title={discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
+                    >
                         {discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
                     </Button>
                 </DialogActions>

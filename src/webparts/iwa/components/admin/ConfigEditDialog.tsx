@@ -112,6 +112,8 @@ export const ConfigEditDialog: React.FC<ConfigEditDialogProps> = ({
                             variant="outlined"
                             onClick={onDeleteClick}
                             disabled={saving}
+                            aria-label={`Delete ${itemLabel}`}
+                            title={`Delete ${itemLabel}`}
                         >
                             Delete
                         </Button>
@@ -119,7 +121,7 @@ export const ConfigEditDialog: React.FC<ConfigEditDialogProps> = ({
                 </Box>
 
                 <Stack direction="row" spacing={1}>
-                    <Button onClick={onClose} disabled={saving}>
+                    <Button onClick={onClose} disabled={saving} aria-label={`Cancel ${itemLabel} changes`} title={`Cancel ${itemLabel} changes`}>
                         Cancel
                     </Button>
                     <Button
@@ -128,6 +130,8 @@ export const ConfigEditDialog: React.FC<ConfigEditDialogProps> = ({
                             onSave().catch((err) => console.error(`${itemLabel} dialog save failed`, err));
                         }}
                         disabled={saving}
+                        aria-label={mode === "add" ? `Add ${itemLabel}` : `Save ${itemLabel}`}
+                        title={mode === "add" ? `Add ${itemLabel}` : `Save ${itemLabel}`}
                     >
                         {mode === "add" ? "Add" : "Save"}
                     </Button>

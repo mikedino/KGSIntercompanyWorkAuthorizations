@@ -13,6 +13,8 @@ export const DashboardMetricCards: React.FC<{ metrics: IDashboardMetric[] }> = (
                 <Grid key={metric.key} size={{ xs: 12, sm: 6, lg: 2.4 }}>
                     <ButtonBase
                         onClick={() => metric.route && history.push(metric.route)}
+                        aria-label={metric.route ? `Open ${metric.label}` : metric.label}
+                        title={metric.route ? `Open ${metric.label}` : metric.label}
                         sx={{ display: "block", width: "100%", height: "100%", textAlign: "left", borderRadius: 2 }}
                         disabled={!metric.route}
                     >

@@ -26,6 +26,8 @@ export const NotFoundPage: React.FC = (): JSX.Element => {
                             variant="contained"
                             component={RouterLink}
                             to="/dashboard"
+                            aria-label="Go to Dashboard"
+                            title="Go to Dashboard"
                         >
                             Go to Dashboard
                         </Button>

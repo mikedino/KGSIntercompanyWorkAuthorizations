@@ -381,7 +381,7 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
       {error && <Alert severity="error">{error}</Alert>}
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
-        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} aria-label="Upload migration plan" title="Upload migration plan">
           Upload Plan
           <input hidden type="file" accept="application/json,.json" onChange={handleFileChange} disabled={isBusy} />
         </Button>
@@ -441,6 +441,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<PlayArrowIcon />}
           onClick={handleImportClick}
           disabled={!plan || !authNumber.trim() || isBusy}
+          aria-label="Import one authorization"
+          title="Import one authorization"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Import One Authorization
@@ -451,6 +453,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<PlaylistAddCheckIcon />}
           onClick={handleImportBatchClick}
           disabled={!plan || isBusy}
+          aria-label="Import batch"
+          title="Import batch"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Import Batch
@@ -461,6 +465,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<ManageHistoryIcon />}
           onClick={handleStampClick}
           disabled={!plan || !authNumber.trim() || isBusy}
+          aria-label="Stamp legacy fields"
+          title="Stamp legacy fields"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Stamp Legacy Fields
@@ -471,6 +477,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<ManageHistoryIcon />}
           onClick={handleStampBatchClick}
           disabled={!plan || isBusy}
+          aria-label="Stamp batch"
+          title="Stamp batch"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Stamp Batch
@@ -480,6 +488,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<PersonSearchIcon />}
           onClick={handleEnsureUsersClick}
           disabled={(!plan && !ensureUsersFile) || isBusy}
+          aria-label="Ensure plan users"
+          title="Ensure plan users"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Ensure Plan Users
@@ -490,6 +500,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<DeleteForeverIcon />}
           onClick={handleDeleteAllClick}
           disabled={isBusy}
+          aria-label="Permanent delete IWA data"
+          title="Permanent delete IWA data"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Permanent Delete IWA Data
@@ -503,6 +515,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<ManageHistoryIcon />}
           onClick={handleBackfillJobTitlesClick}
           disabled={isBusy}
+          aria-label="Backfill job titles"
+          title="Backfill job titles"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Backfill Job Titles
@@ -519,6 +533,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           startIcon={<ManageHistoryIcon />}
           onClick={handleBackfillNaicsClick}
           disabled={isBusy}
+          aria-label="Backfill NAICS codes"
+          title="Backfill NAICS codes"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Backfill NAICS Codes

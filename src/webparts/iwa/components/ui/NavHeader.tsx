@@ -289,8 +289,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                         <IconButton
                             onClick={handleMenuOpen}
                             size="medium"
-                            aria-label="Header Actions"
-                            title="Header Actions"
+                            aria-label="Open header actions menu"
+                            title="Open header actions menu"
                             sx={{ color: headerAccentColor }}
                         >
                             <MoreVertIcon />
@@ -328,17 +328,17 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                         }
                     }}
                 >
-                    <Button title="My Work" startIcon={<WorkIcon />} color="inherit" component={NavLink} to="/my-work" sx={navButtonSx}>
+                    <Button title="My Work" aria-label="My Work" startIcon={<WorkIcon />} color="inherit" component={NavLink} to="/my-work" sx={navButtonSx}>
                         {!isSmall && "My Work"}
                     </Button>
-                    <Button title="All Authorizations" startIcon={<ListAltIcon />} color="inherit" component={NavLink} to="/all-authorizations" sx={navButtonSx}>
+                    <Button title="All Authorizations" aria-label="All Authorizations" startIcon={<ListAltIcon />} color="inherit" component={NavLink} to="/all-authorizations" sx={navButtonSx}>
                         {!isSmall && "All Authorizations"}
                     </Button>
-                    <Button title="Dashboard" startIcon={<DashboardIcon />} color="inherit" component={NavLink} to="/dashboard" sx={navButtonSx}>
+                    <Button title="Dashboard" aria-label="Dashboard" startIcon={<DashboardIcon />} color="inherit" component={NavLink} to="/dashboard" sx={navButtonSx}>
                         {!isSmall && "Dashboard"}
                     </Button>
                     {currentUser?.role === "admin" && (
-                        <Button title="Admin" startIcon={<AdminPanelSettingsIcon />} color="inherit" component={NavLink} to="/admin" sx={navButtonSx}>
+                        <Button title="Admin" aria-label="Admin" startIcon={<AdminPanelSettingsIcon />} color="inherit" component={NavLink} to="/admin" sx={navButtonSx}>
                             {!isSmall && "Admin"}
                         </Button>
                     )}
@@ -369,6 +369,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                         variant="contained"
                         startIcon={<AddOutlinedIcon />}
                         onClick={handleNewAuthorization}
+                        aria-label="New Authorization"
+                        title="New Authorization"
                         sx={{
                             fontSize: 14,
                             whiteSpace: "nowrap",
@@ -392,6 +394,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                 transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
                 <MenuItem
+                    aria-label="Open help"
+                    title="Open help"
                     onClick={() => {
                         handleMenuClose();
 
@@ -407,6 +411,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     Help
                 </MenuItem>
                 <MenuItem
+                    aria-label="Manage backups"
+                    title="Manage backups"
                     onClick={() => {
                         handleMenuClose();
                         handleBackupOpen();
@@ -420,6 +426,8 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     Backups
                 </MenuItem>
                 <MenuItem
+                    aria-label={useDarkTheme ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                    title={useDarkTheme ? "Switch to Light Mode" : "Switch to Dark Mode"}
                     onClick={async () => {
                         handleMenuClose();
                         await handleToggleTheme();
@@ -458,10 +466,10 @@ export const NavHeader: React.FC<INavHeaderProps> = ({
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleBackupClose} color="inherit">
+                    <Button onClick={handleBackupClose} color="inherit" aria-label="Cancel backup changes" title="Cancel backup changes">
                         Cancel
                     </Button>
-                    <Button variant="contained" onClick={handleSaveBackups} disabled={!canSaveBackups}>
+                    <Button variant="contained" onClick={handleSaveBackups} disabled={!canSaveBackups} aria-label="Save backup approvers" title="Save backup approvers">
                         Save
                     </Button>
                 </DialogActions>

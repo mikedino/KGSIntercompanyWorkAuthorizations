@@ -196,7 +196,7 @@ export const LobDefaultsSection: React.FC<LobDefaultsSectionProps> = ({
                     </Typography>
                 </Box>
 
-                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog}>
+                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog} aria-label="Add LOB" title="Add LOB">
                     Add LOB
                 </Button>
             </Box>
@@ -218,6 +218,7 @@ export const LobDefaultsSection: React.FC<LobDefaultsSectionProps> = ({
                                         <IconButton
                                             size="small"
                                             aria-label={`Edit ${lob.Title}`}
+                                            title={`Edit ${lob.Title}`}
                                             onClick={() => openEditDialog(lob)}
                                             disabled={savingKey === rowKey || !!savingKey}
                                         >

@@ -46,6 +46,8 @@ export const IwaAttachmentsPanel: React.FC<IIwaAttachmentsPanelProps> = ({
                         variant="outlined"
                         component="label"
                         startIcon={<AddOutlinedIcon />}
+                        aria-label="Upload attachment"
+                        title="Upload attachment"
                         sx={{ alignSelf: { xs: "stretch", md: "flex-start" } }}
                     >
                         Upload Attachment
@@ -78,6 +80,8 @@ export const IwaAttachmentsPanel: React.FC<IIwaAttachmentsPanelProps> = ({
                                         size="small"
                                         color="error"
                                         startIcon={<DeleteOutlineOutlinedIcon />}
+                                        aria-label={`Remove attachment ${attachment.FileName}`}
+                                        title={`Remove attachment ${attachment.FileName}`}
                                         onClick={() => {
                                             onRemoveAttachment(attachment.FileName).catch(() => undefined);
                                         }}

@@ -315,6 +315,8 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                         <IconButton
                                                             size="small"
                                                             color="info"
+                                                            aria-label={`View comments for ${getResourceNamesForLabor(line, resources)}`}
+                                                            title={`View comments for ${getResourceNamesForLabor(line, resources)}`}
                                                             onClick={() => onOpenCommentDialog({
                                                                 title: `${getResourceNamesForLabor(line, resources)} Comments`,
                                                                 comments: resourceComments
@@ -378,19 +380,19 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                 {isEditingComp ? (
                                                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                                                         <Tooltip title="Recalculate rates from salary">
-                                                            <Button size="small" startIcon={<CalculateOutlinedIcon />} onClick={() => handleRecalculateCompRates(line.Id)}>
+                                                            <Button size="small" startIcon={<CalculateOutlinedIcon />} onClick={() => handleRecalculateCompRates(line.Id)} aria-label="Recalculate compensation rates" title="Recalculate compensation rates">
                                                                 Recalc
                                                             </Button>
                                                         </Tooltip>
-                                                        <Button size="small" startIcon={<SaveOutlinedIcon />} onClick={() => handleSaveComp(line)}>
+                                                        <Button size="small" startIcon={<SaveOutlinedIcon />} onClick={() => handleSaveComp(line)} aria-label="Save compensation rates" title="Save compensation rates">
                                                             Save
                                                         </Button>
-                                                        <Button size="small" onClick={() => handleCancelCompEdit(line)}>
+                                                        <Button size="small" onClick={() => handleCancelCompEdit(line)} aria-label="Cancel compensation edits" title="Cancel compensation edits">
                                                             Cancel
                                                         </Button>
                                                     </Stack>
                                                 ) : canEditThisLine ? (
-                                                    <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => handleStartCompEdit(line)}>
+                                                    <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => handleStartCompEdit(line)} aria-label="Edit compensation rates" title="Edit compensation rates">
                                                         Edit
                                                     </Button>
                                                 ) : (

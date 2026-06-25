@@ -572,6 +572,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     startIcon={<DownloadOutlinedIcon />}
                     onClick={handleExport}
                     disabled={sortedRows.length === 0}
+                    aria-label="Export authorizations"
+                    title="Export authorizations"
                     sx={{ alignSelf: { xs: "stretch", md: "flex-start" } }}
                 >
                     Export
@@ -680,6 +682,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                             <Tooltip title="Reset filters">
                                 <IconButton
                                     onClick={handleResetFilters}
+                                    aria-label="Reset filters"
+                                    title="Reset filters"
                                     sx={{
                                         justifySelf: "end",
                                         alignSelf: "center",
@@ -1029,6 +1033,8 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                                 <TableCell align="center" sx={{ width: columnWidths.actions, verticalAlign: "top" }}>
                                                     <IconButton
                                                         size="small"
+                                                        aria-label={`Open actions for ${row.authorization.Title}`}
+                                                        title={`Open actions for ${row.authorization.Title}`}
                                                         onClick={(event: React.MouseEvent<HTMLElement>): void => {
                                                             event.stopPropagation();
                                                             openRowMenu(event, row.authorization.Id);
@@ -1158,8 +1164,15 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setDiscardDraftRow(undefined)}>Cancel</Button>
-                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => handleDiscardDraft()}>
+                    <Button onClick={() => setDiscardDraftRow(undefined)} aria-label="Cancel discard draft" title="Cancel discard draft">Cancel</Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        startIcon={<DeleteOutlineOutlinedIcon />}
+                        onClick={() => handleDiscardDraft()}
+                        aria-label={discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
+                        title={discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
+                    >
                         {discardDraftRow?.isModDraft ? "Discard Mod" : "Discard Draft"}
                     </Button>
                 </DialogActions>

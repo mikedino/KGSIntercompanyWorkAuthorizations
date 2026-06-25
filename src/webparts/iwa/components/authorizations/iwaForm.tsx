@@ -1099,12 +1099,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             ? "Complete each Travel / ODC row with a Line Type, Job ID, Description, and numeric amount before continuing."
             : undefined;
 
-        if (isModEditMode && resourceRows.length === 0) {
-            return travelMessage;
+        const hasResourceRows = resourceRows.length > 0;
+        const hasTravelRows = travelRows.length > 0;
+
+        if (!hasResourceRows && !hasTravelRows) {
+            return "Add at least one resource or Travel / ODC row before continuing.";
         }
 
-        if (resourceRows.length === 0) {
-            return "Add at least one resource before continuing.";
+        if (!hasResourceRows) {
+            return travelMessage;
         }
 
         const hasAtLeastOneAssignedResource = resourceRows.some((row) => !!row.employee?.Id);
@@ -1167,7 +1170,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             }
         }
 
-        if (form.contractType === "ffp") {
+        if (form.contractType === "ffp" && hasResourceRows) {
             const assignedResourceIds = new Set(resourceRows.filter((row) => !!row.employee?.Id).map((row) => row.id));
             const linkedResourceIds = new Set(ffpLaborRows.flatMap((row) => row.resourceRowIds));
             const everyResourceLinked = [...assignedResourceIds].every((id) => linkedResourceIds.has(id));
@@ -2433,6 +2436,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     startIcon={<DeleteOutlineOutlinedIcon />}
                                     disabled={isSaving || isBootstrapping}
                                     onClick={() => setDiscardDraftDialogOpen(true)}
+                                    aria-label={isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                                    title={isModDraftMode ? "Discard Mod" : "Discard Draft"}
                                 >
                                     {isModDraftMode ? "Discard Mod" : "Discard Draft"}
                                 </Button>
@@ -2521,6 +2526,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         startIcon={<ArrowBackOutlinedIcon />}
                                         disabled={activeStep === 0 || isSaving}
                                         onClick={handlePrevious}
+                                        aria-label="Previous step"
+                                        title="Previous step"
                                     >
                                         Previous
                                     </Button>
@@ -2528,6 +2535,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         variant="text"
                                         color="inherit"
                                         onClick={handleCancel}
+                                        aria-label="Cancel authorization editing"
+                                        title="Cancel authorization editing"
                                     >
                                         Cancel
                                     </Button>
@@ -2542,6 +2551,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                             onClick={() => {
                                                 persistAuthorization("draft").catch((error) => showDialog("Save Error", formatError(error)));
                                             }}
+                                            aria-label="Save draft"
+                                            title="Save draft"
                                         >
                                             Save Draft
                                         </Button>
@@ -2554,6 +2565,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                             onClick={() => {
                                                 handleNext().catch((error) => showDialog("Save Error", formatError(error)));
                                             }}
+                                            aria-label="Next step"
+                                            title="Next step"
                                         >
                                             Next
                                         </Button>
@@ -2576,6 +2589,16 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
 
                                                 persistAuthorization("submitted").catch((error) => showDialog("Submit Error", formatError(error)));
                                             }}
+                                            aria-label={isModEditMode
+                                                ? isModDraftMode
+                                                    ? "Submit Mod"
+                                                    : "Save Mod"
+                                                : isExistingSubmittedEdit ? "Submit Updates" : "Submit Authorization"}
+                                            title={isModEditMode
+                                                ? isModDraftMode
+                                                    ? "Submit Mod"
+                                                    : "Save Mod"
+                                                : isExistingSubmittedEdit ? "Submit Updates" : "Submit Authorization"}
                                         >
                                             {isModEditMode
                                                 ? isModDraftMode
@@ -2598,7 +2621,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         </Typography>
                     </DialogContent>
                     <DialogActions sx={{ justifyContent: "space-between" }}>
-                        <Button onClick={() => setCancelDialogOpen(false)}>
+                        <Button onClick={() => setCancelDialogOpen(false)} aria-label="Go back to edit" title="Go back to edit">
                             Go Back to Edit
                         </Button>
                         <Stack direction="row" spacing={1}>
@@ -2609,6 +2632,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 onClick={() => {
                                     handleDiscardChangesAndCancel().catch((error) => showDialog("Cancel Error", formatError(error)));
                                 }}
+                                aria-label="Discard changes and exit"
+                                title="Discard changes and exit"
                             >
                                 Discard Changes and Exit
                             </Button>
@@ -2620,6 +2645,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     onClick={() => {
                                         handleSaveAndCancel().catch((error) => showDialog("Save Error", formatError(error)));
                                     }}
+                                    aria-label="Save changes and exit"
+                                    title="Save changes and exit"
                                 >
                                     Save Changes and Exit
                                 </Button>
@@ -2638,8 +2665,15 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         </Typography>
                     </DialogContent>
                     <DialogActions>
-                        <Button onClick={() => setDiscardDraftDialogOpen(false)}>Cancel</Button>
-                        <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={handleDiscardDraft}>
+                        <Button onClick={() => setDiscardDraftDialogOpen(false)} aria-label="Cancel discard draft" title="Cancel discard draft">Cancel</Button>
+                        <Button
+                            variant="contained"
+                            color="error"
+                            startIcon={<DeleteOutlineOutlinedIcon />}
+                            onClick={handleDiscardDraft}
+                            aria-label={isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                            title={isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                        >
                             {isModDraftMode ? "Discard Mod" : "Discard Draft"}
                         </Button>
                     </DialogActions>
@@ -2745,7 +2779,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                         </Stack>
                     </DialogContent>
                     <DialogActions>
-                        <Button onClick={() => setDuplicateMatch(undefined)}>Close</Button>
+                        <Button onClick={() => setDuplicateMatch(undefined)} aria-label="Close matching IWA dialog" title="Close matching IWA dialog">Close</Button>
                     </DialogActions>
                 </Dialog>
 
