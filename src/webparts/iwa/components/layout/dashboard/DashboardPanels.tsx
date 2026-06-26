@@ -47,7 +47,7 @@ export const WorkflowQueuePanel: React.FC<{ queue: IDashboardQueueItem[] }> = ({
                     {queue.map((item) => (
                         <Box key={item.role}>
                             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-                                <Button size="small" onClick={() => history.push(item.route)} sx={{ justifyContent: "flex-start", px: 0 }}>
+                                <Button size="small" onClick={() => history.push(item.route)} aria-label={`Open ${item.label} queue`} title={`Open ${item.label} queue`} sx={{ justifyContent: "flex-start", px: 0 }}>
                                     {item.label}
                                 </Button>
                                 <Typography variant="body2" fontWeight={700}>{item.count}</Typography>
@@ -128,7 +128,7 @@ export const AttentionPanel: React.FC<{ items: IDashboardAttentionItem[] }> = ({
                                     </Stack>
                                     <Typography variant="body2" color="text.secondary">{item.detail}</Typography>
                                 </Box>
-                                <Button size="small" endIcon={<OpenInNewOutlinedIcon />} onClick={() => history.push(item.route)}>
+                                <Button size="small" endIcon={<OpenInNewOutlinedIcon />} onClick={() => history.push(item.route)} aria-label={`Open ${item.title}`} title={`Open ${item.title}`}>
                                     Open
                                 </Button>
                             </Stack>
@@ -169,7 +169,7 @@ export const RecentActivityPanel: React.FC<{ items: IDashboardActivityItem[] }> 
                             <Stack key={item.key} direction="row" spacing={1.25} alignItems="flex-start">
                                 {getActivityIcon(item.tone)}
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
-                                    <Button onClick={() => history.push(item.route)} sx={{ p: 0, justifyContent: "flex-start", textAlign: "left" }}>
+                                    <Button onClick={() => history.push(item.route)} aria-label={`Open ${item.title}`} title={`Open ${item.title}`} sx={{ p: 0, justifyContent: "flex-start", textAlign: "left" }}>
                                         <Typography fontWeight={700}>{item.title}</Typography>
                                     </Button>
                                     <Typography variant="body2" color="text.secondary">{item.detail || "Workflow activity recorded"}</Typography>
@@ -198,7 +198,7 @@ export const RecentIwasPanel: React.FC<{ items: IDashboardRecentIwa[] }> = ({ it
                         {items.map((item) => (
                             <Stack key={item.key} direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
                                 <Box sx={{ minWidth: 0 }}>
-                                    <Button onClick={() => history.push(item.route)} sx={{ p: 0, justifyContent: "flex-start", textAlign: "left" }}>
+                                    <Button onClick={() => history.push(item.route)} aria-label={`Open ${item.title}`} title={`Open ${item.title}`} sx={{ p: 0, justifyContent: "flex-start", textAlign: "left" }}>
                                         <Typography fontWeight={700}>{item.title}</Typography>
                                     </Button>
                                     <Typography variant="body2" color="text.secondary" noWrap>{item.detail}</Typography>
@@ -230,7 +230,7 @@ export const QuickActionsPanel: React.FC = (): JSX.Element => {
                 <Grid container spacing={1}>
                     {actions.map(([label, route]) => (
                         <Grid key={route} size={{ xs: 12, sm: 6 }}>
-                            <Button fullWidth variant="outlined" onClick={() => history.push(route)} endIcon={<OpenInNewOutlinedIcon />}>
+                            <Button fullWidth variant="outlined" onClick={() => history.push(route)} endIcon={<OpenInNewOutlinedIcon />} aria-label={label} title={label}>
                                 {label}
                             </Button>
                         </Grid>

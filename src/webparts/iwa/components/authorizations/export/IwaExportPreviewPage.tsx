@@ -258,7 +258,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
         return (
             <Paper sx={{ p: 3 }}>
                 <Stack spacing={1.5}>
-                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={() => history.push(`/authorizations/view/${authorization.Id}`)} sx={{ alignSelf: "flex-start" }}>
+                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={() => history.push(`/authorizations/view/${authorization.Id}`)} sx={{ alignSelf: "flex-start" }} aria-label="Back to IWA" title="Back to IWA">
                         Back
                     </Button>
                     <Alert severity="warning">
@@ -280,7 +280,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
         <Stack spacing={2.5}>
             <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: "stretch", md: "flex-start" }}>
                 <Stack spacing={1}>
-                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={() => history.push(`/authorizations/view/${authorization.Id}`)} sx={{ alignSelf: "flex-start" }}>
+                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={() => history.push(`/authorizations/view/${authorization.Id}`)} sx={{ alignSelf: "flex-start" }} aria-label="Back to IWA" title="Back to IWA">
                         Back to IWA
                     </Button>
                 </Stack>
@@ -300,22 +300,22 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                     </FormControl>
                     <Tooltip title={canCreatePdf ? "Print approved export" : approvalGateMessage}>
                         <span>
-                            <Button startIcon={<PrintOutlinedIcon />} onClick={() => window.print()} disabled={!canCreatePdf}>
-                                Print
-                            </Button>
+                                <Button startIcon={<PrintOutlinedIcon />} onClick={() => window.print()} disabled={!canCreatePdf} aria-label="Print approved export" title={canCreatePdf ? "Print approved export" : approvalGateMessage}>
+                                    Print
+                                </Button>
                         </span>
                     </Tooltip>
                     {!hasStoredPdf && (
                         <Tooltip title={canGeneratePdf ? "Save approved PDF to IWAExports" : approvalGateMessage}>
                             <span>
-                                <Button startIcon={<PictureAsPdfOutlinedIcon />} onClick={handleGeneratePdf} disabled={!canGeneratePdf || isGeneratingPdf}>
+                                <Button startIcon={<PictureAsPdfOutlinedIcon />} onClick={handleGeneratePdf} disabled={!canGeneratePdf || isGeneratingPdf} aria-label="Save approved PDF" title={canGeneratePdf ? "Save approved PDF to IWAExports" : approvalGateMessage}>
                                     {isGeneratingPdf ? "Saving..." : "Save PDF"}
                                 </Button>
                             </span>
                         </Tooltip>
                     )}
                     {canCreatePdf && storedPdfUrl && (
-                        <Button startIcon={<OpenInNewOutlinedIcon />} onClick={() => window.open(storedPdfUrl, "_blank", "noopener,noreferrer")}>
+                        <Button startIcon={<OpenInNewOutlinedIcon />} onClick={() => window.open(storedPdfUrl, "_blank", "noopener,noreferrer")} aria-label="Open saved PDF" title="Open saved PDF">
                             Open PDF
                         </Button>
                     )}

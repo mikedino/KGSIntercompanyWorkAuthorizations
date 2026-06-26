@@ -46,7 +46,6 @@ import { IwaTravelOdcTab } from "./view/IwaTravelOdcTab";
 import { IwaWorkflowTab } from "./view/IwaWorkflowTab";
 import {
     baseWorkflowSteps,
-    contractTypeLabels,
     DetailTab,
     detailTabs,
     getActiveModDraftSessionKey,
@@ -325,6 +324,15 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             label: currentRun ? `Workflow ${workflowRunStatusLabels[currentRun.runStatus]}` : "",
             color: "info"
         };
+    }, [currentRun]);
+    const rejectionActionRequiredMessage = React.useMemo((): string | undefined => {
+        if (currentRun?.runStatus !== "active" || currentRun.outcome !== "rejected" || currentRun.currentStepKey !== "submitter") {
+            return undefined;
+        }
+
+        return currentRun.runType === "mod"
+            ? "This Mod was rejected and is waiting on the submitter to Modify & Resubmit or Cancel."
+            : "This authorization was rejected and is waiting on the submitter to Modify & Resubmit or Cancel.";
     }, [currentRun]);
     const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
     const canEditDraftMod = !!draftMod && canEditAuthorizationByUser;
@@ -997,7 +1005,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         <Stack spacing={2.5}>
             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1.5}>
                 <Stack spacing={0.75}>
-                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={handleBack} sx={{ alignSelf: "flex-start" }}>
+                    <Button startIcon={<ArrowBackOutlinedIcon />} onClick={handleBack} sx={{ alignSelf: "flex-start" }} aria-label="Back to previous page" title="Back to previous page">
                         Back
                     </Button>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
@@ -1009,7 +1017,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         )}
                         <Chip label={displayedStatus.label} color={displayedStatus.color} />
                         {draftMod && <Chip label={`Mod ${draftMod.modNumber ?? ""} Draft`} color="secondary" />}
-                        <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
                         {currentRun && <Chip label={displayedWorkflowStatus.label} color={displayedWorkflowStatus.color} variant="outlined" />}
                     </Stack>
                     <Typography color="text.secondary">
@@ -1024,21 +1031,23 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                 startIcon={<PictureAsPdfOutlinedIcon />}
                                 onClick={() => history.push(`/authorizations/export/${authorization.Id}`)}
                                 disabled={!canViewFinancials}
+                                aria-label="Open export preview"
+                                title={canViewFinancials ? "Open export preview" : "Export preview contains dollar amounts and is limited to workflow approvers, their backups, and the PM."}
                             >
                                 Export Preview
                             </Button>
                         </span>
                     </Tooltip>
                     {canEditDraftMod ? (
-                        <Button variant="contained" color="secondary" startIcon={<EditOutlinedIcon />} onClick={handleEditMod}>
+                        <Button variant="contained" color="secondary" startIcon={<EditOutlinedIcon />} onClick={handleEditMod} aria-label="Edit Mod" title="Edit Mod">
                             Edit Mod
                         </Button>
                     ) : canInitiateMod ? (
-                        <Button variant="contained" color="secondary" startIcon={<AccountTreeOutlinedIcon />} onClick={handleOpenInitiateMod}>
+                        <Button variant="contained" color="secondary" startIcon={<AccountTreeOutlinedIcon />} onClick={handleOpenInitiateMod} aria-label="Initiate Mod" title="Initiate Mod">
                             Initiate Mod
                         </Button>
                     ) : canEditAuthorizationByUser && !draftMod ? (
-                        <Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={handleEdit}>
+                        <Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={handleEdit} aria-label="Edit authorization" title="Edit authorization">
                             Edit
                         </Button>
                     ) : null}
@@ -1050,6 +1059,32 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     {canEditDraftMod
                         ? `This authorization has Mod ${draftMod.modNumber ?? ""} in draft. Use Edit Mod to continue the modification before starting any other changes.`
                         : `This authorization has Mod ${draftMod.modNumber ?? ""} in draft, started by ${draftModOwnerName}. Base authorization editing is unavailable until that draft mod is submitted or discarded.`}
+                </Alert>
+            )}
+
+            {rejectionActionRequiredMessage && (
+                <Alert
+                    severity="warning"
+                    variant="outlined"
+                    icon={<ErrorOutlineOutlinedIcon />}
+                    sx={{
+                        alignItems: "center",
+                        borderColor: "warning.main",
+                        borderWidth: 2,
+                        fontSize: "1rem",
+                        "& .MuiAlert-icon": {
+                            alignItems: "center"
+                        },
+                        "& .MuiAlert-message": {
+                            fontSize: "1rem",
+                            lineHeight: 1.5
+                        }
+                    }}
+                >
+                    <Typography component="span" fontSize="inherit" lineHeight="inherit" fontWeight={800}>
+                        Action required:
+                    </Typography>{" "}
+                    {rejectionActionRequiredMessage}
                 </Alert>
             )}
 
@@ -1127,6 +1162,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                                 color="success"
                                                 startIcon={<CheckCircleOutlineOutlinedIcon />}
                                                 onClick={() => handleOpenWorkflowDecision("approved")}
+                                                aria-label="Approve authorization"
+                                                title="Approve authorization"
                                                 sx={{ width: { xs: "100%", xl: "auto" } }}
                                             >
                                                 Approve
@@ -1137,6 +1174,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                                 color="error"
                                                 startIcon={<CancelOutlinedIcon />}
                                                 onClick={() => handleOpenWorkflowDecision("rejected")}
+                                                aria-label="Reject authorization"
+                                                title="Reject authorization"
                                                 sx={{ width: { xs: "100%", xl: "auto" } }}
                                             >
                                                 Reject
@@ -1397,11 +1436,13 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleCloseWorkflowDecision}>Cancel</Button>
+                    <Button onClick={handleCloseWorkflowDecision} aria-label="Cancel workflow decision" title="Cancel workflow decision">Cancel</Button>
                     <Button
                         variant="contained"
                         color={workflowDialogDecision === "approved" ? "success" : "error"}
                         onClick={handleSubmitWorkflowDecision}
+                        aria-label={workflowDialogDecision === "approved" ? "Submit approval" : "Submit rejection"}
+                        title={workflowDialogDecision === "approved" ? "Submit approval" : "Submit rejection"}
                     >
                         {workflowDialogDecision === "approved" ? "Approve" : "Reject"}
                     </Button>
@@ -1413,7 +1454,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     <Typography sx={{ whiteSpace: "pre-wrap" }}>{commentDialog?.comments ?? ""}</Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setCommentDialog(undefined)}>Close</Button>
+                    <Button onClick={() => setCommentDialog(undefined)} aria-label="Close workflow comments" title="Close workflow comments">Close</Button>
                 </DialogActions>
             </Dialog>
             <Dialog open={modifyPromptOpen} onClose={() => setModifyPromptOpen(false)} fullWidth maxWidth="sm">
@@ -1427,8 +1468,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModifyPromptOpen(false)}>Cancel</Button>
-                    <Button variant="contained" onClick={handleConfirmModify}>Yes, continue</Button>
+                    <Button onClick={() => setModifyPromptOpen(false)} aria-label="Cancel modify authorization" title="Cancel modify authorization">Cancel</Button>
+                    <Button variant="contained" onClick={handleConfirmModify} aria-label="Confirm modify authorization" title="Confirm modify authorization">Yes, continue</Button>
                 </DialogActions>
             </Dialog>
             <Dialog open={modPromptOpen} onClose={() => setModPromptOpen(false)} fullWidth maxWidth="sm">
@@ -1442,8 +1483,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setModPromptOpen(false)}>Cancel</Button>
-                    <Button variant="contained" color="secondary" onClick={handleInitiateMod}>Yes, initiate Mod</Button>
+                    <Button onClick={() => setModPromptOpen(false)} aria-label="Cancel initiate Mod" title="Cancel initiate Mod">Cancel</Button>
+                    <Button variant="contained" color="secondary" onClick={handleInitiateMod} aria-label="Confirm initiate Mod" title="Confirm initiate Mod">Yes, initiate Mod</Button>
                 </DialogActions>
             </Dialog>
             <Dialog open={!!changeDialog} onClose={() => setChangeDialog(undefined)} fullWidth maxWidth="md">
@@ -1492,11 +1533,13 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                 setChangeDialog(undefined);
                                 selectDetailTab("mods");
                             }}
+                            aria-label="View Mods"
+                            title="View Mods"
                         >
                             View Mods
                         </Button>
                     )}
-                    <Button onClick={() => setChangeDialog(undefined)}>Close</Button>
+                    <Button onClick={() => setChangeDialog(undefined)} aria-label="Close workflow changes" title="Close workflow changes">Close</Button>
                 </DialogActions>
             </Dialog>
         </Stack>

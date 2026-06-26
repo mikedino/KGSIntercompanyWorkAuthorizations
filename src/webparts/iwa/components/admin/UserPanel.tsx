@@ -203,7 +203,7 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                     </Typography>
                 </Box>
 
-                <Button variant="contained" color="secondary" startIcon={<PersonAddIcon />} onClick={openAdd}>
+                <Button variant="contained" color="secondary" startIcon={<PersonAddIcon />} onClick={openAdd} aria-label="Add User" title="Add User">
                     Add User
                 </Button>
             </Stack>
@@ -340,7 +340,7 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                                                     Last visit: {formatLastVisit(u.lastVisit)}
                                                 </Typography>
 
-                                                <IconButton size="small" onClick={() => openEdit(u)} aria-label="Edit user">
+                                                <IconButton size="small" onClick={() => openEdit(u)} aria-label={`Edit ${name}`} title={`Edit ${name}`}>
                                                     <EditOutlinedIcon fontSize="small" />
                                                 </IconButton>
                                             </Stack>
@@ -395,11 +395,13 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeEdit} disabled={saving}>Cancel</Button>
+                    <Button onClick={closeEdit} disabled={saving} aria-label="Cancel user changes" title="Cancel user changes">Cancel</Button>
                     <Button
                         variant="contained"
                         onClick={() => handleSave()}
                         disabled={saving || !editUser || isDemotingLastAdmin}
+                        aria-label="Save user"
+                        title="Save user"
                     >
                         Save
                     </Button>
@@ -454,11 +456,13 @@ export const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ users, peopleP
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeAdd} disabled={saving}>Cancel</Button>
+                    <Button onClick={closeAdd} disabled={saving} aria-label="Cancel add user" title="Cancel add user">Cancel</Button>
                     <Button
                         variant="contained"
                         onClick={() => handleAddSave()}
                         disabled={saving}
+                        aria-label="Add User"
+                        title="Add User"
                     >
                         Add
                     </Button>

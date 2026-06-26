@@ -131,6 +131,8 @@ const AdminPage: React.FC<AdminModuleProps> = ({ context }) => {
             variant="outlined"
             startIcon={<RefreshIcon />}
             onClick={handleRefreshClick}
+            aria-label="Refresh admin data"
+            title="Refresh admin data"
           >
             Refresh
           </Button>

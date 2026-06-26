@@ -46,6 +46,8 @@ const AlertDialog: React.FC<IAlertDialogProps> = ({
                     onClick={onClose}
                     variant="contained"
                     color="primary"
+                    aria-label={closeText}
+                    title={closeText}
                 >
                     {closeText}
                 </Button>

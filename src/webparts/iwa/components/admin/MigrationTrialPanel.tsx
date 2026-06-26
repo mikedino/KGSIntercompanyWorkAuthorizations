@@ -7,7 +7,7 @@ import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import PersonSearchIcon from "@mui/icons-material/PersonSearch";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
-import { IMigrationBatchResult, IMigrationDeleteResult, IMigrationEnsureUsersFile, IMigrationPlan, IMigrationStampResult, IMigrationTrialProgress, IMigrationTrialResult, MigrationTrialService } from "./migrationTrialService";
+import { IMigrationBatchResult, IMigrationDeleteResult, IMigrationEnsureUsersFile, IMigrationJobTitleBackfillResult, IMigrationNaicsBackfillResult, IMigrationPlan, IMigrationStampResult, IMigrationTrialProgress, IMigrationTrialResult, MigrationTrialService } from "./migrationTrialService";
 import { formatError } from "../common/utils";
 
 interface IMigrationTrialPanelProps {
@@ -31,17 +31,22 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
   const [fileName, setFileName] = React.useState<string>("");
   const [authNumber, setAuthNumber] = React.useState<string>("");
   const [batchQuantity, setBatchQuantity] = React.useState<string>("");
+  const [naicsLimit, setNaicsLimit] = React.useState<string>("");
   const [allowWarnings, setAllowWarnings] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string>("");
   const [result, setResult] = React.useState<IMigrationTrialResult | undefined>();
   const [stampResult, setStampResult] = React.useState<IMigrationStampResult | undefined>();
   const [batchResult, setBatchResult] = React.useState<IMigrationBatchResult | undefined>();
   const [deleteResult, setDeleteResult] = React.useState<IMigrationDeleteResult | undefined>();
+  const [jobTitleResult, setJobTitleResult] = React.useState<IMigrationJobTitleBackfillResult | undefined>();
+  const [naicsResult, setNaicsResult] = React.useState<IMigrationNaicsBackfillResult | undefined>();
   const [progress, setProgress] = React.useState<IMigrationTrialProgress | undefined>();
   const [isImporting, setIsImporting] = React.useState<boolean>(false);
   const [isStamping, setIsStamping] = React.useState<boolean>(false);
   const [isDeleting, setIsDeleting] = React.useState<boolean>(false);
   const [isEnsuringUsers, setIsEnsuringUsers] = React.useState<boolean>(false);
+  const [isBackfillingJobTitles, setIsBackfillingJobTitles] = React.useState<boolean>(false);
+  const [isBackfillingNaics, setIsBackfillingNaics] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     MigrationTrialService.configure(context);
@@ -62,7 +67,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     setStampResult(undefined);
     setBatchResult(undefined);
     setDeleteResult(undefined);
-    setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
     setProgress(undefined);
     setPlan(undefined);
     setEnsureUsersFile(undefined);
@@ -110,6 +116,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     setStampResult(undefined);
     setBatchResult(undefined);
     setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
     setProgress({ label: "Preparing import...", completed: 0, total: 1 });
     setIsImporting(true);
     try {
@@ -148,6 +156,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     setStampResult(undefined);
     setBatchResult(undefined);
     setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
     setProgress({ label: "Preparing batch import...", completed: 0, total: 1 });
     setIsImporting(true);
     try {
@@ -201,6 +211,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     setResult(undefined);
     setStampResult(undefined);
     setBatchResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
     setProgress({ label: "Preparing batch stamp...", completed: 0, total: 1 });
     setIsStamping(true);
     try {
@@ -230,6 +242,8 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     setStampResult(undefined);
     setBatchResult(undefined);
     setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
     setProgress({ label: "Preparing permanent delete...", completed: 0, total: 1 });
     setIsDeleting(true);
     try {
@@ -271,7 +285,89 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
     }
   };
 
+  const handleBackfillJobTitlesClick = async (): Promise<void> => {
+    const confirmed = window.confirm(
+      "This will update jobTitle on existing Travel/ODC and LaborLine records by matching jobId against JAMIS JobEndPoint. Continue?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setResult(undefined);
+    setStampResult(undefined);
+    setBatchResult(undefined);
+    setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
+    setProgress({ label: "Preparing job title backfill...", completed: 0, total: 1 });
+    setIsBackfillingJobTitles(true);
+    try {
+      const nextResult = await runBusy("Backfilling job titles...", () =>
+        MigrationTrialService.backfillLaborAndTravelJobTitles(setProgress)
+      );
+      console.info("[IWA Migration] Job title backfill result", nextResult);
+      if (nextResult.skipped.length) {
+        console.warn("[IWA Migration] Job title backfill skipped items", nextResult.skipped);
+      }
+      if (nextResult.failed.length) {
+        console.error("[IWA Migration] Job title backfill failed items", nextResult.failed);
+      }
+      setJobTitleResult(nextResult);
+      onSuccess(`Backfilled ${nextResult.totalUpdated} job title value(s).`);
+    } catch (e) {
+      setError(formatError(e));
+    } finally {
+      setIsBackfillingJobTitles(false);
+    }
+  };
+
+  const handleBackfillNaicsClick = async (): Promise<void> => {
+    const limit = getSafeQuantity(naicsLimit);
+    if (naicsLimit.trim() && !limit) {
+      setError("NAICS test limit must be a positive whole number, or blank for all.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `This will update empty naicsCode values on ${limit ? `up to ${limit}` : "all matching"} existing IWA${limit === 1 ? "" : "s"} by matching contractId against JAMIS ContractEndPoint. Continue?`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    setResult(undefined);
+    setStampResult(undefined);
+    setBatchResult(undefined);
+    setDeleteResult(undefined);
+    setJobTitleResult(undefined);
+    setNaicsResult(undefined);
+    setProgress({ label: "Preparing NAICS backfill...", completed: 0, total: 1 });
+    setIsBackfillingNaics(true);
+    try {
+      console.log("[IWA Migration] Starting NAICS backfill", { limit });
+      const nextResult = await runBusy("Backfilling NAICS codes...", () =>
+        MigrationTrialService.backfillAuthorizationNaicsCodes(limit, setProgress)
+      );
+      console.log("[IWA Migration] NAICS backfill result", nextResult);
+      if (nextResult.skipped.length) {
+        console.warn("[IWA Migration] NAICS backfill skipped items", nextResult.skipped);
+      }
+      if (nextResult.failed.length) {
+        console.error("[IWA Migration] NAICS backfill failed items", nextResult.failed);
+      }
+      setNaicsResult(nextResult);
+      onSuccess(`Backfilled ${nextResult.updated} NAICS code value(s).`);
+    } catch (e) {
+      setError(formatError(e));
+    } finally {
+      setIsBackfillingNaics(false);
+    }
+  };
+
   const progressValue = progress?.total ? Math.min(100, Math.round((progress.completed / progress.total) * 100)) : 0;
+  const isBusy = isImporting || isStamping || isDeleting || isEnsuringUsers || isBackfillingJobTitles || isBackfillingNaics;
 
   return (
     <Stack spacing={2}>
@@ -285,9 +381,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
       {error && <Alert severity="error">{error}</Alert>}
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
-        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} aria-label="Upload migration plan" title="Upload migration plan">
           Upload Plan
-          <input hidden type="file" accept="application/json,.json" onChange={handleFileChange} disabled={isImporting || isStamping || isDeleting || isEnsuringUsers} />
+          <input hidden type="file" accept="application/json,.json" onChange={handleFileChange} disabled={isBusy} />
         </Button>
         <Typography variant="body2" color="text.secondary">
           {fileName || "No plan loaded"}
@@ -314,7 +410,7 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
         placeholder="IWA-KPS-ATS-2025-M-2268"
         fullWidth
         size="small"
-        disabled={isImporting || isStamping || isDeleting || isEnsuringUsers}
+        disabled={isBusy}
       />
 
       <TextField
@@ -324,7 +420,7 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
         placeholder="Blank imports/stamps all"
         fullWidth
         size="small"
-        disabled={isImporting || isStamping || isDeleting || isEnsuringUsers}
+        disabled={isBusy}
         helperText={plan ? `${MigrationTrialService.getBatchKeys(plan, getSafeQuantity(batchQuantity)).length} authorization(s) selected for batch actions.` : ensureUsersFile ? "Batch quantity is ignored for user-only ensure files." : "Upload a plan to calculate batch size."}
       />
 
@@ -335,7 +431,7 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
       )}
 
       <FormControlLabel
-        control={<Checkbox checked={allowWarnings} disabled={isImporting || isStamping || isDeleting || isEnsuringUsers} onChange={(event) => setAllowWarnings(event.target.checked)} />}
+        control={<Checkbox checked={allowWarnings} disabled={isBusy} onChange={(event) => setAllowWarnings(event.target.checked)} />}
         label="Allow import when this authorization has warnings"
       />
 
@@ -344,7 +440,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           variant="contained"
           startIcon={<PlayArrowIcon />}
           onClick={handleImportClick}
-          disabled={!plan || !authNumber.trim() || isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={!plan || !authNumber.trim() || isBusy}
+          aria-label="Import one authorization"
+          title="Import one authorization"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Import One Authorization
@@ -354,7 +452,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           color="secondary"
           startIcon={<PlaylistAddCheckIcon />}
           onClick={handleImportBatchClick}
-          disabled={!plan || isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={!plan || isBusy}
+          aria-label="Import batch"
+          title="Import batch"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Import Batch
@@ -364,7 +464,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           color="secondary"
           startIcon={<ManageHistoryIcon />}
           onClick={handleStampClick}
-          disabled={!plan || !authNumber.trim() || isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={!plan || !authNumber.trim() || isBusy}
+          aria-label="Stamp legacy fields"
+          title="Stamp legacy fields"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Stamp Legacy Fields
@@ -374,7 +476,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           color="secondary"
           startIcon={<ManageHistoryIcon />}
           onClick={handleStampBatchClick}
-          disabled={!plan || isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={!plan || isBusy}
+          aria-label="Stamp batch"
+          title="Stamp batch"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Stamp Batch
@@ -383,7 +487,9 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           variant="outlined"
           startIcon={<PersonSearchIcon />}
           onClick={handleEnsureUsersClick}
-          disabled={(!plan && !ensureUsersFile) || isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={(!plan && !ensureUsersFile) || isBusy}
+          aria-label="Ensure plan users"
+          title="Ensure plan users"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Ensure Plan Users
@@ -393,12 +499,61 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           color="error"
           startIcon={<DeleteForeverIcon />}
           onClick={handleDeleteAllClick}
-          disabled={isImporting || isStamping || isDeleting || isEnsuringUsers}
+          disabled={isBusy}
+          aria-label="Permanent delete IWA data"
+          title="Permanent delete IWA data"
           sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
         >
           Permanent Delete IWA Data
         </Button>
       </Stack>
+
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "stretch", sm: "center" }}>
+        <Button
+          variant="outlined"
+          color="secondary"
+          startIcon={<ManageHistoryIcon />}
+          onClick={handleBackfillJobTitlesClick}
+          disabled={isBusy}
+          aria-label="Backfill job titles"
+          title="Backfill job titles"
+          sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
+        >
+          Backfill Job Titles
+        </Button>
+        <Typography variant="body2" color="text.secondary">
+          Updates Travel/ODC and LaborLine jobTitle from JAMIS JobEndPoint.
+        </Typography>
+      </Stack>
+
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "stretch", sm: "center" }}>
+        <Button
+          variant="outlined"
+          color="secondary"
+          startIcon={<ManageHistoryIcon />}
+          onClick={handleBackfillNaicsClick}
+          disabled={isBusy}
+          aria-label="Backfill NAICS codes"
+          title="Backfill NAICS codes"
+          sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
+        >
+          Backfill NAICS Codes
+        </Button>
+        <Typography variant="body2" color="text.secondary">
+          Updates empty IWA naicsCode values from JAMIS ContractEndPoint.
+        </Typography>
+      </Stack>
+
+      <TextField
+        label="NAICS test limit"
+        value={naicsLimit}
+        onChange={(event) => setNaicsLimit(event.target.value)}
+        placeholder="Blank updates all"
+        fullWidth
+        size="small"
+        disabled={isBusy}
+        helperText="Use 2 or 3 for a small PROD test run; leave blank to process all empty NAICS values."
+      />
 
       {progress && (
         <Box>
@@ -479,6 +634,51 @@ export const MigrationTrialPanel: React.FC<IMigrationTrialPanelProps> = ({ conte
           {deleteResult.failed.length > 12 ? <Box>...and {deleteResult.failed.length - 12} more.</Box> : undefined}
         </Alert>
       ) : undefined}
+
+      {jobTitleResult && (
+        <Alert severity={jobTitleResult.failed.length ? "warning" : "success"}>
+          Processed {jobTitleResult.totalProcessed} item(s). Updated {jobTitleResult.totalUpdated}:{" "}
+          {jobTitleResult.updated.map((item) => `${item.listName}: ${item.count}`).join(", ")}.
+          {jobTitleResult.skipped.length ? ` Skipped: ${jobTitleResult.skipped.length}.` : ""}
+          {jobTitleResult.failed.length ? ` Failed: ${jobTitleResult.failed.length}.` : ""}
+        </Alert>
+      )}
+
+      {jobTitleResult && (jobTitleResult.failed.length > 0 || jobTitleResult.skipped.length > 0) && (
+        <Alert severity={jobTitleResult.failed.length ? "error" : "warning"}>
+          {[
+            ...jobTitleResult.failed.map((failure) => `${failure.listName}${failure.itemId ? ` #${failure.itemId}` : ""}${failure.jobId ? ` (${failure.jobId})` : ""}: ${failure.error}`),
+            ...jobTitleResult.skipped.map((skip) => `${skip.listName} #${skip.itemId}: ${skip.reason}`)
+          ].slice(0, 12).map((message) => (
+            <Box key={message}>{message}</Box>
+          ))}
+          {jobTitleResult.failed.length + jobTitleResult.skipped.length > 12 ? (
+            <Box>...and {jobTitleResult.failed.length + jobTitleResult.skipped.length - 12} more.</Box>
+          ) : undefined}
+        </Alert>
+      )}
+
+      {naicsResult && (
+        <Alert severity={naicsResult.failed.length ? "warning" : "success"}>
+          Processed {naicsResult.processed} IWA item(s). Updated {naicsResult.updated}.
+          {naicsResult.skipped.length ? ` Skipped: ${naicsResult.skipped.length}.` : ""}
+          {naicsResult.failed.length ? ` Failed: ${naicsResult.failed.length}.` : ""}
+        </Alert>
+      )}
+
+      {naicsResult && (naicsResult.failed.length > 0 || naicsResult.skipped.length > 0) && (
+        <Alert severity={naicsResult.failed.length ? "error" : "warning"}>
+          {[
+            ...naicsResult.failed.map((failure) => `IWA #${failure.itemId ?? "(unknown)"}${failure.contractId ? ` (${failure.contractId})` : ""}: ${failure.error}`),
+            ...naicsResult.skipped.map((skip) => `IWA #${skip.itemId}: ${skip.reason}`)
+          ].slice(0, 12).map((message) => (
+            <Box key={message}>{message}</Box>
+          ))}
+          {naicsResult.failed.length + naicsResult.skipped.length > 12 ? (
+            <Box>...and {naicsResult.failed.length + naicsResult.skipped.length - 12} more.</Box>
+          ) : undefined}
+        </Alert>
+      )}
     </Stack>
   );
 };

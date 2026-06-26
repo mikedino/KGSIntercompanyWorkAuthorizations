@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Grid, Link, Paper, Stack, Typography } from "@mui/material";
+import { Box, Grid, Link, Paper, Stack, Typography } from "@mui/material";
 import AttachFileOutlinedIcon from "@mui/icons-material/AttachFileOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
@@ -10,6 +10,7 @@ import { ContextInfo } from "gd-sprest";
 import { IAuthorizationItem, IModItem } from "../../data/props";
 import { formatCurrency, formatDate } from "../../common/utils";
 import { maskedCurrencyText } from "../financialAccess";
+import { contractTypeLabels } from "./iwaViewUtils";
 
 export interface IViewAttachmentItem {
     FileName: string;
@@ -75,12 +76,47 @@ const buildAttachmentUrl = (attachment: IViewAttachmentItem): string => {
     return `${ContextInfo.webAbsoluteUrl}/_layouts/15/WopiFrame.aspx?sourcedoc=${attachment.UniqueId}&file=${encodeURIComponent(fileName)}&action=default`;
 };
 
+const SummaryCard: React.FC<{
+    title: string;
+    children: React.ReactNode;
+    height?: string;
+}> = ({ title, children, height }): JSX.Element => (
+    <Paper
+        variant="outlined"
+        sx={{
+            position: "relative",
+            px: 1.75,
+            pb: 1.75,
+            pt: 3.25,
+            height
+        }}
+    >
+        <Box
+        sx={(theme) => ({
+            position: "absolute",
+            top: 0,
+            left: 16,
+            transform: "translateY(-50%)",
+            px: 0.75,
+            bgcolor: "background.paper",
+            color: "text.primary",
+            maxWidth: "calc(100% - 32px)",
+            zIndex: 1
+        })}
+        >
+            <Typography variant="h6" fontWeight={600} noWrap>
+                {title}
+            </Typography>
+        </Box>
+        {children}
+    </Paper>
+);
+
 export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, attachments, canViewFinancials, latestMod }): JSX.Element => (
-    <Grid container spacing={1.5}>
+    <Grid container columnSpacing={1.5} rowSpacing={2}>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
-            <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Contract</Typography>
-                <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
+            <SummaryCard title="Contract" height="100%">
+                <Grid container spacing={1.25}>
                     {[
                         ["Contract ID", authorization.contractId || "-"],
                         ["Contract Name", authorization.contractName || "-"],
@@ -88,6 +124,7 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         ["Customer Contract Code", authorization.customerContractCode || "-"],
                         ["NAICS Code", authorization.naicsCode || "-"],
                         ["IWA JAMIS Project ID", authorization.iwaJamisProjectId || "-"],
+                        ["Contract Type", contractTypeLabels[authorization.contractType] || "-"],
                         ["Period", `${formatDate(authorization.periodStart, false)} - ${formatDate(authorization.periodEnd, false)}`]
                     ].map(([label, value], index) => (
                         <Grid key={label} size={{ xs: 12, sm: 6 }}>
@@ -96,12 +133,11 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         </Grid>
                     ))}
                 </Grid>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
-            <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Entities / Organization</Typography>
-                <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
+            <SummaryCard title="Entities / Organization" height="100%">
+                <Grid container spacing={1.25}>
                     <Grid size={{ xs: 12, sm: 6 }}>
                         <Typography variant="caption" color="text.secondary">Entity A (Donor)</Typography>
                         <Typography fontWeight={500}>{authorization.donorEntity || authorization.donorEntityAbbr || "-"}</Typography>
@@ -129,12 +165,11 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         <Typography fontWeight={500}>{authorization.receivingGm?.Title || "-"}</Typography>
                     </Grid>
                 </Grid>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
-            <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Contacts</Typography>
-                <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
+            <SummaryCard title="Contacts" height="100%">
+                <Grid container spacing={1.25}>
                     {[
                         ["Submitter", authorization.Author?.Title || "-"],
                         ["Backup Requestor", authorization.backupRequestor?.Title || "-"],
@@ -147,12 +182,11 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         </Grid>
                     ))}
                 </Grid>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, md: 6, xl: 3 }}>
-            <Paper variant="outlined" sx={{ p: 1.75, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Cost Summary</Typography>
-                <Grid container spacing={1.25} sx={{ mt: 0.25 }}>
+            <SummaryCard title="Cost Summary" height="100%">
+                <Grid container spacing={1.25}>
                     {[
                         ["Base Labor", authorization.baseLaborAmount],
                         ["Base Travel/ODC", authorization.baseTravelAmount],
@@ -167,29 +201,25 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         </Grid>
                     ))}
                 </Grid>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="subtitle2" fontWeight={600}>Scope of Work</Typography>
+            <SummaryCard title="Scope of Work">
                 <Typography color="text.secondary">{authorization.scopeOfWork || "-"}</Typography>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
-            <Paper variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="h6" fontWeight={600}>Justification</Typography>
+            <SummaryCard title="Justification">
                 <Typography color="text.secondary">{authorization.justification || "-"}</Typography>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
-            <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Notes</Typography>
+            <SummaryCard title="Notes" height="100%">
                 <Typography color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>{authorization.notes || "-"}</Typography>
-            </Paper>
+            </SummaryCard>
         </Grid>
         <Grid size={{ xs: 12, xl: 6 }}>
-            <Paper variant="outlined" sx={{ p: 2, height: "100%" }}>
-                <Typography variant="h6" fontWeight={600}>Attachments</Typography>
+            <SummaryCard title="Attachments" height="100%">
                 {attachments.length === 0 ? (
                     <Typography color="text.secondary">No attachments found.</Typography>
                 ) : (
@@ -209,7 +239,7 @@ export const IwaSummaryTab: React.FC<IIwaSummaryTabProps> = ({ authorization, at
                         ))}
                     </Stack>
                 )}
-            </Paper>
+            </SummaryCard>
         </Grid>
     </Grid>
 );

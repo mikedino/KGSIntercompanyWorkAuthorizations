@@ -491,6 +491,7 @@ export const ApproversAdminPanel: React.FC<ApproversAdminPanelProps> = ({
                             onMouseDown={(e) => e.preventDefault()} // keeps focus
                             edge="end"
                             aria-label="Clear filter"
+                            title="Clear filter"
                             sx={{ color: "text.secondary" }}
                           >
                             <ClearIcon fontSize="small" />

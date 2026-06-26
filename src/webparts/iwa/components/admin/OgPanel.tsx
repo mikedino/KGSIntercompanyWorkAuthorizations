@@ -377,7 +377,7 @@ export const OgDefaultsSection: React.FC<OgDefaultsSectionProps> = ({
                     </Typography>
                 </Box>
 
-                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog}>
+                <Button variant="contained" color="secondary" startIcon={<AddIcon />} onClick={openAddDialog} aria-label="Add OG" title="Add OG">
                     Add OG
                 </Button>
             </Box>
@@ -467,6 +467,7 @@ export const OgDefaultsSection: React.FC<OgDefaultsSectionProps> = ({
                                     <IconButton
                                         size="small"
                                         aria-label={`Edit ${og.Title}`}
+                                        title={`Edit ${og.Title}`}
                                         onClick={() => openEditDialog(og)}
                                         disabled={savingKey === rowKey || !!savingKey}
                                     >
@@ -621,6 +622,8 @@ export const OgDefaultsSection: React.FC<OgDefaultsSectionProps> = ({
                                 variant="outlined"
                                 onClick={openDeleteConfirm}
                                 disabled={!!savingKey}
+                                aria-label="Delete OG"
+                                title="Delete OG"
                             >
                                 Delete
                             </Button>
@@ -628,7 +631,7 @@ export const OgDefaultsSection: React.FC<OgDefaultsSectionProps> = ({
                     </Box>
 
                     <Stack direction="row" spacing={1}>
-                        <Button onClick={closeDialog} disabled={!!savingKey}>
+                        <Button onClick={closeDialog} disabled={!!savingKey} aria-label="Cancel OG changes" title="Cancel OG changes">
                             Cancel
                         </Button>
                         <Button
@@ -637,6 +640,8 @@ export const OgDefaultsSection: React.FC<OgDefaultsSectionProps> = ({
                                 handleDialogSave().catch((err) => console.error(`OG dialog save failed`, err));
                             }}
                             disabled={!!savingKey}
+                            aria-label={dialogMode === "add" ? "Add OG" : "Save OG"}
+                            title={dialogMode === "add" ? "Add OG" : "Save OG"}
                         >
                             {dialogMode === "add" ? "Add" : "Save"}
                         </Button>

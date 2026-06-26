@@ -10,9 +10,11 @@ export interface IThemeSwitcherProps {
 }
 
 export const ThemeSwitcher: React.FC<IThemeSwitcherProps> = ({ useDarkTheme, onToggle }): JSX.Element => {
+    const label = useDarkTheme ? "Switch to Light mode" : "Switch to Dark mode";
+
     return (
-        <Tooltip title={useDarkTheme ? "Switch to Light mode" : "Switch to Dark mode"}>
-            <IconButton onClick={onToggle} size="small" aria-label="Toggle theme">
+        <Tooltip title={label}>
+            <IconButton onClick={onToggle} size="small" aria-label={label} title={label}>
                 {useDarkTheme ? <DarkModeIcon /> : <LightModeIcon />}
             </IconButton>
         </Tooltip>

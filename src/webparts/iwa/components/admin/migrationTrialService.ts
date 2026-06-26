@@ -5,6 +5,14 @@ import Strings from "../common/strings";
 import { encodeListName } from "../common/utils";
 
 type MigrationRow = Record<string, string | number | boolean | undefined>;
+type ItemAuditFields = {
+  Modified?: string;
+  Editor?: {
+    Name?: string;
+    EMail?: string;
+    Title?: string;
+  };
+};
 
 export interface IMigrationPlan {
   authorizations: MigrationRow[];
@@ -57,6 +65,22 @@ export interface IMigrationEnsureUsersResult {
   failed: Array<{ email: string; error: string }>;
 }
 
+export interface IMigrationJobTitleBackfillResult {
+  processed: Array<{ listName: string; count: number }>;
+  updated: Array<{ listName: string; count: number }>;
+  skipped: Array<{ listName: string; itemId: number; reason: string }>;
+  failed: Array<{ listName: string; itemId?: number; jobId?: string; error: string }>;
+  totalProcessed: number;
+  totalUpdated: number;
+}
+
+export interface IMigrationNaicsBackfillResult {
+  processed: number;
+  updated: number;
+  skipped: Array<{ itemId: number; reason: string }>;
+  failed: Array<{ itemId?: number; contractId?: string; error: string }>;
+}
+
 export interface IMigrationEnsureUsersFile {
   ensureUsers: Array<{ email: string; source?: string; notes?: string }>;
 }
@@ -88,6 +112,7 @@ const optionalDate = (row: MigrationRow, key: string): string | undefined => tex
 const missingLaborJobId = (row: MigrationRow): string => `MISSING-JOB-ID-${text(row, "resourceMigrationKey").split(":").pop() || "UNKNOWN"}`;
 const missingTravelJobId = (row: MigrationRow): string => `MISSING-ODC-JOB-ID-${text(row, "legacyId") || "UNKNOWN"}`;
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+const escapeODataText = (value: string): string => value.replace(/'/g, "''");
 const migratedPdfUrl = (row: MigrationRow): string => {
   const value = text(row, "pdfUrl");
   if (!value) {
@@ -106,6 +131,8 @@ const migrationLog = (message: string): void => {
 export class MigrationTrialService {
   private static userIdCache = new Map<string, number>();
   private static userCache = new Map<string, { Id?: number; LoginName?: string }>();
+  private static jobTitleCache = new Map<string, string | undefined>();
+  private static contractNaicsCache = new Map<string, string | undefined>();
   private static context?: WebPartContext;
 
   static configure(context: WebPartContext): void {
@@ -274,6 +301,282 @@ export class MigrationTrialService {
     migrationLog("Recycle complete.");
     onProgress?.({ label: "Recycle complete.", completed: lists.length, total: lists.length });
     return result;
+  }
+
+  static async backfillLaborAndTravelJobTitles(
+    onProgress?: (progress: IMigrationTrialProgress) => void
+  ): Promise<IMigrationJobTitleBackfillResult> {
+    const targets = [
+      { listName: Strings.Sites.main.lists.TravelODC, label: "Travel/ODC" },
+      { listName: Strings.Sites.main.lists.LaborLine, label: "LaborLine" }
+    ];
+
+    const rowsByList = await Promise.all(targets.map(async (target) => {
+      const rows = await Web()
+        .Lists(target.listName)
+        .Items()
+        .query({
+          GetAllItems: true,
+          Select: ["Id", "jobId", "jobTitle"],
+          Filter: "jobTitle eq null or jobTitle eq ''"
+        })
+        .executeAndWait() as { results?: Array<{ Id: number; jobId?: string; jobTitle?: string }> };
+
+      return {
+        ...target,
+        rows: rows.results ?? []
+      };
+    }));
+
+    const totalRows = rowsByList.reduce((sum, group) => sum + group.rows.length, 0);
+    const result: IMigrationJobTitleBackfillResult = {
+      processed: rowsByList.map((group) => ({ listName: group.label, count: group.rows.length })),
+      updated: targets.map((target) => ({ listName: target.label, count: 0 })),
+      skipped: [],
+      failed: [],
+      totalProcessed: totalRows,
+      totalUpdated: 0
+    };
+
+    let completed = 0;
+    onProgress?.({ label: "Preparing job title backfill...", completed, total: Math.max(totalRows, 1) });
+
+    for (const group of rowsByList) {
+      for (const row of group.rows) {
+        completed += 1;
+        const jobId = String(row.jobId ?? "").trim();
+        onProgress?.({ label: `Backfilling ${group.label} job titles...`, completed, total: Math.max(totalRows, 1) });
+
+        if (!jobId) {
+          result.skipped.push({ listName: group.label, itemId: row.Id, reason: "No jobId value." });
+          continue;
+        }
+
+        try {
+          const jobTitle = await this.resolveJobTitle(jobId);
+
+          if (!jobTitle) {
+            result.skipped.push({ listName: group.label, itemId: row.Id, reason: `No JobEndPoint title found for ${jobId}.` });
+            continue;
+          }
+
+          if ((row.jobTitle ?? "").trim() === jobTitle) {
+            result.skipped.push({ listName: group.label, itemId: row.Id, reason: "jobTitle already matches." });
+            continue;
+          }
+
+          await this.systemUpdateTextField(group.listName, row.Id, "jobTitle", jobTitle);
+          const updatedRow = result.updated.find((item) => item.listName === group.label);
+          if (updatedRow) {
+            updatedRow.count += 1;
+          }
+          result.totalUpdated += 1;
+        } catch (error) {
+          result.failed.push({ listName: group.label, itemId: row.Id, jobId, error: this.errorMessage(error) });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  private static async resolveJobTitle(jobId: string): Promise<string | undefined> {
+    const cacheKey = jobId.trim().toLowerCase();
+    if (this.jobTitleCache.has(cacheKey)) {
+      return this.jobTitleCache.get(cacheKey);
+    }
+
+    const items = await Web(Strings.Sites.jamis.url)
+      .Lists(Strings.Sites.jamis.lists.JobEP)
+      .Items()
+      .query({
+        GetAllItems: true,
+        Select: ["Id", "field_13", "field_19"],
+        Filter: `field_13 eq '${escapeODataText(jobId)}'`
+      })
+      .executeAndWait() as { results?: Array<{ field_13?: string; field_19?: string }> };
+
+    const matches = items.results ?? [];
+    const exactMatch = matches.find((item) => String(item.field_13 ?? "").trim() === jobId);
+    const title = String((exactMatch ?? matches[0])?.field_19 ?? "").trim() || undefined;
+    this.jobTitleCache.set(cacheKey, title);
+    return title;
+  }
+
+  private static async systemUpdateTextField(listName: string, itemId: number, fieldName: string, fieldValue: string): Promise<void> {
+    const item = Web().Lists(listName).Items().getById(itemId) as unknown as {
+      validateUpdateListItem: (
+        formValues: Array<{ FieldName: string; FieldValue: string }>,
+        bNewDocumentUpdate?: boolean,
+        checkInComment?: string,
+        datesInUTC?: boolean,
+        numberInInvariantCulture?: boolean
+      ) => { executeAndWait: () => Promise<unknown> };
+    };
+    const result = await item.validateUpdateListItem(
+      [{ FieldName: fieldName, FieldValue: fieldValue }],
+      true,
+      "",
+      true,
+      true
+    ).executeAndWait() as {
+      results?: Array<{ FieldName?: string; ErrorMessage?: string; HasException?: boolean }>;
+      value?: Array<{ FieldName?: string; ErrorMessage?: string; HasException?: boolean }>;
+    };
+    const fieldResults = result?.results ?? result?.value ?? [];
+    const fieldError = fieldResults.find((field) => field.HasException || field.ErrorMessage);
+
+    if (fieldError) {
+      throw new Error(`Field '${fieldError.FieldName ?? fieldName}': ${fieldError.ErrorMessage ?? "SharePoint reported an exception."}`);
+    }
+  }
+
+  static async backfillAuthorizationNaicsCodes(
+    limit?: number,
+    onProgress?: (progress: IMigrationTrialProgress) => void
+  ): Promise<IMigrationNaicsBackfillResult> {
+    console.log("[IWA Migration] Loading IWAs with empty NAICS codes", { limit });
+    const rows = await Web()
+      .Lists(Strings.Sites.main.lists.Authorizations)
+      .Items()
+      .query({
+        GetAllItems: true,
+        Select: ["Id", "contractId", "naicsCode"],
+        Filter: "naicsCode eq null or naicsCode eq ''"
+      })
+      .executeAndWait() as { results?: Array<{ Id: number; contractId?: string; naicsCode?: string }> };
+
+    const allItems = rows.results ?? [];
+    const items = limit && limit > 0 ? allItems.slice(0, limit) : allItems;
+    console.log("[IWA Migration] Empty NAICS IWA rows selected", {
+      totalMatchingRows: allItems.length,
+      selectedRows: items.length,
+      itemIds: items.map((item) => item.Id),
+      contractIds: items.map((item) => String(item.contractId ?? "").trim())
+    });
+    const result: IMigrationNaicsBackfillResult = {
+      processed: items.length,
+      updated: 0,
+      skipped: [],
+      failed: []
+    };
+
+    onProgress?.({ label: "Preparing NAICS backfill...", completed: 0, total: Math.max(items.length, 1) });
+
+    for (let index = 0; index < items.length; index += 1) {
+      const row = items[index];
+      const contractId = String(row.contractId ?? "").trim();
+      onProgress?.({ label: "Backfilling authorization NAICS codes...", completed: index + 1, total: Math.max(items.length, 1) });
+
+      if (!contractId) {
+        result.skipped.push({ itemId: row.Id, reason: "No contractId value." });
+        continue;
+      }
+
+      try {
+        const naicsCode = await this.resolveContractNaicsCode(contractId);
+        console.log("[IWA Migration] NAICS contract lookup", { itemId: row.Id, contractId, naicsCode });
+
+        if (!naicsCode) {
+          result.skipped.push({ itemId: row.Id, reason: `No ContractEndPoint NAICS Code found for ${contractId}.` });
+          continue;
+        }
+
+        await this.updateTextFieldPreservingAudit(Strings.Sites.main.lists.Authorizations, row.Id, "naicsCode", naicsCode);
+        result.updated += 1;
+      } catch (error) {
+        result.failed.push({ itemId: row.Id, contractId, error: this.errorMessage(error) });
+      }
+    }
+
+    return result;
+  }
+
+  private static async resolveContractNaicsCode(contractId: string): Promise<string | undefined> {
+    const cacheKey = contractId.trim().toLowerCase();
+    if (this.contractNaicsCache.has(cacheKey)) {
+      return this.contractNaicsCache.get(cacheKey);
+    }
+
+    const items = await Web(Strings.Sites.jamis.url)
+      .Lists(Strings.Sites.jamis.lists.ContractEP)
+      .Items()
+      .query({
+        GetAllItems: true,
+        Select: ["Id", "field_19", "field_73"],
+        Filter: `field_19 eq '${escapeODataText(contractId)}'`
+      })
+      .executeAndWait() as { results?: Array<{ field_19?: string; field_73?: string }> };
+
+    const matches = items.results ?? [];
+    const exactMatch = matches.find((item) => String(item.field_19 ?? "").trim() === contractId);
+    const naicsCode = String((exactMatch ?? matches[0])?.field_73 ?? "").trim() || undefined;
+    console.log("[IWA Migration] ContractEndPoint NAICS response", {
+      contractId,
+      matches: matches.length,
+      matchedContractIds: matches.map((item) => item.field_19),
+      naicsCode
+    });
+    this.contractNaicsCache.set(cacheKey, naicsCode);
+    return naicsCode;
+  }
+
+  private static async updateTextFieldPreservingAudit(listName: string, itemId: number, fieldName: string, fieldValue: string): Promise<void> {
+    const auditFields = await this.getItemAuditFields(listName, itemId);
+    await this.systemUpdateTextField(listName, itemId, fieldName, fieldValue);
+    await this.restoreAuditFields(listName, itemId, auditFields);
+  }
+
+  private static async getItemAuditFields(listName: string, itemId: number): Promise<ItemAuditFields> {
+    const result = await Web()
+      .Lists(listName)
+      .Items()
+      .query({
+        Select: ["Id", "Modified", "Editor/Name", "Editor/EMail", "Editor/Title"],
+        Expand: ["Editor"],
+        Filter: `Id eq ${itemId}`,
+        Top: 1
+      })
+      .executeAndWait() as { results?: ItemAuditFields[] };
+
+    return result.results?.[0] ?? {};
+  }
+
+  private static async restoreAuditFields(listName: string, itemId: number, auditFields: ItemAuditFields): Promise<void> {
+    const editorLogin = auditFields.Editor?.Name ?? auditFields.Editor?.EMail;
+    const formValues: Array<{ FieldName: string; FieldValue: string }> = [];
+
+    if (editorLogin) {
+      formValues.push({ FieldName: "Editor", FieldValue: this.peopleFieldValue(editorLogin) });
+    }
+
+    if (auditFields.Modified) {
+      formValues.push({ FieldName: "Modified", FieldValue: auditFields.Modified });
+    }
+
+    if (!formValues.length) {
+      return;
+    }
+
+    const item = Web().Lists(listName).Items().getById(itemId) as unknown as {
+      validateUpdateListItem: (
+        formValues: Array<{ FieldName: string; FieldValue: string }>,
+        bNewDocumentUpdate?: boolean,
+        checkInComment?: string,
+        datesInUTC?: boolean,
+        numberInInvariantCulture?: boolean
+      ) => { executeAndWait: () => Promise<unknown> };
+    };
+    const result = await item.validateUpdateListItem(formValues, true, "", true, true).executeAndWait() as {
+      results?: Array<{ FieldName?: string; ErrorMessage?: string; HasException?: boolean }>;
+      value?: Array<{ FieldName?: string; ErrorMessage?: string; HasException?: boolean }>;
+    };
+    const fieldResults = result?.results ?? result?.value ?? [];
+    const fieldError = fieldResults.find((field) => field.HasException || field.ErrorMessage);
+
+    if (fieldError) {
+      throw new Error(`Audit restore field '${fieldError.FieldName ?? "(unknown)"}': ${fieldError.ErrorMessage ?? "SharePoint reported an exception."}`);
+    }
   }
 
   static async ensurePlanUsers(

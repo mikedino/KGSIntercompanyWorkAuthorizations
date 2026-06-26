@@ -53,6 +53,8 @@ export const IwaPriorResourcesPanel: React.FC<IIwaPriorResourcesPanelProps> = ({
                         startIcon={<ContentCopyOutlinedIcon />}
                         onClick={onCopyAll}
                         disabled={priorResourceRows.length === 0}
+                        aria-label="Copy all prior resources"
+                        title="Copy all prior resources"
                         sx={{ minHeight: 0, py: 0.35, alignSelf: { xs: "stretch", sm: "center" } }}
                     >
                         Copy All
@@ -95,7 +97,14 @@ export const IwaPriorResourcesPanel: React.FC<IIwaPriorResourcesPanelProps> = ({
                                             </Typography>
                                         </TableCell>
                                         <TableCell align="right">
-                                            <Button size="small" color="success" startIcon={<ContentCopyOutlinedIcon />} onClick={() => onCopyResource(row)}>
+                                            <Button
+                                                size="small"
+                                                color="success"
+                                                startIcon={<ContentCopyOutlinedIcon />}
+                                                onClick={() => onCopyResource(row)}
+                                                aria-label={`Copy prior resource ${row.employee.Title}`}
+                                                title={`Copy prior resource ${row.employee.Title}`}
+                                            >
                                                 Copy
                                             </Button>
                                         </TableCell>

@@ -68,6 +68,8 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                     <Button
                                         size="small"
                                         startIcon={<SummarizeOutlinedIcon />}
+                                        aria-label={`View changes for run ${run.runNumber ?? ""}`.trim()}
+                                        title={`View changes for run ${run.runNumber ?? ""}`.trim()}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onOpenChangeDialog(modifiedAction);
@@ -177,6 +179,8 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                                                 <IconButton
                                                                     size="small"
                                                                     color="secondary"
+                                                                    aria-label={`View ${label} comments`}
+                                                                    title={`View ${label} comments`}
                                                                     onClick={() => onOpenCommentDialog({ title: `${label} Comments`, comments: action.comments ?? "" })}
                                                                     sx={{ p: 0.25 }}
                                                                 >

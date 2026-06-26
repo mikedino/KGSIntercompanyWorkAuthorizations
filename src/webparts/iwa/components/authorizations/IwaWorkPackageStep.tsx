@@ -285,6 +285,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         () => resourceRows.filter((row) => !!row.employee?.Id),
         [resourceRows]
     );
+    const addFfpLineTitle = assignedResourceRows.length === 0
+        ? "Disabled until at least one Resource is added"
+        : "Add an FFP labor / CLIN line";
     const availablePriorResourceRows = React.useMemo((): IPriorResourceRow[] => {
         const copiedEmployeeIds = new Set(
             resourceRows
@@ -605,11 +608,19 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     color="info"
                                     startIcon={priorResourcesOpen ? <KeyboardArrowUpOutlinedIcon /> : <KeyboardArrowDownOutlinedIcon />}
                                     onClick={() => setPriorResourcesOpen((open) => !open)}
+                                    title={priorResourcesOpen ? "Hide prior resources" : "Show prior resources"}
+                                    aria-label={priorResourcesOpen ? "Hide prior resources" : "Show prior resources"}
                                 >
                                     {priorResourcesOpen ? "Hide Prior Resources" : "Show Prior Resources"}
                                 </Button>
                             )}
-                            <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewResourceDialog}>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddOutlinedIcon />}
+                                onClick={openNewResourceDialog}
+                                title="Add a resource"
+                                aria-label="Add a resource"
+                            >
                                 Add Resource
                             </Button>
                         </Stack>
@@ -663,10 +674,23 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             {contractType === "tm" && <TableCell>{row.overtimeHours || "—"}</TableCell>}
                                             <TableCell align="right">
                                                 <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                                    <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditResourceDialog(row)}>
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<EditOutlinedIcon />}
+                                                        onClick={() => openEditResourceDialog(row)}
+                                                        title={`Edit resource ${row.employee?.Title ?? ""}`.trim()}
+                                                        aria-label={`Edit resource ${row.employee?.Title ?? "row"}`}
+                                                    >
                                                         Edit
                                                     </Button>
-                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveResource(row)}>
+                                                    <Button
+                                                        size="small"
+                                                        color="error"
+                                                        startIcon={<DeleteOutlineOutlinedIcon />}
+                                                        onClick={() => requestRemoveResource(row)}
+                                                        title={`Remove resource ${row.employee?.Title ?? ""}`.trim()}
+                                                        aria-label={`Remove resource ${row.employee?.Title ?? "row"}`}
+                                                    >
                                                         Remove
                                                     </Button>
                                                 </Stack>
@@ -698,11 +722,26 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         Group each fixed-price Job ID / CLIN with its charging period, lump sum, and associated resources.
                                     </Typography>
                                 </Box>
-                                <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewFfpDialog}>
-                                    Add FFP Line
-                                </Button>
+                                <Box
+                                    component="span"
+                                    title={addFfpLineTitle}
+                                    aria-label={addFfpLineTitle}
+                                    sx={{ display: "inline-flex", alignSelf: { xs: "stretch", sm: "auto" } }}
+                                >
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<AddOutlinedIcon />}
+                                        onClick={openNewFfpDialog}
+                                        disabled={assignedResourceRows.length === 0}
+                                        title={addFfpLineTitle}
+                                        aria-label={addFfpLineTitle}
+                                        sx={{ width: "100%" }}
+                                    >
+                                        Add FFP Line
+                                    </Button>
+                                </Box>
                             </Stack>
-                            {submitted && ffpLaborRows.length === 0 && (
+                            {submitted && assignedResourceRows.length > 0 && ffpLaborRows.length === 0 && (
                                 <Typography variant="body2" color="error">
                                     Add at least one FFP labor / CLIN line.
                                 </Typography>
@@ -740,10 +779,23 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                         <TableCell>{getResourceNames(row.resourceRowIds)}</TableCell>
                                                         <TableCell align="right">
                                                             <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                                                <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditFfpDialog(row)}>
+                                                                <Button
+                                                                    size="small"
+                                                                    startIcon={<EditOutlinedIcon />}
+                                                                    onClick={() => openEditFfpDialog(row)}
+                                                                    title={`Edit FFP labor / CLIN line ${row.jobId || ""}`.trim()}
+                                                                    aria-label={`Edit FFP labor / CLIN line ${row.jobId || "row"}`}
+                                                                >
                                                                     Edit
                                                                 </Button>
-                                                                <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveFfpLabor(row)}>
+                                                                <Button
+                                                                    size="small"
+                                                                    color="error"
+                                                                    startIcon={<DeleteOutlineOutlinedIcon />}
+                                                                    onClick={() => requestRemoveFfpLabor(row)}
+                                                                    title={`Remove FFP labor / CLIN line ${row.jobId || ""}`.trim()}
+                                                                    aria-label={`Remove FFP labor / CLIN line ${row.jobId || "row"}`}
+                                                                >
                                                                     Remove
                                                                 </Button>
                                                             </Stack>
@@ -783,7 +835,13 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                         <Typography variant="body2" color="text.secondary">
                             {travelRows.length} travel / ODC line{travelRows.length === 1 ? "" : "s"}
                         </Typography>
-                        <Button variant="contained" startIcon={<AddOutlinedIcon />} onClick={openNewTravelDialog}>
+                        <Button
+                            variant="contained"
+                            startIcon={<AddOutlinedIcon />}
+                            onClick={openNewTravelDialog}
+                            title="Add a Travel / ODC line"
+                            aria-label="Add a Travel / ODC line"
+                        >
                             Add Travel / ODC
                         </Button>
                     </Stack>
@@ -815,10 +873,23 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                             <TableCell>{row.amount ? formatCurrency(Number(row.amount)) : "—"}</TableCell>
                                             <TableCell align="right">
                                                 <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                                    <Button size="small" startIcon={<EditOutlinedIcon />} onClick={() => openEditTravelDialog(row)}>
+                                                    <Button
+                                                        size="small"
+                                                        startIcon={<EditOutlinedIcon />}
+                                                        onClick={() => openEditTravelDialog(row)}
+                                                        title={`Edit Travel / ODC line ${row.jobId || ""}`.trim()}
+                                                        aria-label={`Edit Travel / ODC line ${row.jobId || "row"}`}
+                                                    >
                                                         Edit
                                                     </Button>
-                                                    <Button size="small" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={() => requestRemoveTravel(row)}>
+                                                    <Button
+                                                        size="small"
+                                                        color="error"
+                                                        startIcon={<DeleteOutlineOutlinedIcon />}
+                                                        onClick={() => requestRemoveTravel(row)}
+                                                        title={`Remove Travel / ODC line ${row.jobId || ""}`.trim()}
+                                                        aria-label={`Remove Travel / ODC line ${row.jobId || "row"}`}
+                                                    >
                                                         Remove
                                                     </Button>
                                                 </Stack>
@@ -1047,8 +1118,21 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeResourceDialog}>Cancel</Button>
-                    <Button variant="contained" onClick={saveResourceDraft}>Save Resource</Button>
+                    <Button
+                        onClick={closeResourceDialog}
+                        title="Cancel resource changes"
+                        aria-label="Cancel resource changes"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={saveResourceDraft}
+                        title="Save resource"
+                        aria-label="Save resource"
+                    >
+                        Save Resource
+                    </Button>
                 </DialogActions>
             </Dialog>
 
@@ -1155,8 +1239,21 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeFfpDialog}>Cancel</Button>
-                    <Button variant="contained" onClick={saveFfpDraft}>Save FFP Line</Button>
+                    <Button
+                        onClick={closeFfpDialog}
+                        title="Cancel FFP labor / CLIN changes"
+                        aria-label="Cancel FFP labor / CLIN changes"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={saveFfpDraft}
+                        title="Save FFP labor / CLIN line"
+                        aria-label="Save FFP labor / CLIN line"
+                    >
+                        Save FFP Line
+                    </Button>
                 </DialogActions>
             </Dialog>
 
@@ -1258,8 +1355,21 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeTravelDialog}>Cancel</Button>
-                    <Button variant="contained" onClick={saveTravelDraft}>Save Line</Button>
+                    <Button
+                        onClick={closeTravelDialog}
+                        title="Cancel Travel / ODC changes"
+                        aria-label="Cancel Travel / ODC changes"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={saveTravelDraft}
+                        title="Save Travel / ODC line"
+                        aria-label="Save Travel / ODC line"
+                    >
+                        Save Line
+                    </Button>
                 </DialogActions>
             </Dialog>
 
@@ -1271,8 +1381,21 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setRemoveConfirmation(undefined)}>Cancel</Button>
-                    <Button variant="contained" color="error" startIcon={<DeleteOutlineOutlinedIcon />} onClick={confirmRemove}>
+                    <Button
+                        onClick={() => setRemoveConfirmation(undefined)}
+                        title="Cancel removing this line"
+                        aria-label="Cancel removing this line"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="error"
+                        startIcon={<DeleteOutlineOutlinedIcon />}
+                        onClick={confirmRemove}
+                        title="Confirm removing this line"
+                        aria-label="Confirm removing this line"
+                    >
                         Remove
                     </Button>
                 </DialogActions>
