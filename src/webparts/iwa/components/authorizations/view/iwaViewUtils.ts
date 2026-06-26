@@ -251,7 +251,13 @@ export const getMissingCompensationMessage = (
         return undefined;
     }
 
-    const hasMissingTotal = laborLines.length === 0 || laborLines.some((line) => Number(line.totalAmount ?? 0) <= 0);
+    // Travel/ODC-only authorizations are valid. Only enforce compensation/lump-sum totals
+    // when labor lines actually exist for the current authorization or mod.
+    if (laborLines.length === 0) {
+        return undefined;
+    }
+
+    const hasMissingTotal = laborLines.some((line) => Number(line.totalAmount ?? 0) <= 0);
 
     if (!hasMissingTotal) {
         return undefined;

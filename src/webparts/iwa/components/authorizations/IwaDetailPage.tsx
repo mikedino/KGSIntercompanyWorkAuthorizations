@@ -46,7 +46,6 @@ import { IwaTravelOdcTab } from "./view/IwaTravelOdcTab";
 import { IwaWorkflowTab } from "./view/IwaWorkflowTab";
 import {
     baseWorkflowSteps,
-    contractTypeLabels,
     DetailTab,
     detailTabs,
     getActiveModDraftSessionKey,
@@ -325,6 +324,15 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             label: currentRun ? `Workflow ${workflowRunStatusLabels[currentRun.runStatus]}` : "",
             color: "info"
         };
+    }, [currentRun]);
+    const rejectionActionRequiredMessage = React.useMemo((): string | undefined => {
+        if (currentRun?.runStatus !== "active" || currentRun.outcome !== "rejected" || currentRun.currentStepKey !== "submitter") {
+            return undefined;
+        }
+
+        return currentRun.runType === "mod"
+            ? "This Mod was rejected and is waiting on the submitter to Modify & Resubmit or Cancel."
+            : "This authorization was rejected and is waiting on the submitter to Modify & Resubmit or Cancel.";
     }, [currentRun]);
     const draftModOwnerName = draftMod?.Author?.Title ?? "another user";
     const canEditDraftMod = !!draftMod && canEditAuthorizationByUser;
@@ -1009,7 +1017,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         )}
                         <Chip label={displayedStatus.label} color={displayedStatus.color} />
                         {draftMod && <Chip label={`Mod ${draftMod.modNumber ?? ""} Draft`} color="secondary" />}
-                        <Chip label={contractTypeLabels[authorization.contractType]} color="secondary" variant="outlined" />
                         {currentRun && <Chip label={displayedWorkflowStatus.label} color={displayedWorkflowStatus.color} variant="outlined" />}
                     </Stack>
                     <Typography color="text.secondary">
@@ -1052,6 +1059,32 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                     {canEditDraftMod
                         ? `This authorization has Mod ${draftMod.modNumber ?? ""} in draft. Use Edit Mod to continue the modification before starting any other changes.`
                         : `This authorization has Mod ${draftMod.modNumber ?? ""} in draft, started by ${draftModOwnerName}. Base authorization editing is unavailable until that draft mod is submitted or discarded.`}
+                </Alert>
+            )}
+
+            {rejectionActionRequiredMessage && (
+                <Alert
+                    severity="warning"
+                    variant="outlined"
+                    icon={<ErrorOutlineOutlinedIcon />}
+                    sx={{
+                        alignItems: "center",
+                        borderColor: "warning.main",
+                        borderWidth: 2,
+                        fontSize: "1rem",
+                        "& .MuiAlert-icon": {
+                            alignItems: "center"
+                        },
+                        "& .MuiAlert-message": {
+                            fontSize: "1rem",
+                            lineHeight: 1.5
+                        }
+                    }}
+                >
+                    <Typography component="span" fontSize="inherit" lineHeight="inherit" fontWeight={800}>
+                        Action required:
+                    </Typography>{" "}
+                    {rejectionActionRequiredMessage}
                 </Alert>
             )}
 
