@@ -1,4 +1,5 @@
 import { IAppUserItem, IPeoplePicker, IWorkflowRunItem } from "../data/props";
+import { DataSource } from "../data/ds";
 
 export interface IWorkflowActionPermission {
     canAct: boolean;
@@ -8,8 +9,8 @@ export interface IWorkflowActionPermission {
     actingFor?: IPeoplePicker;
 }
 
-export const isAdminUser = (user?: IAppUserItem): boolean => {
-    return (user?.role ?? "user").toLowerCase() === "admin";
+export const isAdminUser = (): boolean => {
+    return DataSource.isAdmin;
 };
 
 export const getBackupCoverageMap = (
@@ -46,7 +47,7 @@ export const getWorkflowActionPermission = (
     const currentUserId = currentUser?.user?.Id;
     const pendingApprover = run?.pendingApprover;
     const pendingApproverId = pendingApprover?.Id;
-    const admin = isAdminUser(currentUser);
+    const admin = isAdminUser();
 
     if (!run || run.runStatus !== "active" || !currentUserId || !pendingApproverId) {
         return {

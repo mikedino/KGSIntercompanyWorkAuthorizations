@@ -8,12 +8,24 @@ interface IIwaHistoryTabProps {
     actions: IWorkflowActionItem[];
 }
 
+const getRevisionLabel = (action: IWorkflowActionItem): string => {
+    if (!action.mod?.Id) {
+        return "BASE";
+    }
+
+    const modNumber = action.mod.modNumber ??
+        Number(action.mod.Title?.match(/MOD-?(\d+)/i)?.[1] ?? 0);
+
+    return modNumber > 0 ? `MOD-${modNumber}` : "MOD";
+};
+
 export const IwaHistoryTab: React.FC<IIwaHistoryTabProps> = ({ actions }): JSX.Element => (
     <TableContainer>
         <Table size="small" sx={quietTableSx}>
             <TableHead>
                 <TableRow>
                     <TableCell>Date</TableCell>
+                    <TableCell>Rev</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Step</TableCell>
                     <TableCell>By</TableCell>
@@ -26,7 +38,8 @@ export const IwaHistoryTab: React.FC<IIwaHistoryTabProps> = ({ actions }): JSX.E
                 ) : actions.map((action) => (
                     <TableRow key={action.Id}>
                         <TableCell>{formatDate(action.actionDate, true)}</TableCell>
-                        <TableCell>{action.actionType}</TableCell>
+                        <TableCell>{getRevisionLabel(action)}</TableCell>
+                        <TableCell>{action.actionType.toUpperCase()}</TableCell>
                         <TableCell>{workflowStepLabels[action.stepKey] ?? action.stepKey}</TableCell>
                         <TableCell>{action.actionBy?.Title ?? "-"}</TableCell>
                         <TableCell>{action.comments || action.skipReason || "-"}</TableCell>

@@ -17,6 +17,7 @@ import {
 } from "./props";
 import { formatError } from "../common/utils";
 import { AppUserService } from "../users/userService";
+import { indirectContract, indirectInvoice } from "./indirectCharges";
 
 export class DataSource {
     static initialized: boolean = false;
@@ -498,6 +499,32 @@ export class DataSource {
     private static _contracts: IContractItem[] = [];
     static get Contracts(): IContractItem[] { return this._contracts; }
 
+    // manually append a fake contract for INDIRECTS
+    private static appendManualContracts(contracts: IContractItem[]): IContractItem[] {
+        const contractsById = new Map<string, IContractItem>();
+
+        [...contracts, indirectContract].forEach((contract: IContractItem): void => {
+            contractsById.set(contract.field_19, contract);
+        });
+
+        return Array.from(contractsById.values());
+    }
+
+    // manually append a fake invoice for INDIRECTS
+    private static appendManualInvoices(invoices: IInvoiceItem[], contractId: string): IInvoiceItem[] {
+        const invoicesById = new Map<string, IInvoiceItem>();
+
+        invoices.forEach((invoice: IInvoiceItem): void => {
+            invoicesById.set(invoice.InvoiceID1, invoice);
+        });
+
+        if (indirectInvoice.field_49 === contractId) {
+            invoicesById.set(indirectInvoice.InvoiceID1, indirectInvoice);
+        }
+
+        return Array.from(invoicesById.values());
+    }
+
     static getContracts(): Promise<IContractItem[]> {
         return new Promise<IContractItem[]>((resolve, reject) => {
             this._contracts = [];
@@ -522,7 +549,9 @@ export class DataSource {
                         const allContracts = (items?.results ?? []) as unknown as IContractItem[];
                         // no longer used - was filtering contracts where completion date is in the future
                         //this._contracts = allContracts.filter((contract) => new Date(contract.field_16) >= today);
-                        this._contracts = allContracts.filter((contract) => !contract.field_20?.includes("New Business"));
+                        this._contracts = this.appendManualContracts(
+                            allContracts.filter((contract) => !contract.field_20?.includes("New Business"))
+                        );
                         resolve(this._contracts);
                     },
                     (error) => reject(new Error(`Error fetching Contracts: ${formatError(error)}`))
@@ -533,17 +562,14 @@ export class DataSource {
     private static _invoices: IInvoiceItem[] = [];
     static get Invoices(): IInvoiceItem[] { return this._invoices; }
 
+    // Exclude historical/internal task orders starting with "HIS" from invoice dropdowns.
+    // ^ = start of string
+    // HIS = literal text
+    // \d* = zero or more digits
+    // $ = end of string
+    // i = case-insensitive
     private static isUsableInvoice(invoice: IInvoiceItem): boolean {
         return !/^HIS\d*$/i.test((invoice.field_14 ?? "").trim());
-    }
-
-    private static isChargeableJob(job: IJobItem, invoiceId1: string): boolean {
-        const jobId = job.field_13 ?? "";
-        const jobTitle = (job.field_19 ?? "").toLowerCase();
-
-        return !jobId.startsWith(`${invoiceId1}-0000`) &&
-            !jobTitle.includes("subaccrual") &&
-            !/^adm\b/i.test(job.field_19 ?? "");
     }
 
     static getInvoicesByContract(contractId: string): Promise<IInvoiceItem[]> {
@@ -564,8 +590,11 @@ export class DataSource {
                 })
                 .execute(
                     (items) => {
-                        this._invoices = ((items?.results ?? []) as unknown as IInvoiceItem[])
-                            .filter((invoice: IInvoiceItem): boolean => this.isUsableInvoice(invoice));
+                        this._invoices = this.appendManualInvoices(
+                            ((items?.results ?? []) as unknown as IInvoiceItem[])
+                                .filter((invoice: IInvoiceItem): boolean => this.isUsableInvoice(invoice)),
+                            contractId
+                        );
                         resolve(this._invoices);
                     },
                     (error) => reject(new Error(`Error fetching Invoices: ${formatError(error)}`))
@@ -575,6 +604,21 @@ export class DataSource {
 
     private static _jobs: IJobItem[] = [];
     static get Jobs(): IJobItem[] { return this._jobs; }
+
+    private static isChargeableJob(job: IJobItem, invoiceId1: string): boolean {
+        const jobId = job.field_13 ?? "";
+        const jobTitle = (job.field_19 ?? "").toLowerCase();
+        const isIndirectInvoice = invoiceId1 === indirectInvoice.InvoiceID1;
+
+        return (isIndirectInvoice || !jobId.startsWith(`${invoiceId1}-0000`)) && // filters out jobs whose third segment is 0000. Allows Indirect jobs.
+            !jobTitle.includes("subaccrual") &&
+            // Exclude admin bucket jobs whose title begins with ADM.
+            // ^ = start of string
+            // adm = literal text
+            // \b = word boundary, so ADM must end there as a word
+            // i = case-insensitive
+            !/^adm\b/i.test(job.field_19 ?? "");
+    }
 
     static getJobsByInvoice(invoiceId1: string): Promise<IJobItem[]> {
         return new Promise<IJobItem[]>((resolve, reject) => {
@@ -597,7 +641,7 @@ export class DataSource {
                 .Items()
                 .query({
                     GetAllItems: true,
-                    Select: ["Id", "field_13", "field_19"],
+                    Select: ["Id", "field_13", "field_19", "field_74"],
                     Filter: `startswith(field_13, '${escapedJobIdPrefix}')`
                 })
                 .execute(
@@ -615,6 +659,7 @@ export class DataSource {
 
                                 return (left.field_19 ?? "").localeCompare(right.field_19 ?? "", undefined, { numeric: true, sensitivity: "base" });
                             });
+                        console.log(this._jobs);
                         resolve(this._jobs);
                     },
                     (error) => {

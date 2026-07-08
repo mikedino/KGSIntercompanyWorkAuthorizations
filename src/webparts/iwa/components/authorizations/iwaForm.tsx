@@ -55,6 +55,7 @@ import { ResourceService } from "../resources/resourceService";
 import { LaborLineItemService } from "../laborlineitems/laborLineItemService";
 import { TravelOdcService } from "../travelodc/travelOdcService";
 import { ModService } from "../mods/modService";
+import { indirectContract } from "../data/indirectCharges";
 
 interface IIwaFormProps {
     context: WebPartContext;
@@ -2095,6 +2096,16 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             updateUserField("contractName", value?.field_20 ?? "");
                             updateUserField("customerContractCode", value?.field_35 ?? "");
                             updateUserField("naicsCode", value?.field_73 ?? "");
+                            if (value?.field_19 === indirectContract.field_19) {
+                                setDialogTitle("Indirect Contract Guidance");
+                                setDialogMessage(
+                                    "For all Indirect IWA's:\n\n" +
+                                    "• Use KGS as Entity B (Receiving Services).\n\n" +
+                                    "• Use the \"Owner\" of the charge as the PM (e.g. Ray Coleman for IT).  If you aren't sure " +
+                                    "who that is, once you pick the Job ID on the next step another pop-up will tell you."
+                                );
+                                setDialogOpen(true)
+                            }
                         }}
                         getOptionLabel={(option: IContractItem) => option.field_20 ?? ""}
                         filterOptions={(options, state) => {
@@ -2278,7 +2289,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     <TextField
                         label="LOB"
                         fullWidth
-                        value={form.lob ?? ""}                        
+                        value={form.lob ?? ""}
                         disabled
                         error={stepOneHasError && !form.lob}
                         helperText={stepOneHasError && !form.lob ? "LOB is required." : "Derived from the selected OG to keep routing/reporting aligned."}
@@ -2337,6 +2348,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const workPackageSection = (
         <IwaWorkPackageStep
             contractType={form.contractType}
+            contractId={form.contractId}
             jobs={jobOptions}
             laborCategories={laborCategoryOptions}
             states={stateOptions}
@@ -2789,6 +2801,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     message={dialogMessage}
                     onClose={handleCloseDialog}
                 />
+
             </Stack>
         </Box>
     );

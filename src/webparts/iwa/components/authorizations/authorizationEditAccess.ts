@@ -1,4 +1,5 @@
 import { IAppUserItem, IAuthorizationItem, IPeoplePicker } from "../data/props";
+import { DataSource } from "../data/ds";
 
 const samePerson = (left?: IPeoplePicker, rightId?: number): boolean => {
     return !!left?.Id && !!rightId && left.Id === rightId;
@@ -15,7 +16,7 @@ export const canUserEditAuthorization = (
         return false;
     }
 
-    if ((currentUser.role ?? "user").toLowerCase() === "admin") {
+    if (DataSource.isAdmin) {
         return true;
     }
 

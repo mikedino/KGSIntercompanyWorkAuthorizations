@@ -7,6 +7,7 @@ export const AppSnackbarHost: React.FC = (): JSX.Element => {
         snackbarOpen,
         snackbarMessage,
         snackbarSeverity,
+        snackbarDurationMs,
         hideSnackbar
     } = useShellUi();
 
@@ -24,7 +25,7 @@ export const AppSnackbarHost: React.FC = (): JSX.Element => {
     return (
         <Snackbar
             open={snackbarOpen}
-            autoHideDuration={snackbarSeverity === "warning" || snackbarSeverity === "error" ? null : 3000}
+            autoHideDuration={snackbarDurationMs}
             onClose={handleClose}
             anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
             sx={{

@@ -176,7 +176,7 @@ export interface IContractItem {
   field_23: string; // Manager 1 Name (Project Manager)
   field_73: string; // NAICS Code (e.g. 541519)
   field_75: string; // OG
-  field_16: string; // Completion Date (NOT USED - EMPTY)
+  field_16?: string; // Completion Date (NOT USED - EMPTY)
 }
 
 export interface IInvoiceItem {
@@ -193,6 +193,7 @@ export interface IJobItem {
   readonly Id: number;
   field_13: string; // Direct Job ID (e.g. 100158-0002-0001-0001) 100158-0002-0000-0001
   field_19: string; // Direct Job Title (e.g. "DOS 3451 OP3 3001 Labor")
+  field_74: string; // Employee Name 2 (Job "Owner" - only used for Indirects)
 }
 
 export interface IOgItem {
@@ -397,7 +398,9 @@ export interface ITravelOdcItem extends ISystemFields {
 
 export interface IWorkflowRunItem extends ISystemFields {
   authorization: ILookupItem;
-  mod?: ILookupItem;
+  mod?: ILookupItem & {
+    modStatus?: ModStatus;
+  };
   runNumber: number;
   runType: RunType;
   runStatus: WorkflowRunStatus;
@@ -429,8 +432,12 @@ export interface IWorkflowRunItem extends ISystemFields {
    ========================= */
 
 export interface IWorkflowActionItem extends ISystemFields {
-  authorization: ILookupItem;
-  mod?: ILookupItem;
+  authorization: ILookupItem & {
+    modCount?: number;
+  };
+  mod?: ILookupItem & {
+    modNumber?: number;
+  };
   workflowRun: ILookupItem;
   stepKey: WorkflowStepKey;
   actionType: WorkflowActionType;

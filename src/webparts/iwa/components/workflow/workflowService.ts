@@ -25,8 +25,8 @@ export class WorkflowService {
         "actionType", "actionDate", "comments", "changeSummary", "changePayloadJson",
         "role", "fromStepKey", "toStepKey",
         "wasSkipped", "skipReason", "Created",
-        "Modified", "authorization/Id", "authorization/Title",
-        "mod/Id", "mod/Title", "workflowRun/Id",
+        "Modified", "authorization/Id", "authorization/Title", "authorization/modCount",
+        "mod/Id", "mod/Title", "mod/modNumber", "workflowRun/Id",
         "workflowRun/Title", "actionBy/Id", "actionBy/Title",
         "actionBy/EMail"
     ];

@@ -1,8 +1,8 @@
 import * as React from "react";
 import {
-    Autocomplete,    Alert,    Box,    Button,    Checkbox,    Dialog,    DialogActions,    DialogContent,
-    DialogTitle,    FormControlLabel,    Grid,    MenuItem,    Paper,    Stack,    Table,    TableBody,    TableCell,    TableContainer,
-    TableHead,    TableRow,    TextField,    Tooltip,    Typography
+    Autocomplete, Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent,
+    DialogTitle, FormControlLabel, Grid, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer,
+    TableHead, TableRow, TextField, Tooltip, Typography
 } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
@@ -19,9 +19,12 @@ import { ChargingPeriod, IJobItem, IPeoplePicker, TravelLineType } from "../data
 import { formatCurrency, formatCurrencyInputValue, normalizeDecimalInput } from "../common/utils";
 import { IwaPriorResourcesPanel } from "./workPackage/IwaPriorResourcesPanel";
 import { IEditableFfpLaborRow, IEditableResourceRow, IEditableTravelRow, IPriorResourceRow } from "./workPackage/workPackageTypes";
+import { indirectContract } from "../data/indirectCharges";
+import AlertDialog from "../ui/Alert";
 
 export interface IIwaWorkPackageStepProps {
     contractType: "tm" | "ffp";
+    contractId: string;
     jobs: IJobItem[];
     laborCategories: string[];
     states: string[];
@@ -201,6 +204,7 @@ const renderJobOption = (props: React.HTMLAttributes<HTMLLIElement>, option: IJo
 
 export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     contractType,
+    contractId,
     jobs,
     laborCategories,
     states,
@@ -242,6 +246,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const [ffpAmountFocused, setFfpAmountFocused] = React.useState(false);
     const [priorResourcesOpen, setPriorResourcesOpen] = React.useState(false);
     const [removeConfirmation, setRemoveConfirmation] = React.useState<RemoveConfirmation | undefined>(undefined);
+    const [dialogOpen, setDialogOpen] = React.useState<boolean>(false);
+    const [dialogTitle, setDialogTitle] = React.useState<string>("");
+    const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const resourceTotals = React.useMemo(() => {
         return resourceRows.reduce((totals, row) => ({
             standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
@@ -258,10 +265,19 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         return priorResourceRows.find((row) => row.employee.Id === employeeId);
     }, [priorResourceRows, resourceDraft.employee?.Id]);
     const resourceDraftHoursPreview = React.useMemo(() => {
+        const employeeId = resourceDraft.employee?.Id;
         const approvedStandardHours = resourceDraftApprovedHours?.approvedTotalStandardHours ?? 0;
         const approvedOvertimeHours = resourceDraftApprovedHours?.approvedTotalOvertimeHours ?? 0;
-        const newStandardHours = Number(normalizeDecimalInput(resourceDraft.standardHours) || 0);
-        const newOvertimeHours = Number(normalizeDecimalInput(resourceDraft.overtimeHours) || 0);
+        const currentResourceHours = resourceRows
+            .filter((row) => row.id !== resourceDraft.id && row.employee?.Id === employeeId)
+            .reduce((totals, row) => ({
+                standardHours: totals.standardHours + Number(normalizeDecimalInput(row.standardHours) || 0),
+                overtimeHours: totals.overtimeHours + Number(normalizeDecimalInput(row.overtimeHours) || 0)
+            }), { standardHours: 0, overtimeHours: 0 });
+        const draftStandardHours = Number(normalizeDecimalInput(resourceDraft.standardHours) || 0);
+        const draftOvertimeHours = Number(normalizeDecimalInput(resourceDraft.overtimeHours) || 0);
+        const newStandardHours = currentResourceHours.standardHours + draftStandardHours;
+        const newOvertimeHours = currentResourceHours.overtimeHours + draftOvertimeHours;
 
         return {
             approvedStandardHours,
@@ -270,7 +286,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             newTotalHours: newStandardHours + newOvertimeHours,
             combinedTotalHours: approvedStandardHours + approvedOvertimeHours + newStandardHours + newOvertimeHours
         };
-    }, [resourceDraft.overtimeHours, resourceDraft.standardHours, resourceDraftApprovedHours]);
+    }, [resourceDraft.employee?.Id, resourceDraft.id, resourceDraft.overtimeHours, resourceDraft.standardHours, resourceDraftApprovedHours, resourceRows]);
     const ffpTotal = React.useMemo(() => {
         return ffpLaborRows.reduce((total, row) => {
             const amount = Number(normalizeDecimalInput(row.lumpSumAmount) || 0);
@@ -317,6 +333,8 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
     const getJobTitle = React.useCallback((jobId: string, fallback?: string): string => {
         return fallback?.trim() || jobOptions.find((job) => job.field_13 === jobId)?.field_19?.trim() || "";
     }, [jobOptions]);
+
+    const isIndirect = contractId === indirectContract.field_19;
 
     const copyPriorResource = React.useCallback((row: IPriorResourceRow): void => {
         onAddResource({
@@ -367,6 +385,10 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         });
     }, []);
 
+    const handleCloseDialog = (): void => {
+        setDialogOpen(false);
+    }
+
     const confirmRemove = React.useCallback((): void => {
         if (!removeConfirmation) {
             return;
@@ -414,6 +436,23 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             nextErrors.jobId = "Job ID is required for T&M resources.";
         }
 
+        const resourceJobId = resourceDraft.jobId.trim();
+        const existingResourceJobId = resourceRows
+            .filter((row) => row.id !== resourceDraft.id)
+            .map((row) => row.jobId.trim())
+            .find((jobId) => !!jobId);
+
+        if (isIndirect && contractType === "tm" && resourceJobId && existingResourceJobId && resourceJobId !== existingResourceJobId) {
+            nextErrors.jobId = `Indirect resource Job ID must match ${existingResourceJobId}.`;
+            setDialogTitle("Job ID Must Match");
+            setDialogMessage(
+                "For Indirect IWAs, all resource rows in the current IWA/Mod must use the same Job ID.\n\n" +
+                `Existing Job ID: ${existingResourceJobId}\n` +
+                `Selected Job ID: ${resourceJobId}`
+            );
+            setDialogOpen(true);
+        }
+
         if (!resourceDraft.laborCategory.trim()) {
             nextErrors.laborCategory = "Labor category is required.";
         }
@@ -442,6 +481,9 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
             return;
         }
 
+        const selectedJob = jobOptions.find((job) => job.field_13 === resourceJobId);
+        const shouldShowIndirectPmAlert = isIndirect && contractType === "tm" && resourceJobId && !existingResourceJobId;
+
         if (resourceDraft.id) {
             onUpdateResource(resourceDraft.id, {
                 ...resourceDraft,
@@ -459,7 +501,13 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
         }
 
         setResourceDialogOpen(false);
-    }, [contractType, onAddResource, onUpdateResource, resourceDraft]);
+
+        if (shouldShowIndirectPmAlert) {
+            setDialogTitle("Ensure Correct PM");
+            setDialogMessage(`For the selected Job ID, ensure the PM on this IWA (Mod) is set to: ${selectedJob?.field_74 || "the job owner"}`);
+            setDialogOpen(true);
+        }
+    }, [contractType, isIndirect, jobOptions, onAddResource, onUpdateResource, resourceDraft, resourceRows]);
 
     const openNewTravelDialog = React.useCallback((): void => {
         setTravelDraft(createEmptyTravelDraft());
@@ -774,7 +822,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                                     <TableRow key={row.id} hover>
                                                         <TableCell>{row.jobId || "—"}</TableCell>
                                                         <TableCell>{chargingPeriodOptions.find((option) => option.value === row.chargingPeriod)?.label ?? row.chargingPeriod}</TableCell>
-                                                       <TableCell align="right">{row.periodQty || "—"}</TableCell>
+                                                        <TableCell align="right">{row.periodQty || "—"}</TableCell>
                                                         <TableCell align="right">{total ? formatCurrency(total) : "—"}</TableCell>
                                                         <TableCell>{getResourceNames(row.resourceRowIds)}</TableCell>
                                                         <TableCell align="right">
@@ -914,6 +962,11 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                 <DialogTitle>{resourceDraft.id ? "Edit Resource" : "Add Resource"}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={3} sx={{ pt: 1 }}>
+                        {isIndirect &&
+                            <Alert severity="warning">
+                                For Indirect Jobs, please only use one Job ID per IWA (Mod)
+                            </Alert>
+                        }
                         <Alert severity="info">
                             {showPriorResources
                                 ? "For Mods, enter only the resource details and hours being added for this Mod. T&M hours entered here are for this Mod only and do not include previously approved hours. Once a previously utilized resource is selected, their previously approved hours will be visible below for reference."
@@ -993,11 +1046,18 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         <Autocomplete
                                             options={jobOptions}
                                             value={jobOptions.find((job) => job.field_13 === resourceDraft.jobId) ?? null}
-                                            onChange={(_, value: IJobItem | null) => setResourceDraft((prev) => ({
-                                                ...prev,
-                                                jobId: value?.field_13 ?? "",
-                                                jobTitle: value?.field_19 ?? ""
-                                            }))}
+                                            onChange={(_, value: IJobItem | null) => {
+                                                setResourceDraft((prev) => ({
+                                                    ...prev,
+                                                    jobId: value?.field_13 ?? "",
+                                                    jobTitle: value?.field_19 ?? ""
+                                                }));
+                                                setResourceDraftErrors((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next.jobId;
+                                                    return next;
+                                                });
+                                            }}
                                             filterOptions={(options, state) => filterAllJobOptions(options, state.inputValue)}
                                             getOptionLabel={(option: IJobItem) => option.field_13 ?? ""}
                                             isOptionEqualToValue={(option, value) => option.Id === value.Id}
@@ -1092,6 +1152,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                         })}
                                     >
                                         {resourceDraft.employee?.Id ? (
+                                            // HOURS "HELPER BOX"
                                             <Stack spacing={0.25}>
                                                 <Typography variant="caption" color="success.main" fontWeight={700} sx={{ textTransform: "uppercase" }}>
                                                     Previously Approved Resource Hours
@@ -1331,6 +1392,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                             <Grid size={{ xs: 12 }}>
                                 <TextField
                                     label="Description"
+                                    placeholder={"PROVIDE ALL OF THE EMPLOYEES WHO WILL BE CHARGING TO THIS CODE HERE"}
                                     fullWidth
                                     multiline
                                     minRows={2}
@@ -1338,7 +1400,7 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                                     value={travelDraft.description}
                                     onChange={(event) => setTravelDraft((prev) => ({ ...prev, description: event.target.value }))}
                                     error={Boolean(travelDraftErrors.description)}
-                                    helperText={travelDraftErrors.description}
+                                    helperText={travelDraftErrors.description || "PROVIDE ALL OF THE EMPLOYEES WHO WILL BE CHARGING TO THIS CODE HERE"}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12 }}>
@@ -1400,6 +1462,13 @@ export const IwaWorkPackageStep: React.FC<IIwaWorkPackageStepProps> = ({
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <AlertDialog
+                open={dialogOpen}
+                title={dialogTitle}
+                message={dialogMessage}
+                onClose={handleCloseDialog}
+            />
         </Stack>
     );
 };

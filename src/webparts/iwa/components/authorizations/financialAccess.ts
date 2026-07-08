@@ -49,14 +49,13 @@ export const canViewFinancialAmounts = (
     appUsers: IAppUserItem[]
 ): boolean => {
     const currentUserId = currentUser?.user?.Id;
-    const isAdmin = DataSource.isAdmin || (currentUser?.role ?? "user").toLowerCase() === "admin";
     const isOGP = DataSource.isOGP;
 
     if (!authorization) {
         return false;
     }
 
-    if (isAdmin || isOGP) {
+    if (DataSource.isAdmin || isOGP) {
         return true;
     }
 

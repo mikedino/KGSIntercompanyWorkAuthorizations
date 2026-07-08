@@ -33,6 +33,8 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | 1.0.3.2 | June 22, 2026 | Landino | Adjust User Guide config item to be unique to IWA |
 | 1.0.4.0 | June 24, 2026 | Landino | Add NAICS Code, Job ID Title, add STD/OT rates to export, All OGPs can see financials, Admin page Add/Edit mods |
 | 1.0.5.1 | June 24, 2026 | Landino | Update form validation to check for Resource row *OR* Travel/ODC row. Update HR approve when no Resource lines. Minor UI changes. |
+| 1.0.6.1 | June 30, 2026 | Landino | Implement DELETE and CANCEL processes |
+| 1.0.6.2 | July 8, 2026 | Landino | Add fake indirect Contract and Invoice. Add info/warning modals on Add Resource. Fix resource total hours helper box (add all rows) |
 
 ---
 
