@@ -521,4 +521,126 @@ export class AuthorizationService {
     })
   }
 
+  private static async recycleItemsByAuthorization(listName: string, authorizationId: number): Promise<void> {
+    const items = await Web()
+      .Lists(listName)
+      .Items()
+      .query({
+        Select: ["Id"],
+        Filter: `authorization/Id eq ${authorizationId}`,
+        GetAllItems: true
+      })
+      .executeAndWait() as { results?: Array<{ Id: number }> };
+
+    for (const item of items.results ?? []) {
+      if (item.Id) {
+        await Web().Lists(listName).Items(item.Id).recycle().executeAndWait();
+      }
+    }
+  }
+
+  private static async recycleItemsByAuthorizationAndMod(listName: string, authorizationId: number, modId: number): Promise<void> {
+    const items = await Web()
+      .Lists(listName)
+      .Items()
+      .query({
+        Select: ["Id"],
+        Filter: `authorization/Id eq ${authorizationId} and mod/Id eq ${modId}`,
+        GetAllItems: true
+      })
+      .executeAndWait() as { results?: Array<{ Id: number }> };
+
+    for (const item of items.results ?? []) {
+      if (item.Id) {
+        await Web().Lists(listName).Items(item.Id).recycle().executeAndWait();
+      }
+    }
+  }
+
+  private static async getLatestApprovedSnapshotRun(authorizationId: number): Promise<{
+    Id: number;
+    approvedSnapshotJson?: string;
+  }> {
+    const runs = await Web()
+      .Lists(Strings.Sites.main.lists.WorkflowRuns)
+      .Items()
+      .query({
+        Select: ["Id", "runNumber", "approvedSnapshotJson"],
+        Filter: `authorization/Id eq ${authorizationId} and runStatus eq 'completed' and outcome eq 'approved'`,
+        OrderBy: ["runNumber desc", "Id desc"],
+        GetAllItems: true
+      })
+      .executeAndWait() as { results?: Array<{ Id: number; approvedSnapshotJson?: string }> };
+
+    const latestRun = (runs.results ?? []).find((run) => !!run.approvedSnapshotJson);
+
+    if (!latestRun?.Id) {
+      throw new Error("Cannot cancel Mod: no previously approved workflow snapshot was found.");
+    }
+
+    return latestRun;
+  }
+
+  static async deleteAuthorizationCascade(authorizationId: number): Promise<void> {
+    if (!authorizationId) {
+      throw new Error("Cannot delete IWA: authorization.Id is missing.");
+    }
+
+    try {
+      await this.recycleItemsByAuthorization(Strings.Sites.main.lists.WorkflowActions, authorizationId);
+      await this.recycleItemsByAuthorization(Strings.Sites.main.lists.WorkflowRuns, authorizationId);
+      await this.recycleItemsByAuthorization(Strings.Sites.main.lists.LaborLine, authorizationId);
+      await this.recycleItemsByAuthorization(Strings.Sites.main.lists.Resources, authorizationId);
+      await this.recycleItemsByAuthorization(Strings.Sites.main.lists.TravelODC, authorizationId);
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items(authorizationId).recycle().executeAndWait();
+    } catch (error) {
+      const err = formatError(error);
+      console.error(`Error deleting IWA ${authorizationId}:`, error);
+      throw new Error(`Error deleting IWA: ${err}`);
+    }
+  }
+
+  static async cancelSubmittedMod(authorizationId: number, modId: number): Promise<void> {
+    if (!authorizationId || !modId) {
+      throw new Error("Cannot cancel Mod: authorization.Id or mod.Id is missing.");
+    }
+
+    try {
+      const approvedRun = await this.getLatestApprovedSnapshotRun(authorizationId);
+      const approvedSnapshot = JSON.parse(approvedRun.approvedSnapshotJson ?? "{}") as {
+        periodStart?: string | null;
+        periodEnd?: string | null;
+      };
+
+      await this.recycleItemsByAuthorizationAndMod(Strings.Sites.main.lists.WorkflowActions, authorizationId, modId);
+      await this.recycleItemsByAuthorizationAndMod(Strings.Sites.main.lists.WorkflowRuns, authorizationId, modId);
+      await this.recycleItemsByAuthorizationAndMod(Strings.Sites.main.lists.LaborLine, authorizationId, modId);
+      await this.recycleItemsByAuthorizationAndMod(Strings.Sites.main.lists.Resources, authorizationId, modId);
+      await this.recycleItemsByAuthorizationAndMod(Strings.Sites.main.lists.TravelODC, authorizationId, modId);
+      await Web().Lists(Strings.Sites.main.lists.Mods).Items(modId).recycle().executeAndWait();
+
+      const [mods] = await Promise.all([
+        ModService.getByAuthorization(authorizationId),
+        this.recalculateAuthorizationAmounts(authorizationId)
+      ]);
+      const modCount = Math.max(0, ...(mods ?? []).map((mod) => mod.modNumber ?? 0));
+
+      await Web().Lists(Strings.Sites.main.lists.Authorizations).Items().getById(authorizationId).update({
+        __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Authorizations)}ListItem` },
+        authorizationStatus: "approved",
+        currentWorkflowRunId: null,
+        effectiveApprovedRunId: approvedRun.Id,
+        rejectedOn: null,
+        canceledOn: null,
+        periodStart: approvedSnapshot.periodStart ?? null,
+        periodEnd: approvedSnapshot.periodEnd ?? null,
+        modCount
+      }).executeAndWait();
+    } catch (error) {
+      const err = formatError(error);
+      console.error(`Error canceling Mod ${modId} for IWA ${authorizationId}:`, error);
+      throw new Error(`Error canceling Mod: ${err}`);
+    }
+  }
+
 }

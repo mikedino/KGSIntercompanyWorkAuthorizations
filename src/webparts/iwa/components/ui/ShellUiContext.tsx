@@ -9,7 +9,7 @@ export interface IShellUiContextValue {
     showSuccess: (message: string) => boolean;
     showBackdropSuccess: (message: string) => boolean;
     hideSuccess: () => boolean;
-    showSnackbar: (message: string, severity?: AlertColor) => boolean;
+    showSnackbar: (message: string, severity?: AlertColor, durationMs?: number) => boolean;
     hideSnackbar: () => boolean;
     alertOpen: boolean;
     alertTitle: string;
@@ -21,6 +21,7 @@ export interface IShellUiContextValue {
     snackbarOpen: boolean;
     snackbarMessage: string;
     snackbarSeverity: AlertColor;
+    snackbarDurationMs?: number;
 }
 
 const ShellUiContext = React.createContext<IShellUiContextValue | undefined>(undefined);
@@ -53,6 +54,7 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
     const [snackbarOpen, setSnackbarOpen] = React.useState<boolean>(false);
     const [snackbarMessage, setSnackbarMessage] = React.useState<string>("");
     const [snackbarSeverity, setSnackbarSeverity] = React.useState<AlertColor>("success");
+    const [snackbarDurationMs, setSnackbarDurationMs] = React.useState<number | undefined>(3000);
 
     const showAlert = React.useCallback((title: string, message: string): boolean => {
         setAlertTitle(title);
@@ -82,13 +84,14 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         return true;
     }, []);
 
-    const showSnackbar = React.useCallback((message: string, severity: AlertColor = "success"): boolean => {
+    const showSnackbar = React.useCallback((message: string, severity: AlertColor = "success", durationMs?: number): boolean => {
         setBusyOpen(false);
         setBusyMessage("");
         setSuccessOpen(false);
         setSuccessMessage("");
         setSnackbarSeverity(severity);
         setSnackbarMessage(message);
+        setSnackbarDurationMs(durationMs ?? (severity === "warning" || severity === "error" ? undefined : 3000));
         setSnackbarOpen(true);
         return true;
     }, []);
@@ -96,6 +99,7 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
     const hideSnackbar = React.useCallback((): boolean => {
         setSnackbarOpen(false);
         setSnackbarMessage("");
+        setSnackbarDurationMs(3000);
         return true;
     }, []);
 
@@ -140,7 +144,8 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
             successMessage,
             snackbarOpen,
             snackbarMessage,
-            snackbarSeverity
+            snackbarSeverity,
+            snackbarDurationMs
         };
     }, [
         showAlert,
@@ -161,7 +166,8 @@ export const ShellUiProvider: React.FC<IShellUiProviderProps> = ({ children }): 
         successMessage,
         snackbarOpen,
         snackbarMessage,
-        snackbarSeverity
+        snackbarSeverity,
+        snackbarDurationMs
     ]);
 
     return (

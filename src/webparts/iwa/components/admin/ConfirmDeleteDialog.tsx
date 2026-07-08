@@ -4,8 +4,9 @@ import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typog
 interface ConfirmDeleteDialogProps {
     open: boolean;
     title: string;
-    message: string;
+    message: React.ReactNode;
     confirmLabel?: string;
+    cancelLabel?: string;
     error?: string;
     busy?: boolean;
     onClose: () => void;
@@ -17,6 +18,7 @@ export const ConfirmDeleteDialog: React.FC<ConfirmDeleteDialogProps> = ({
     title,
     message,
     confirmLabel = "Delete",
+    cancelLabel = "Cancel",
     error = "",
     busy = false,
     onClose,
@@ -28,12 +30,12 @@ export const ConfirmDeleteDialog: React.FC<ConfirmDeleteDialogProps> = ({
 
             <DialogContent dividers>
                 {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-                <Typography>{message}</Typography>
+                <Typography sx={{ whiteSpace: "pre-line" }}>{message}</Typography>
             </DialogContent>
 
             <DialogActions>
-                <Button onClick={onClose} disabled={busy} aria-label="Cancel delete" title="Cancel delete">
-                    Cancel
+                <Button onClick={onClose} disabled={busy} aria-label={cancelLabel} title={cancelLabel}>
+                    {cancelLabel}
                 </Button>
                 <Button
                     color="error"

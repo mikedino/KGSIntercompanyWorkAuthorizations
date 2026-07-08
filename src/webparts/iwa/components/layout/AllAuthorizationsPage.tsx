@@ -1,4 +1,5 @@
 import * as React from "react";
+import { flushSync } from "react-dom";
 import {
     Box,
     BottomNavigation,
@@ -42,6 +43,7 @@ import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined
 import SearchIcon from "@mui/icons-material/Search";
 import OpenInBrowserOutlinedIcon from "@mui/icons-material/OpenInBrowserOutlined";
 import AlertDialog from "../ui/Alert";
+import { ConfirmDeleteDialog } from "../admin/ConfirmDeleteDialog";
 import { PageHeader } from "../ui/PageHeader";
 import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship } from "../common/utils";
 import { useIwa } from "../data/iwaContext";
@@ -49,6 +51,7 @@ import { IModItem, workflowRoleLabels } from "../data/props";
 import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
+import { canCancelMod, canDeleteAuthorization } from "../authorizations/authorizationDeleteAccess";
 import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
 import {
@@ -101,6 +104,7 @@ const presetViews: Array<{ value: AllAuthorizationsPresetView; label: string; }>
 ];
 
 const defaultPresetView: AllAuthorizationsPresetView = "all";
+const deleteSuccessDurationMs = 7000;
 const presetViewAliases: Partial<Record<string, AllAuthorizationsPresetView>> = {
     activePeriod: "active"
 };
@@ -278,7 +282,7 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         clearAuthorizationDetailCache,
         refresh
     } = useIwa();
-    const { showBusy, hideBusy, showSuccess } = useShellUi();
+    const { showBusy, hideBusy, showSnackbar } = useShellUi();
 
     const [filters, setFilters] = React.useState<IAllAuthorizationsFilters>(defaultFilters);
     const [sortField, setSortField] = React.useState<AllAuthorizationsSortField>("modified");
@@ -292,6 +296,12 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const [dialogMessage, setDialogMessage] = React.useState<string>("");
     const [showDialog, setShowDialog] = React.useState<boolean>(false);
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
+    const [deleteIwaRow, setDeleteIwaRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
+    const [deleteError, setDeleteError] = React.useState<string>("");
+    const [deleteBusy, setDeleteBusy] = React.useState<boolean>(false);
+    const [cancelModRow, setCancelModRow] = React.useState<IAllAuthorizationsRow | undefined>(undefined);
+    const [cancelModError, setCancelModError] = React.useState<string>("");
+    const [cancelModBusy, setCancelModBusy] = React.useState<boolean>(false);
     const [latestModsByAuthorizationId, setLatestModsByAuthorizationId] = React.useState<Map<number, IModItem>>(new Map());
     const [showDrafts, setShowDrafts] = React.useState<boolean>(false);
     const selectedView = normalizePresetView(view);
@@ -502,6 +512,12 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
     const selectedMenuRowCanEdit = React.useMemo((): boolean => {
         return canEditAuthorization(selectedMenuRow, currentUser, appUsers);
     }, [appUsers, currentUser, selectedMenuRow]);
+    const selectedMenuRowCanDelete = React.useMemo((): boolean => {
+        return canDeleteAuthorization(selectedMenuRow?.authorization, currentUser, appUsers, selectedMenuRow?.currentRun);
+    }, [appUsers, currentUser, selectedMenuRow]);
+    const selectedMenuRowCanCancelMod = React.useMemo((): boolean => {
+        return canCancelMod(selectedMenuRow?.authorization, currentUser, appUsers, selectedMenuRow?.currentRun, selectedMenuRow?.latestMod);
+    }, [appUsers, currentUser, selectedMenuRow]);
 
     const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
         if (!discardDraftRow) {
@@ -509,10 +525,13 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
         }
 
         const authorizationId = discardDraftRow.authorization.Id;
-        setDiscardDraftRow(undefined);
+        const authorizationTitle = discardDraftRow.authorization.Title || "IWA";
 
         try {
-            showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+            flushSync(() => {
+                setDiscardDraftRow(undefined);
+                showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+            });
 
             if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
                 await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
@@ -525,12 +544,73 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess(discardDraftRow.isModDraft ? "Modification draft discarded." : "Draft discarded.");
+            showSnackbar(
+                discardDraftRow.isModDraft
+                    ? `${authorizationTitle} modification draft discarded.`
+                    : `${authorizationTitle} draft discarded.`,
+                "success",
+                deleteSuccessDurationMs
+            );
         } catch (error) {
             hideBusy();
             showFeatureDialog("Discard Draft Error", formatError(error));
         }
-    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showFeatureDialog, showSuccess]);
+    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showFeatureDialog, showSnackbar]);
+
+    const handleDeleteIwa = React.useCallback(async (): Promise<void> => {
+        if (!deleteIwaRow) {
+            return;
+        }
+
+        const authorizationId = deleteIwaRow.authorization.Id;
+        const authorizationTitle = deleteIwaRow.authorization.Title || "IWA";
+        try {
+            flushSync(() => {
+                setDeleteBusy(true);
+                setDeleteError("");
+                setDeleteIwaRow(undefined);
+                showBusy("Deleting IWA and associated data...");
+            });
+            await AuthorizationService.deleteAuthorizationCascade(authorizationId);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSnackbar(`${authorizationTitle} deleted.`, "success", deleteSuccessDurationMs);
+        } catch (error) {
+            hideBusy();
+            showFeatureDialog("Delete IWA Error", formatError(error));
+        } finally {
+            setDeleteBusy(false);
+        }
+    }, [clearAuthorizationDetailCache, deleteIwaRow, hideBusy, refresh, showBusy, showSnackbar]);
+
+    const handleCancelMod = React.useCallback(async (): Promise<void> => {
+        if (!cancelModRow?.currentRun?.mod?.Id) {
+            return;
+        }
+
+        const authorizationId = cancelModRow.authorization.Id;
+        const authorizationTitle = cancelModRow.authorization.Title || "IWA";
+        const modNumber = cancelModRow.currentRun.mod.Title?.replace(/^.*MOD-/i, "") || "";
+        try {
+            flushSync(() => {
+                setCancelModBusy(true);
+                setCancelModError("");
+                setCancelModRow(undefined);
+                showBusy("Canceling Mod and reverting IWA...");
+            });
+            await AuthorizationService.cancelSubmittedMod(authorizationId, cancelModRow.currentRun.mod.Id);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSnackbar(`${authorizationTitle} Mod ${modNumber} canceled and reverted to the previously approved state.`, "success", deleteSuccessDurationMs);
+        } catch (error) {
+            hideBusy();
+            showFeatureDialog("Cancel Mod Error", formatError(error));
+        } finally {
+            setCancelModBusy(false);
+        }
+    }, [cancelModRow, clearAuthorizationDetailCache, hideBusy, refresh, showBusy, showFeatureDialog, showSnackbar]);
 
     const handleRowDoubleClick = React.useCallback((row: IAllAuthorizationsRow): void => {
         history.push(`/authorizations/view/${row.authorization.Id}`);
@@ -1141,6 +1221,32 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     </MenuItem>
                 )}
 
+                {selectedMenuRowCanDelete && (
+                    <MenuItem
+                        onClick={() => {
+                            closeRowMenu();
+                            setDeleteIwaRow(selectedMenuRow);
+                        }}
+                    >
+                        <DeleteOutlineOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
+                        Delete IWA
+                    </MenuItem>
+                )}
+
+                {selectedMenuRowCanCancelMod && (
+                    <MenuItem
+                        aria-label="Permanently Cancel this Mod request"
+                        title="Permanently Cancel this Mod request"
+                        onClick={() => {
+                            closeRowMenu();
+                            setCancelModRow(selectedMenuRow);
+                        }}
+                    >
+                        <DeleteOutlineOutlinedIcon fontSize="small" sx={{ mr: 1.25 }} />
+                        Cancel Mod
+                    </MenuItem>
+                )}
+
                 <MenuItem
                     onClick={() => {
                         closeRowMenu();
@@ -1177,6 +1283,38 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <ConfirmDeleteDialog
+                open={!!deleteIwaRow}
+                title="Delete IWA"
+                message="Are you sure you want to permanently delete this request and all associated data?"
+                confirmLabel="Delete IWA"
+                error={deleteError}
+                busy={deleteBusy}
+                onClose={() => {
+                    if (!deleteBusy) {
+                        setDeleteIwaRow(undefined);
+                        setDeleteError("");
+                    }
+                }}
+                onConfirm={handleDeleteIwa}
+            />
+            <ConfirmDeleteDialog
+                open={!!cancelModRow}
+                title="Cancel Mod"
+                message={"Do you want to permanently cancel this Mod request and all associated Mod data? This IWA will be reverted back to its previously approved state.\n\nThis action cannot be undone."}
+                confirmLabel="Yes, Cancel Mod"
+                cancelLabel="No, Go Back"
+                error={cancelModError}
+                busy={cancelModBusy}
+                onClose={() => {
+                    if (!cancelModBusy) {
+                        setCancelModRow(undefined);
+                        setCancelModError("");
+                    }
+                }}
+                onConfirm={handleCancelMod}
+            />
 
             <AlertDialog open={showDialog} title={dialogTitle} message={dialogMessage} onClose={hideDialog} />
         </Stack>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Typography } from "@mui/material";
 
 export interface IAlertDialogProps {
     open: boolean;
@@ -37,7 +37,9 @@ const AlertDialog: React.FC<IAlertDialogProps> = ({
 
             <DialogContent>
                 <DialogContentText id="alert-dialog-description">
-                    {message}
+                    <Typography sx={{ whiteSpace: "pre-line" }}>
+                        {message}
+                    </Typography>
                 </DialogContentText>
             </DialogContent>
 

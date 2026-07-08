@@ -1,4 +1,5 @@
 import * as React from "react";
+import { flushSync } from "react-dom";
 import {
     Box, BottomNavigation, BottomNavigationAction, Button, Chip, CircularProgress, Divider, Dialog, DialogActions,
     DialogContent, DialogTitle, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead,
@@ -20,8 +21,10 @@ import { PageHeader } from "../ui/PageHeader";
 import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
 import { AuthorizationService } from "../authorizations/iwaService";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
+import { canCancelMod, canDeleteAuthorization } from "../authorizations/authorizationDeleteAccess";
 import { ModService } from "../mods/modService";
 import { useShellUi } from "../ui/ShellUiContext";
+import { ConfirmDeleteDialog } from "../admin/ConfirmDeleteDialog";
 import {
     authorizationStatusLabels,
     buildMyWorkSummary,
@@ -159,6 +162,7 @@ const presetViews: Array<{ value: MyWorkPresetView; label: string; }> = [
 ];
 
 const defaultPresetView: MyWorkPresetView = "needsAction";
+const deleteSuccessDurationMs = 7000;
 
 const isPresetView = (value: string | undefined): value is MyWorkPresetView => {
     return presetViews.some((view) => view.value === value);
@@ -240,9 +244,13 @@ const getMyWorkStatusChipColor = (
 const MyWorkMobileCard: React.FC<{
     row: IMyWorkRow;
     canResumeDraft: boolean;
+    canDeleteIwa: boolean;
+    canCancelModRequest: boolean;
     onResumeDraft: (id: number) => void;
     onDiscardDraft: (row: IMyWorkRow) => void;
-}> = ({ row, canResumeDraft, onResumeDraft, onDiscardDraft }): JSX.Element => {
+    onDeleteIwa: (row: IMyWorkRow) => void;
+    onCancelMod: (row: IMyWorkRow) => void;
+}> = ({ row, canResumeDraft, canDeleteIwa, canCancelModRequest, onResumeDraft, onDiscardDraft, onDeleteIwa, onCancelMod }): JSX.Element => {
     const resumeLabel = row.isModDraft ? "Resume Mod" : "Resume Draft";
     const discardLabel = row.isModDraft ? "Discard Mod" : "Discard Draft";
 
@@ -343,6 +351,28 @@ const MyWorkMobileCard: React.FC<{
                         </Button>
                     </Stack>
                 )}
+                {canDeleteIwa && !row.isDraft && (
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => onDeleteIwa(row)}
+                        aria-label="Permanently delete this IWA"
+                        title="Permanently delete this IWA"
+                    >
+                        Delete IWA
+                    </Button>
+                )}
+                {canCancelModRequest && !row.isDraft && (
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => onCancelMod(row)}
+                        aria-label="Permanently Cancel this Mod request"
+                        title="Permanently Cancel this Mod request"
+                    >
+                        Cancel Mod
+                    </Button>
+                )}
             </Stack>
         </Paper>
     );
@@ -368,10 +398,16 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         clearAuthorizationDetailCache,
         refresh
     } = useIwa();
-    const { showBusy, hideBusy, showSuccess, showSnackbar } = useShellUi();
+    const { showBusy, hideBusy, showSnackbar } = useShellUi();
 
     const [searchText, setSearchText] = React.useState<string>("");
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IMyWorkRow | undefined>(undefined);
+    const [deleteIwaRow, setDeleteIwaRow] = React.useState<IMyWorkRow | undefined>(undefined);
+    const [deleteError, setDeleteError] = React.useState<string>("");
+    const [deleteBusy, setDeleteBusy] = React.useState<boolean>(false);
+    const [cancelModRow, setCancelModRow] = React.useState<IMyWorkRow | undefined>(undefined);
+    const [cancelModError, setCancelModError] = React.useState<string>("");
+    const [cancelModBusy, setCancelModBusy] = React.useState<boolean>(false);
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -439,16 +475,27 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         return row.isDraft && canUserEditAuthorization(row.authorization, currentUser, appUsers);
     }, [appUsers, currentUser]);
 
+    const canDeleteIwa = React.useCallback((row: IMyWorkRow): boolean => {
+        return canDeleteAuthorization(row.authorization, currentUser, appUsers, row.currentRun);
+    }, [appUsers, currentUser]);
+
+    const canCancelModRequest = React.useCallback((row: IMyWorkRow): boolean => {
+        return canCancelMod(row.authorization, currentUser, appUsers, row.currentRun, row.currentRun?.mod);
+    }, [appUsers, currentUser]);
+
     const handleDiscardDraft = React.useCallback(async (): Promise<void> => {
         if (!discardDraftRow) {
             return;
         }
 
         const authorizationId = discardDraftRow.authorization.Id;
-        setDiscardDraftRow(undefined);
+        const authorizationTitle = discardDraftRow.authorization.Title || "IWA";
 
         try {
-            showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+            flushSync(() => {
+                setDiscardDraftRow(undefined);
+                showBusy(discardDraftRow.isModDraft ? "Discarding modification draft..." : "Discarding draft...");
+            });
 
             if (discardDraftRow.isModDraft && discardDraftRow.draftMod?.Id) {
                 await ModService.discardDraft(authorizationId, discardDraftRow.draftMod.Id);
@@ -461,12 +508,73 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess(discardDraftRow.isModDraft ? "Modification draft discarded." : "Draft discarded.");
+            showSnackbar(
+                discardDraftRow.isModDraft
+                    ? `${authorizationTitle} modification draft discarded.`
+                    : `${authorizationTitle} draft discarded.`,
+                "success",
+                deleteSuccessDurationMs
+            );
         } catch (error) {
             hideBusy();
             showSnackbar(formatError(error), "error");
         }
-    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showSnackbar, showSuccess]);
+    }, [clearAuthorizationDetailCache, discardDraftRow, hideBusy, refresh, showBusy, showSnackbar]);
+
+    const handleDeleteIwa = React.useCallback(async (): Promise<void> => {
+        if (!deleteIwaRow) {
+            return;
+        }
+
+        const authorizationId = deleteIwaRow.authorization.Id;
+        const authorizationTitle = deleteIwaRow.authorization.Title || "IWA";
+        try {
+            flushSync(() => {
+                setDeleteBusy(true);
+                setDeleteError("");
+                setDeleteIwaRow(undefined);
+                showBusy("Deleting IWA and associated data...");
+            });
+            await AuthorizationService.deleteAuthorizationCascade(authorizationId);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSnackbar(`${authorizationTitle} deleted.`, "success", deleteSuccessDurationMs);
+        } catch (error) {
+            hideBusy();
+            showSnackbar(formatError(error), "error");
+        } finally {
+            setDeleteBusy(false);
+        }
+    }, [clearAuthorizationDetailCache, deleteIwaRow, hideBusy, refresh, showBusy, showSnackbar]);
+
+    const handleCancelMod = React.useCallback(async (): Promise<void> => {
+        if (!cancelModRow?.currentRun?.mod?.Id) {
+            return;
+        }
+
+        const authorizationId = cancelModRow.authorization.Id;
+        const authorizationTitle = cancelModRow.authorization.Title || "IWA";
+        const modNumber = cancelModRow.currentRun.mod.Title?.replace(/^.*MOD-/i, "") || "";
+        try {
+            flushSync(() => {
+                setCancelModBusy(true);
+                setCancelModError("");
+                setCancelModRow(undefined);
+                showBusy("Canceling Mod and reverting IWA...");
+            });
+            await AuthorizationService.cancelSubmittedMod(authorizationId, cancelModRow.currentRun.mod.Id);
+            clearAuthorizationDetailCache(authorizationId);
+            await refresh(true);
+            hideBusy();
+            showSnackbar(`${authorizationTitle} Mod ${modNumber} canceled and reverted to the previously approved state.`, "success", deleteSuccessDurationMs);
+        } catch (error) {
+            hideBusy();
+            showSnackbar(formatError(error), "error");
+        } finally {
+            setCancelModBusy(false);
+        }
+    }, [cancelModRow, clearAuthorizationDetailCache, hideBusy, refresh, showBusy, showSnackbar]);
 
     const handleViewAuthorization = React.useCallback((authorizationId: number): void => {
         history.push(`/authorizations/view/${authorizationId}`);
@@ -674,8 +782,12 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                             key={row.authorization.Id}
                                             row={row}
                                             canResumeDraft={canResumeDraft(row)}
+                                            canDeleteIwa={!row.isDraft && canDeleteIwa(row)}
+                                            canCancelModRequest={!row.isDraft && canCancelModRequest(row)}
                                             onResumeDraft={handleResumeDraft}
                                             onDiscardDraft={setDiscardDraftRow}
+                                            onDeleteIwa={setDeleteIwaRow}
+                                            onCancelMod={setCancelModRow}
                                         />
                                     ))}
                                 </Stack>
@@ -691,7 +803,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                 <TableCell sx={{ width: 130 }}>Pending With</TableCell>
                                                 <TableCell sx={{ width: 130 }}>My Last Action</TableCell>
                                                 <TableCell sx={{ width: 170 }}>Key Dates</TableCell>
-                                                <TableCell sx={{ width: 120 }}>Action</TableCell>
+                                                <TableCell sx={{ width: 130 }}>Action</TableCell>
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -814,28 +926,56 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ width: 120, verticalAlign: "top" }}>
-                                                        {canResumeDraft(row) ? (
+                                                        {canResumeDraft(row) || (!row.isDraft && (canDeleteIwa(row) || canCancelModRequest(row))) ? (
                                                             <Stack spacing={1} alignItems="flex-start">
-                                                                <Button
-                                                                    variant="contained"
-                                                                    color="secondary"
-                                                                    size="small"
-                                                                    onClick={() => handleResumeDraft(row.authorization.Id)}
-                                                                    aria-label={row.isModDraft ? "Resume Mod" : "Resume Draft"}
-                                                                    title={row.isModDraft ? "Resume Mod" : "Resume Draft"}
-                                                                >
-                                                                    {row.isModDraft ? "Resume Mod" : "Resume Draft"}
-                                                                </Button>
-                                                                <Button
-                                                                    variant="outlined"
-                                                                    color="error"
-                                                                    size="small"
-                                                                    onClick={() => setDiscardDraftRow(row)}
-                                                                    aria-label={row.isModDraft ? "Discard Mod" : "Discard Draft"}
-                                                                    title={row.isModDraft ? "Discard Mod" : "Discard Draft"}
-                                                                >
-                                                                    {row.isModDraft ? "Discard Mod" : "Discard Draft"}
-                                                                </Button>
+                                                                {canResumeDraft(row) && (
+                                                                    <>
+                                                                        <Button
+                                                                            variant="contained"
+                                                                            color="secondary"
+                                                                            size="small"
+                                                                            onClick={() => handleResumeDraft(row.authorization.Id)}
+                                                                            aria-label={row.isModDraft ? "Resume Mod" : "Resume Draft"}
+                                                                            title={row.isModDraft ? "Resume Mod" : "Resume Draft"}
+                                                                        >
+                                                                            {row.isModDraft ? "Resume Mod" : "Resume Draft"}
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outlined"
+                                                                            color="error"
+                                                                            size="small"
+                                                                            onClick={() => setDiscardDraftRow(row)}
+                                                                            aria-label={row.isModDraft ? "Discard Mod" : "Discard Draft"}
+                                                                            title={row.isModDraft ? "Discard Mod" : "Discard Draft"}
+                                                                        >
+                                                                            {row.isModDraft ? "Discard Mod" : "Discard Draft"}
+                                                                        </Button>
+                                                                    </>
+                                                                )}
+                                                                {!row.isDraft && canDeleteIwa(row) && (
+                                                                    <Button
+                                                                        variant="outlined"
+                                                                        color="error"
+                                                                        size="small"
+                                                                        onClick={() => setDeleteIwaRow(row)}
+                                                                        aria-label="Permanently delete this IWA"
+                                                                        title="Permanently delete this IWA"
+                                                                    >
+                                                                        Delete IWA
+                                                                    </Button>
+                                                                )}
+                                                                {!row.isDraft && canCancelModRequest(row) && (
+                                                                    <Button
+                                                                        variant="outlined"
+                                                                        color="error"
+                                                                        size="small"
+                                                                        onClick={() => setCancelModRow(row)}
+                                                                        aria-label="Permanently Cancel this Mod request"
+                                                                        title="Permanently Cancel this Mod request"
+                                                                    >
+                                                                        Cancel Mod
+                                                                    </Button>
+                                                                )}
                                                             </Stack>
                                                         ) : (
                                                             <Typography variant="caption" color="text.secondary">
@@ -877,6 +1017,37 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                     </Button>
                 </DialogActions>
             </Dialog>
+            <ConfirmDeleteDialog
+                open={!!deleteIwaRow}
+                title="Delete IWA"
+                message="Are you sure you want to permanently delete this request and all associated data?"
+                confirmLabel="Delete IWA"
+                error={deleteError}
+                busy={deleteBusy}
+                onClose={() => {
+                    if (!deleteBusy) {
+                        setDeleteIwaRow(undefined);
+                        setDeleteError("");
+                    }
+                }}
+                onConfirm={handleDeleteIwa}
+            />
+            <ConfirmDeleteDialog
+                open={!!cancelModRow}
+                title="Cancel Mod"
+                message={"Do you want to permanently cancel this Mod request and all associated Mod data? This IWA will be reverted back to its previously approved state.\n\nThis action cannot be undone."}
+                confirmLabel="Yes, Cancel Mod"
+                cancelLabel="No, Go Back"
+                error={cancelModError}
+                busy={cancelModBusy}
+                onClose={() => {
+                    if (!cancelModBusy) {
+                        setCancelModRow(undefined);
+                        setCancelModError("");
+                    }
+                }}
+                onConfirm={handleCancelMod}
+            />
         </Stack>
     );
 };
