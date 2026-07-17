@@ -10,7 +10,7 @@ export const canUserEditAuthorization = (
     currentUser: IAppUserItem | undefined,
     appUsers: IAppUserItem[]
 ): boolean => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
 
     if (!authorization || !currentUserId) {
         return false;

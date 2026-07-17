@@ -1,4 +1,5 @@
 import { IAuthorizationItem, IAppUserItem, IWorkflowRunItem } from "../data/props";
+import { DataSource } from "../data/ds";
 import { getBackupCoverageMap } from "../workflow/workflowAccess";
 
 export const canViewCompensation = (
@@ -6,7 +7,7 @@ export const canViewCompensation = (
     authorization: IAuthorizationItem | undefined
 ): boolean => {
     const role = currentUser?.role;
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
 
     if (!currentUserId || !authorization) {
         return false;
@@ -24,7 +25,7 @@ export const canEditCompensation = (
     currentRun?: IWorkflowRunItem,
     appUsers: IAppUserItem[] = []
 ): boolean => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
     const role = currentUser?.role;
 
     if (role === "admin" || role === "hr") {

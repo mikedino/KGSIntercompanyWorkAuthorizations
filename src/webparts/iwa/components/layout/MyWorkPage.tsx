@@ -16,6 +16,7 @@ import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { useIwa } from "../data/iwaContext";
+import { DataSource } from "../data/ds";
 import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship, formatSinceDate, getFirstNameFromDisplayName } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
 import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
@@ -399,6 +400,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         refresh
     } = useIwa();
     const { showBusy, hideBusy, showSnackbar } = useShellUi();
+    const currentUserId = DataSource.CurrentUserId;
 
     const [searchText, setSearchText] = React.useState<string>("");
     const [discardDraftRow, setDiscardDraftRow] = React.useState<IMyWorkRow | undefined>(undefined);
@@ -421,7 +423,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
     }, [selectedView]);
 
     React.useEffect((): void => {
-        const userId = currentUser?.user?.Id;
+        const userId = currentUserId;
 
         if (!userId || !consumeWorkflowListsStale()) {
             return;
@@ -434,11 +436,11 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         loadMyActions(userId, true).catch((error: unknown) => {
             console.error("Error refreshing My Work actions after workflow action", error);
         });
-    }, [currentUser?.user?.Id, loadMyActions, refresh]);
+    }, [currentUserId, loadMyActions, refresh]);
 
     // My Work needs both the user's prior actions and the backup user graph.
     React.useEffect((): void => {
-        const userId = currentUser?.user?.Id;
+        const userId = currentUserId;
 
         if (!userId) {
             return;
@@ -451,7 +453,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         refreshAppUsers().catch((error: unknown) => {
             console.error("Error loading app users for My Work", error);
         });
-    }, [currentUser?.user?.Id, loadMyActions, refreshAppUsers]);
+    }, [currentUserId, loadMyActions, refreshAppUsers]);
 
     const myWorkSummary = React.useMemo(() => {
         return buildMyWorkSummary(
@@ -461,9 +463,9 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
             draftModsByAuthorizationId,
             myActions,
             appUsers,
-            currentUser?.user?.Id
+            currentUserId
         );
-    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, appUsers, currentUser?.user?.Id, myActions, runByAuthorizationId]);
+    }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, appUsers, currentUserId, myActions, runByAuthorizationId]);
 
     const handleResumeDraft = React.useCallback((authorizationId: number): void => {
         history.push(`/authorizations/edit/${authorizationId}`, {

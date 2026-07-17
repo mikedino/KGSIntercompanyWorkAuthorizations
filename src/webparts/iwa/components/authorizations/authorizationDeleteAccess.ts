@@ -48,7 +48,7 @@ export const canDeleteAuthorization = (
     appUsers: IAppUserItem[],
     currentRun: IWorkflowRunItem | undefined
 ): boolean => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
 
     if (!authorization || !currentUserId || wasFullyApproved(authorization)) {
         return false;
@@ -77,7 +77,7 @@ export const canCancelMod = (
     currentRun: IWorkflowRunItem | undefined,
     mod: IModItem | (ILookupItem & { modStatus?: ModStatus }) | undefined
 ): boolean => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
     const modId = mod?.Id ?? currentRun?.mod?.Id;
     const modStatus = mod?.modStatus;
 

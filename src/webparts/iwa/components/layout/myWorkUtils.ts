@@ -301,7 +301,7 @@ export const buildMyWorkSummary = (
     return {
         rows,
         draftCount: draftRows.length,
-        needsMyActionCount: rows.filter((row: IMyWorkRow): boolean => row.needsMyAction).length,
+        needsMyActionCount: rows.filter((row: IMyWorkRow): boolean => row.needsMyAction || row.isDraft).length,
         backupCoverageCount: rows.filter((row: IMyWorkRow): boolean => row.backupForNames.length > 0).length,
         createdByMeCount: rows.filter((row: IMyWorkRow): boolean => row.createdByMe).length,
         actedOnByMeCount: rows.filter((row: IMyWorkRow): boolean => row.actedOnByMe).length
@@ -324,7 +324,7 @@ export const filterMyWorkRows = (
 
         switch (selectedView) {
             case "needsAction":
-                return row.needsMyAction;
+                return row.needsMyAction || row.isDraft;
             case "backupCoverage":
                 return row.backupForNames.length > 0;
             case "created":

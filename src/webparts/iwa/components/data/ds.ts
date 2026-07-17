@@ -56,6 +56,7 @@ export class DataSource {
 
     private static _currentUser: IAppUserItem | undefined;
     static get CurrentUser(): IAppUserItem | undefined { return this._currentUser; }
+    static get CurrentUserId(): number | undefined { return this._currentUser?.user?.Id ?? ContextInfo.userId; }
 
     private static isCurrentUserOgPresident(user: IAppUserItem): boolean {
         const currentEmail = user.user?.EMail?.trim().toLowerCase();
@@ -139,8 +140,7 @@ export class DataSource {
                     "user/Id", "user/Title", "user/EMail",
                     "backups/Id", "backups/Title", "backups/EMail"
                 ],
-                Expand: ["user", "backups"],
-                Top: 5000
+                Expand: ["user", "backups"]
             }).execute(
                 (items) => {
                     this._users = (items?.results ?? []) as unknown as IAppUserItem[];
@@ -228,13 +228,13 @@ export class DataSource {
                 .Lists(Strings.Sites.lookups.lists.Config)
                 .Items()
                 .query({
+                    GetAllItems: true,
                     Select: [
                         "Id", "Title", "IsFor", "Acronym",
                         "User/Id", "User/Title", "User/EMail"
                     ],
                     Expand: ["User"],
                     Filter: `IsFor eq 'HR' or IsFor eq 'CFO' or IsFor eq 'UserGuide' or IsFor eq 'State' or IsFor eq 'LaborCategory'`,
-                    Top: 5000
                 })
                 .execute(
                     (items) => {
@@ -383,6 +383,7 @@ export class DataSource {
     static getCurrentWorkflowRuns(): Promise<IWorkflowRunItem[]> {
         return new Promise<IWorkflowRunItem[]>((resolve, reject) => {
             Web().Lists(Strings.Sites.main.lists.WorkflowRuns).Items().query({
+                GetAllItems: true,
                 Select: this.runSelectQuery,
                 Expand: this.runExpandQuery,
                 Filter: `runStatus ne 'superseded'`,
@@ -415,8 +416,7 @@ export class DataSource {
                     Select: [
                         "Id", "Title", "abbr", "GM/Id", "GM/Title", "GM/EMail", "combinedTitle"
                     ],
-                    Expand: ["GM"],
-                    Top: 5000
+                    Expand: ["GM"]
                 })
                 .execute(
                     (items) => {
@@ -442,8 +442,7 @@ export class DataSource {
                     GetAllItems: true,
                     OrderBy: ["Title"],
                     Select: ["Id", "Title", "coo/Id", "coo/Title", "coo/EMail"],
-                    Expand: ["coo"],
-                    Top: 5000
+                    Expand: ["coo"]
                 })
                 .execute(
                     (items) => {
@@ -476,8 +475,7 @@ export class DataSource {
                         "SCM/EMail", "ogType", "parentOg/Id",
                         "parentOg/Title", "isActive", "isSelectable"
                     ],
-                    Expand: ["lob", "president", "CM", "SCM", "parentOg"],
-                    Top: 5000
+                    Expand: ["lob", "president", "CM", "SCM", "parentOg"]
                 })
                 .execute(
                     (items) => {
@@ -636,13 +634,15 @@ export class DataSource {
             // Query jobs only for the selected task order/invoice. GetAllItems tells
             // gd-sprest to follow SharePoint paging links, which is important because
             // JobEndPoint can exceed the 5,000-item page/list-view threshold.
+            // GetAllItems helps page through accepted queries, but the filtered column still needs to be threshold-safe.
             Web(Strings.Sites.jamis.url)
                 .Lists(Strings.Sites.jamis.lists.JobEP)
                 .Items()
                 .query({
                     GetAllItems: true,
                     Select: ["Id", "field_13", "field_19", "field_74"],
-                    Filter: `startswith(field_13, '${escapedJobIdPrefix}')`
+                    Filter: `startswith(field_13, '${escapedJobIdPrefix}')`,
+                    Top: 5000
                 })
                 .execute(
                     (items) => {
@@ -659,7 +659,6 @@ export class DataSource {
 
                                 return (left.field_19 ?? "").localeCompare(right.field_19 ?? "", undefined, { numeric: true, sensitivity: "base" });
                             });
-                        console.log(this._jobs);
                         resolve(this._jobs);
                     },
                     (error) => {

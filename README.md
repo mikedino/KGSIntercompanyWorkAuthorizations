@@ -35,6 +35,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | 1.0.5.1 | June 24, 2026 | Landino | Update form validation to check for Resource row *OR* Travel/ODC row. Update HR approve when no Resource lines. Minor UI changes. |
 | 1.0.6.1 | June 30, 2026 | Landino | Implement DELETE and CANCEL processes |
 | 1.0.6.2 | July 8, 2026 | Landino | Add fake indirect Contract and Invoice. Add info/warning modals on Add Resource. Fix resource total hours helper box (add all rows) |
+| 1.0.7.0 | July 17, 2026 | Landino | Fetch latest Entity GM's on every new WF Run. Adjust user record fetch after AppUser initial creation. |
 
 ---
 

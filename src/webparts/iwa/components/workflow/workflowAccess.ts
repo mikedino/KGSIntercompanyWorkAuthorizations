@@ -44,7 +44,7 @@ export const getWorkflowActionPermission = (
     currentUser: IAppUserItem | undefined,
     appUsers: IAppUserItem[]
 ): IWorkflowActionPermission => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
     const pendingApprover = run?.pendingApprover;
     const pendingApproverId = pendingApprover?.Id;
     const admin = isAdminUser();
