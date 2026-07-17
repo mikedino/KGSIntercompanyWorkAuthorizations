@@ -9,19 +9,33 @@ export class AppUserService {
 
     static readonly visitSessionKey = "iwa_visit_counted";
 
-    static createNewUserOnFirstVisit(): Promise<IAppUserItem> {
+    static async createNewUserOnFirstVisit(): Promise<IAppUserItem> {
+        const userList = Web().Lists(Strings.Sites.main.lists.Users);
         const now = new Date().toISOString();
-        return new Promise<IAppUserItem>((resolve, reject) => {
-            Web().Lists(Strings.Sites.main.lists.Users).Items().add({
-                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Users)}ListItem` },
-                userId: ContextInfo.userId,
-                lastVisit: now,
-                visitCount: 1
-            }).execute(
-                (item) => resolve(item as unknown as IAppUserItem),
-                (error) => reject(new Error(`Error creating user row: ${formatError(error)}`))
-            );
-        })
+
+        const created = userList.Items().add({
+            __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.Users)}ListItem` },
+            userId: ContextInfo.userId,
+            lastVisit: now,
+            visitCount: 1
+        }).executeAndWait() as { Id?: number };
+
+        if (!created.Id) {
+            throw new Error("User row was created but no Id was returned.");
+        }
+
+        return userList.Items()
+            .getById(created.Id)
+            .query({
+                Select: [
+                    "Id", "Title", "role",
+                    "modePreference", "lastVisit", "visitCount", "hasBackup",
+                    "user/Id", "user/Title", "user/EMail",
+                    "backups/Id", "backups/Title", "backups/EMail"
+                ],
+                Expand: ["user", "backups"]
+            })
+            .executeAndWait() as unknown as IAppUserItem;
     }
 
     static createNewUserInAdminPanel(personId: number, role: IAppUserItem["role"], modePreference: IAppUserItem["modePreference"]): Promise<IAppUserItem> {

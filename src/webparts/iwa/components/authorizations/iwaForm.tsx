@@ -274,7 +274,6 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const {
         clearAuthorizationDetailCache,
         authorizations,
-        currentUser,
         draftAuthorizations,
         laborLinesByAuthorizationId,
         loadAuthorizationDetail,
@@ -405,6 +404,18 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const selectedContractType = React.useMemo(() => {
         return contractTypeOptions.find((option) => option.value === form.contractType) ?? contractTypeOptions[0];
     }, [form.contractType]);
+
+    //Entity GM's may have changed since the original IWA/last Mod, so always get the latest when creating a new WF Run
+    const refreshEntityGmsFromCache = React.useCallback((authorization: IAuthorizationItem): IAuthorizationItem => {
+        const donorEntity = resolveEntity(entityOptions, authorization.donorEntity, authorization.donorEntityAbbr);
+        const receivingEntity = resolveEntity(entityOptions, authorization.receivingEntity, authorization.receivingEntityAbbr);
+
+        return {
+            ...authorization,
+            donorGm: donorEntity?.GM ?? authorization.donorGm,
+            receivingGm: receivingEntity?.GM ?? authorization.receivingGm
+        };
+    }, [entityOptions]);
 
     const currentFormSnapshot = React.useMemo((): string => {
         const toPersonId = (person?: IPeoplePicker): number | null => person?.Id ?? null;
@@ -1534,6 +1545,8 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             periodEnd: toIsoDate(periodEnd)
         };
 
+        const nextFormWithCurrentGms = refreshEntityGmsFromCache(nextForm);
+
         try {
             let saved: IAuthorizationItem;
             let reusedActiveModWorkflow = false;
@@ -1543,9 +1556,9 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 if (!options.quiet) {
                     showBusy("Submitting authorization...");
                 }
-                const approvers = await ApproverResolver.resolve(nextForm);
+                const approvers = await ApproverResolver.resolve(nextFormWithCurrentGms);
 
-                saved = await AuthorizationService.submitNew(nextForm, normalizedStatus);
+                saved = await AuthorizationService.submitNew(nextFormWithCurrentGms, normalizedStatus);
 
                 if (!options.quiet) {
                     showBusy("Creating new workflow...");
@@ -1565,7 +1578,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     }
                 };
             } else {
-                saved = await AuthorizationService.edit(nextForm, authorizationStatusToSave);
+                saved = await AuthorizationService.edit(nextFormWithCurrentGms, authorizationStatusToSave);
             }
 
             const totals = await syncWorkPackageData(saved.Id);
@@ -1793,7 +1806,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                     loadAuthorizationDetail(saved.Id, true)
                 ];
 
-                const currentUserId = currentUser?.user?.Id;
+                const currentUserId = DataSource.CurrentUserId;
                 if (normalizedStatus !== "draft" && typeof currentUserId === "number") {
                     refreshTasks.push(loadMyActions(currentUserId, true));
                 }
@@ -1850,7 +1863,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         } finally {
             setIsSaving(false);
         }
-    }, [activeModId, clearAuthorizationDetailCache, currentMod, currentUser?.user?.Id, currentWorkflowRunForForm, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, loadMyActions, modReason, mode, periodEnd, periodStart, refresh, resourcesByAuthorizationId, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
+    }, [activeModId, clearAuthorizationDetailCache, currentMod, currentWorkflowRunForForm, draftId, ensureUniqueAuthorizationCombination, ffpLaborRows, form, hideBusy, hideSuccess, history, isExistingSubmittedEdit, isModDraftMode, isModEditMode, laborLinesByAuthorizationId, loadAuthorizationDetail, loadMyActions, modReason, mode, periodEnd, periodStart, refresh, resourcesByAuthorizationId, refreshEntityGmsFromCache, resourceRows, returnTo, runByAuthorizationId, runsByAuthorizationId, showBackdropSuccess, showBusy, showDialog, showSuccess, syncWorkPackageData, travelOdcsByAuthorizationId, travelRows]);
 
     const getProgressSaveStatus = React.useCallback((): AuthorizationStatus => {
         if (isModDraftMode) {

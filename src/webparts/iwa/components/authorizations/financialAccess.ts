@@ -48,7 +48,7 @@ export const canViewFinancialAmounts = (
     workflowRuns: IWorkflowRunItem[],
     appUsers: IAppUserItem[]
 ): boolean => {
-    const currentUserId = currentUser?.user?.Id;
+    const currentUserId = DataSource.CurrentUserId;
     const isOGP = DataSource.isOGP;
 
     if (!authorization) {

@@ -382,6 +382,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const workflowPermission = React.useMemo(() => {
         return getWorkflowActionPermission(currentRun, currentUser, appUsers);
     }, [appUsers, currentRun, currentUser]);
+    const currentUserId = DataSource.CurrentUserId;
     const missingCompensationMessage = React.useMemo(() => {
         if (!canEditCompInHrReview) {
             return undefined;
@@ -392,7 +393,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const hasActiveWorkflowRun = React.useMemo(() => {
         return workflowRuns.some((run) => run.runStatus === "active");
     }, [workflowRuns]);
-    const canInitiateMod = !!authorization && !!currentUser?.user?.Id && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
+    const canInitiateMod = !!authorization && !!currentUserId && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
     const laborTotals = React.useMemo(() => {
         return laborLines.reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
@@ -721,7 +722,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     }, []);
 
     const handleInitiateMod = React.useCallback(async (): Promise<void> => {
-        if (!authorization || !currentUser?.user?.Id || authorization.authorizationStatus !== "approved" || hasActiveWorkflowRun || draftMod) {
+        if (!authorization || !currentUserId || authorization.authorizationStatus !== "approved" || hasActiveWorkflowRun || draftMod) {
             return;
         }
 
@@ -762,7 +763,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, currentUser?.user?.Id, detailReturnTo, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
+    }, [authorization, currentUserId, detailReturnTo, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
