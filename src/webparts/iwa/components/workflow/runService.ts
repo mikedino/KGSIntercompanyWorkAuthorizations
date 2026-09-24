@@ -247,7 +247,12 @@ export class WorkflowRunService {
             .executeAndWait();
     }
 
-    static async updatePendingApprover(runId: number, pendingApproverId: number, pendingApprover?: IPeoplePicker): Promise<void> {
+    static async updatePendingApprover(
+        runId: number,
+        pendingApproverId: number,
+        pendingApprover?: IPeoplePicker,
+        updateAssignedDate: boolean = true
+    ): Promise<void> {
         if (!runId) {
             throw new Error("Workflow Run Id is required to update the pending approver.");
         }
@@ -258,15 +263,20 @@ export class WorkflowRunService {
             "workflow pending approver"
         );
 
+        const updateBody: Record<string, unknown> = {
+            __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
+            pendingApproverId: resolvedPendingApproverId
+        };
+
+        if (updateAssignedDate) {
+            updateBody.stepAssignedDate = new Date().toISOString();
+        }
+
         await Web()
             .Lists(Strings.Sites.main.lists.WorkflowRuns)
             .Items()
             .getById(runId)
-            .update({
-                __metadata: { type: `SP.Data.${encodeListName(Strings.Sites.main.lists.WorkflowRuns)}ListItem` },
-                pendingApproverId: resolvedPendingApproverId,
-                stepAssignedDate: new Date().toISOString()
-            })
+            .update(updateBody)
             .executeAndWait();
     }
 
@@ -318,7 +328,8 @@ export class WorkflowRunService {
     static async applyDecision(
         authorization: IAuthorizationItem,
         run: IWorkflowRunItem,
-        decision: "approved" | "rejected"
+        decision: "approved" | "rejected",
+        mod?: IModItem
     ): Promise<IRunDecisionResult> {
         if (!run?.Id) {
             throw new Error("Workflow Run Id is required to apply a workflow decision.");
@@ -327,7 +338,8 @@ export class WorkflowRunService {
         const nowIso = new Date().toISOString();
 
         if (decision === "rejected") {
-            const submitterId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(authorization.Author, authorization.Author?.Id, "workflow rejection submitter");
+            const submitter = run.runType === "mod" ? mod?.Author : authorization.Author;
+            const submitterId = await SharePointUserResolver.resolvePersonIdForCurrentWeb(submitter, submitter?.Id, "workflow rejection submitter");
 
             await Web()
                 .Lists(Strings.Sites.main.lists.WorkflowRuns)

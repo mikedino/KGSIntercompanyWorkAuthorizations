@@ -16,6 +16,7 @@ import { IwaExportPreviewPage } from "../authorizations/export/IwaExportPreviewP
 import { useIwa } from "../data/iwaContext";
 import Strings from "../common/strings";
 import { canUserEditAuthorization } from "../authorizations/authorizationEditAccess";
+import { IModItem } from "../data/props";
 
 const scrollElementToTop = (element?: Element | Window): void => {
     if (!element) {
@@ -78,7 +79,16 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
 }): JSX.Element => {
     const location = useLocation();
     const mainRef = React.useRef<HTMLElement | null>(null);
-    const { appUsers, authorizations, currentUser, draftAuthorizations, isAppUsersLoading, isRefreshing } = useIwa();
+    const {
+        appUsers,
+        authorizations,
+        currentUser,
+        draftAuthorizations,
+        draftModsByAuthorizationId,
+        isAppUsersLoading,
+        isRefreshing,
+        modsByAuthorizationId
+    } = useIwa();
     const allEditableAuthorizations = React.useMemo(() => {
         return [...draftAuthorizations, ...authorizations];
     }, [authorizations, draftAuthorizations]);
@@ -138,6 +148,14 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                         <Route path="/authorizations/edit/:id" render={(routeProps) => {
                             const id = routeProps.match.params.id;
                             const item = allEditableAuthorizations.find((authorization) => authorization.Id.toString() === id);
+                            const routeState = routeProps.location.state as { modId?: number; mod?: IModItem; } | undefined;
+                            const requestedModId = routeState?.modId;
+                            const cachedMod = requestedModId
+                                ? modsByAuthorizationId.get(Number(id))?.find((candidate) => candidate.Id === requestedModId)
+                                : undefined;
+                            const draftMod = draftModsByAuthorizationId.get(Number(id));
+                            const modCandidates = [cachedMod, routeState?.mod, draftMod].filter((candidate): candidate is IModItem => !!candidate);
+                            const mod = modCandidates.find((candidate) => !!candidate.Author?.Id) ?? modCandidates[0];
 
                             if (isRefreshing || isAppUsersLoading) {
                                 return <Typography color="text.secondary">Checking edit access...</Typography>;
@@ -147,7 +165,7 @@ export const AppFrame: React.FC<IAppFrameProps> = ({
                                 return <NotFoundPage />;
                             }
 
-                            if (!canUserEditAuthorization(item, currentUser, appUsers)) {
+                            if (!canUserEditAuthorization(item, currentUser, appUsers, mod)) {
                                 return <Redirect to={`/authorizations/view/${item.Id}`} />;
                             }
 

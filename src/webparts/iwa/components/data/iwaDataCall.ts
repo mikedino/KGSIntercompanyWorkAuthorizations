@@ -20,6 +20,7 @@ export interface IIwaDataState {
     isRefreshing: boolean;
     lastRefreshed: string | undefined;
     patchAuthorization: (authorizationId: number, patch: Partial<IAuthorizationItem>) => boolean;
+    upsertDraftMod: (authorizationId: number, mod: IModItem) => boolean;
     refresh: (override?: boolean, mode?: RefreshMode) => Promise<boolean>;
     fatalError?: string;
     appUser?: IAppUserItem;
@@ -219,6 +220,15 @@ export const useIwaData = (
         return true;
     }, []);
 
+    const upsertDraftMod = useCallback((authorizationId: number, mod: IModItem): boolean => {
+        setDraftModsByAuthorizationId((prev: Map<number, IModItem>): Map<number, IModItem> => {
+            const next = new Map(prev);
+            next.set(authorizationId, mod);
+            return next;
+        });
+        return true;
+    }, []);
+
     React.useEffect((): undefined => {
         if (!enabled) {
             setIsBootLoading(false);
@@ -241,6 +251,7 @@ export const useIwaData = (
         isRefreshing,
         lastRefreshed,
         patchAuthorization,
+        upsertDraftMod,
         refresh,
         fatalError,
         appUser

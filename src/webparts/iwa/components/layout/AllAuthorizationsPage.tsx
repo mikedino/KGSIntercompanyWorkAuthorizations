@@ -247,6 +247,14 @@ const renderColumnLabel = (column: IColumnConfig): React.ReactNode => {
     );
 };
 
+const getEditableMod = (row: IAllAuthorizationsRow): IModItem | undefined => {
+    return row.draftMod ?? (
+        row.currentRun?.runType === "mod" && row.latestMod?.Id === row.currentRun.mod?.Id
+            ? row.latestMod
+            : undefined
+    );
+};
+
 const canEditAuthorization = (
     row: IAllAuthorizationsRow | undefined,
     currentUser: ReturnType<typeof useIwa>["currentUser"],
@@ -256,7 +264,7 @@ const canEditAuthorization = (
         return false;
     }
 
-    if (!canUserEditAuthorization(row.authorization, currentUser, appUsers)) {
+    if (!canUserEditAuthorization(row.authorization, currentUser, appUsers, getEditableMod(row))) {
         return false;
     }
 
@@ -264,7 +272,7 @@ const canEditAuthorization = (
         return true;
     }
 
-    return row.currentRun?.runStatus === "active" && !row.currentRun?.hasDecision;
+    return row.currentRun?.runStatus === "active";
 };
 
 export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
@@ -763,7 +771,6 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                                 <IconButton
                                     onClick={handleResetFilters}
                                     aria-label="Reset filters"
-                                    title="Reset filters"
                                     sx={{
                                         justifySelf: "end",
                                         alignSelf: "center",
@@ -1183,14 +1190,15 @@ export const AllAuthorizationsPage: React.FC = (): JSX.Element => {
                         if (selectedMenuRowCanEdit) {
                             history.push(`/authorizations/edit/${selectedMenuRow!.authorization.Id}`, {
                                 returnTo: `/all-authorizations/${selectedView}`,
-                                modId: selectedMenuRow?.draftMod?.Id
+                                modId: getEditableMod(selectedMenuRow!)?.Id,
+                                mod: getEditableMod(selectedMenuRow!)
                             });
                             return;
                         }
 
                         showFeatureDialog(
                             "Edit Authorization",
-                            `${selectedMenuRow?.authorization.Title ?? "This authorization"} can only be edited before the first workflow decision is recorded.`
+                            `${selectedMenuRow?.authorization.Title ?? "This authorization"} is not currently available for editing or you do not have edit permission.`
                         );
                     }}
                     disabled={!selectedMenuRowCanEdit}

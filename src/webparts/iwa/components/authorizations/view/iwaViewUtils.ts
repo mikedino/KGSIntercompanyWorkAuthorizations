@@ -188,7 +188,8 @@ export const getModScopeChipColor = (lineOrResource: { lineScope?: string }): "d
 export const getWorkflowStepApprover = (
     step: WorkflowStepKey,
     authorization: IAuthorizationItem,
-    run?: IWorkflowRunItem
+    run?: IWorkflowRunItem,
+    modSubmitter?: IPeoplePicker
 ): IPeoplePicker | undefined => {
     switch (step) {
         case "pm":
@@ -202,7 +203,7 @@ export const getWorkflowStepApprover = (
         case "submit":
         case "submitter":
         default:
-            return authorization.Author;
+            return run?.runType === "mod" ? modSubmitter : authorization.Author;
     }
 };
 

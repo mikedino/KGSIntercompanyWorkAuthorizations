@@ -271,10 +271,11 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
 
     const exportLabel = model.mod ? formatExportModLabel(model.mod.modNumber) : undefined;
     const headerLabel = exportLabel ?? "BASE";
+    const isRejectedMod = model.mod?.modStatus === "rejected";
     const contractTypeLabel = authorization.contractType === "tm" ? "T&M" : "FFP";
     const totalStandardHours = model.laborDetails.reduce((total, row) => total + row.standardHours, 0);
     const totalOvertimeHours = model.laborDetails.reduce((total, row) => total + row.overtimeHours, 0);
-    const modSummaryTitle = model.mod ? "TOTAL THIS MOD" : "TOTAL BASE";
+    const modSummaryTitle = isRejectedMod ? "PROPOSED MOD TOTAL (REJECTED)" : model.mod ? "TOTAL THIS MOD" : "TOTAL BASE";
 
     return (
         <Stack spacing={2.5}>
@@ -300,7 +301,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                     </FormControl>
                     <Tooltip title={canCreatePdf ? "Print approved export" : approvalGateMessage}>
                         <span>
-                                <Button startIcon={<PrintOutlinedIcon />} onClick={() => window.print()} disabled={!canCreatePdf} aria-label="Print approved export" title={canCreatePdf ? "Print approved export" : approvalGateMessage}>
+                                <Button startIcon={<PrintOutlinedIcon />} onClick={() => window.print()} disabled={!canCreatePdf} aria-label="Print approved export">
                                     Print
                                 </Button>
                         </span>
@@ -308,7 +309,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                     {!hasStoredPdf && (
                         <Tooltip title={canGeneratePdf ? "Save approved PDF to IWAExports" : approvalGateMessage}>
                             <span>
-                                <Button startIcon={<PictureAsPdfOutlinedIcon />} onClick={handleGeneratePdf} disabled={!canGeneratePdf || isGeneratingPdf} aria-label="Save approved PDF" title={canGeneratePdf ? "Save approved PDF to IWAExports" : approvalGateMessage}>
+                                <Button startIcon={<PictureAsPdfOutlinedIcon />} onClick={handleGeneratePdf} disabled={!canGeneratePdf || isGeneratingPdf} aria-label="Save approved PDF">
                                     {isGeneratingPdf ? "Saving..." : "Save PDF"}
                                 </Button>
                             </span>
@@ -322,7 +323,11 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                 </Stack>
             </Stack>
 
-            {!canCreatePdf && (
+            {isRejectedMod ? (
+                <Alert severity="error">
+                    This MOD was rejected. The amounts below show the rejected proposal for historical reference only, were not incorporated into the approved IWA totals, and must not be used for billing or authorization.
+                </Alert>
+            ) : !canCreatePdf && (
                 <Alert severity="info">
                     PDF export and print are locked until this base IWA or Mod is fully approved. You can still review the on-screen preview.
                 </Alert>
@@ -356,10 +361,10 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
 
                         <Grid container spacing={1.5}>
                             {[
-                                ["NEW LABOR", formatCurrency(model.modLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
-                                ["NEW TRAVEL", formatCurrency(model.modTravelTotal), `${model.travelDetails.length} line(s)`],
+                                [isRejectedMod ? "PROPOSED LABOR (REJECTED)" : "NEW LABOR", formatCurrency(model.modLaborTotal), `${totalStandardHours} std hrs / ${totalOvertimeHours} OT hrs`],
+                                [isRejectedMod ? "PROPOSED TRAVEL (REJECTED)" : "NEW TRAVEL", formatCurrency(model.modTravelTotal), `${model.travelDetails.length} line(s)`],
                                 [modSummaryTitle, formatCurrency(model.modGrandTotal), exportLabel ?? "Base IWA"],
-                                ["NEW GRAND TOTAL", formatCurrency(model.newGrandTotal), "Labor + Travel / ODC"]
+                                [isRejectedMod ? "PROPOSED GRAND TOTAL (REJECTED)" : "NEW GRAND TOTAL", formatCurrency(model.newGrandTotal), "Labor + Travel / ODC"]
                             ].map(([label, value, detail]) => (
                                 <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}>
                                     <Paper variant="outlined" sx={{ p: 1.5, height: "100%", borderLeft: "5px solid", borderLeftColor: "primary.main" }}>
@@ -430,7 +435,7 @@ export const IwaExportPreviewPage: React.FC = (): JSX.Element => {
                                             <TableCell>Job Title</TableCell>
                                             <TableCell align="right">Previous</TableCell>
                                             <TableCell align="right">{model.mod ? "This Mod" : "Base"}</TableCell>
-                                            <TableCell align="right">New Total</TableCell>
+                                            <TableCell align="right">{isRejectedMod ? "Proposed Total" : "New Total"}</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>

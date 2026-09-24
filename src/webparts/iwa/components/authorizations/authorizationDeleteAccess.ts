@@ -106,5 +106,12 @@ export const canCancelMod = (
         return true;
     }
 
+    const modAuthorId = (mod as IModItem | undefined)?.Author?.Id;
+    const isAssignedModSubmitter = isReturnedToSubmitter && currentRun.pendingApprover?.Id === currentUserId;
+
+    if (modAuthorId === currentUserId || isAssignedModSubmitter) {
+        return true;
+    }
+
     return getAuthorizationDeleteParticipants(authorization, appUsers).some((person) => person.Id === currentUserId);
 };

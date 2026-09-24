@@ -69,10 +69,13 @@ export class WorkflowDecisionService {
         options?: IWorkflowDecisionOptions
     ): Promise<void> {
         const toStepKey = this.getNextStepKey(run.currentStepKey, decision);
+        const mod = run.runType === "mod" && run.mod?.Id
+            ? await ModService.getById(run.mod.Id)
+            : undefined;
 
         await WorkflowActionService.createDecision(authorization, run, decision, comments, toStepKey);
 
-        const result = await WorkflowRunService.applyDecision(authorization, run, decision);
+        const result = await WorkflowRunService.applyDecision(authorization, run, decision, mod);
 
         if (decision === "rejected") {
             await WorkflowActionService.createDecision(

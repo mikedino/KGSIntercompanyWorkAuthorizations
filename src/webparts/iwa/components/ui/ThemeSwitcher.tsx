@@ -14,7 +14,7 @@ export const ThemeSwitcher: React.FC<IThemeSwitcherProps> = ({ useDarkTheme, onT
 
     return (
         <Tooltip title={label}>
-            <IconButton onClick={onToggle} size="small" aria-label={label} title={label}>
+            <IconButton onClick={onToggle} size="small" aria-label={label}>
                 {useDarkTheme ? <DarkModeIcon /> : <LightModeIcon />}
             </IconButton>
         </Tooltip>

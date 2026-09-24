@@ -3,7 +3,7 @@ import { Accordion, AccordionDetails, AccordionSummary, Box, Button, Chip, IconB
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import ExpandMoreOutlinedIcon from "@mui/icons-material/ExpandMoreOutlined";
 import SummarizeOutlinedIcon from "@mui/icons-material/SummarizeOutlined";
-import { IAuthorizationItem, IWorkflowActionItem, IWorkflowRunItem, WorkflowStepKey, workflowStepLabels } from "../../data/props";
+import { IAuthorizationItem, IModItem, IWorkflowActionItem, IWorkflowRunItem, WorkflowStepKey, workflowStepLabels } from "../../data/props";
 import { formatDate } from "../../common/utils";
 import { workflowRunStatusLabels } from "../../layout/allAuthorizationsUtils";
 import { baseWorkflowSteps, getModScopeChipColor, getModScopeLabel, getStepAction, getWorkflowActionChipColor, getWorkflowStepApprover } from "./iwaViewUtils";
@@ -13,6 +13,7 @@ interface IIwaWorkflowTabProps {
     authorization: IAuthorizationItem;
     expandedRunId: number | false;
     isFfpAuthorization: boolean;
+    mods: IModItem[];
     onExpandedRunChange: (runId: number | false) => void;
     onOpenChangeDialog: (action: IWorkflowActionItem) => void;
     onOpenCommentDialog: (dialog: { title: string; comments: string }) => void;
@@ -24,6 +25,7 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
     authorization,
     expandedRunId,
     isFfpAuthorization,
+    mods,
     onExpandedRunChange,
     onOpenChangeDialog,
     onOpenCommentDialog,
@@ -38,6 +40,7 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                 ? [...baseWorkflowSteps, "submitter"]
                 : baseWorkflowSteps;
             const modifiedAction = runActions.find((action) => action.actionType === "modified" && (!!action.changeSummary || !!action.changePayloadJson));
+            const runMod = run.runType === "mod" ? mods.find((mod) => mod.Id === run.mod?.Id) : undefined;
 
             return (
                 <Accordion
@@ -97,7 +100,7 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                 const label = step === "submitter" && action?.actionType === "restarted"
                                     ? "Resubmitted"
                                     : workflowStepLabels[step];
-                                const approver = getWorkflowStepApprover(step, authorization, run);
+                                const approver = getWorkflowStepApprover(step, authorization, run, runMod?.Author);
                                 const completedBy = action?.actionBy?.Title ?? (action ? "System" : "");
                                 const isReturnedToSubmitterStep = step === "submitter" && action?.actionType === "returned";
                                 const isSubmitStep = step === "submit";
@@ -180,7 +183,6 @@ export const IwaWorkflowTab: React.FC<IIwaWorkflowTabProps> = ({
                                                                     size="small"
                                                                     color="secondary"
                                                                     aria-label={`View ${label} comments`}
-                                                                    title={`View ${label} comments`}
                                                                     onClick={() => onOpenCommentDialog({ title: `${label} Comments`, comments: action.comments ?? "" })}
                                                                     sx={{ p: 0.25 }}
                                                                 >
