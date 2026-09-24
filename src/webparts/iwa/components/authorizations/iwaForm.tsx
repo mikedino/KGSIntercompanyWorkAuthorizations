@@ -345,6 +345,7 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
     const activeModId = currentMod?.Id;
     const isModEditMode = mode === "edit" && !!activeModId;
     const isModDraftMode = isModEditMode && modDraftStatuses.includes(currentMod?.modStatus ?? "draft");
+    const isRejectedModMode = isModEditMode && currentMod?.modStatus === "rejected";
     const canSaveProgress = !isExistingSubmittedEdit && !isModDraftMode;
     const isBaselineLocked = isModEditMode || normalizeAuthorizationStatus(form.authorizationStatus) === "approved";
     const duplicateRun = duplicateMatch?.Id ? runByAuthorizationId.get(duplicateMatch.Id) : undefined;
@@ -1939,9 +1940,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
         setDiscardDraftDialogOpen(false);
 
         try {
-            showBusy(isModDraftMode ? "Discarding modification draft..." : "Discarding draft...");
+            showBusy(isRejectedModMode ? "Canceling Mod and reverting IWA..." : isModDraftMode ? "Discarding modification draft..." : "Discarding draft...");
 
-            if (isModDraftMode && activeModId) {
+            if (isRejectedModMode && activeModId) {
+                await AuthorizationService.cancelSubmittedMod(authorizationId, activeModId);
+                sessionStorage.removeItem(getActiveModDraftSessionKey(authorizationId));
+            } else if (isModDraftMode && activeModId) {
                 await ModService.discardDraft(authorizationId, activeModId);
                 await AuthorizationService.recalculateModCount(authorizationId);
                 sessionStorage.removeItem(getActiveModDraftSessionKey(authorizationId));
@@ -1952,13 +1956,13 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
             clearAuthorizationDetailCache(authorizationId);
             await refresh(true);
             hideBusy();
-            showSuccess(isModDraftMode ? "Modification draft discarded." : "Draft discarded.");
+            showSuccess(isRejectedModMode ? "Modification canceled and the IWA was restored to its previously approved state." : isModDraftMode ? "Modification draft discarded." : "Draft discarded.");
             history.push(returnTo);
         } catch (error) {
             hideBusy();
-            showDialog("Discard Draft Error", formatError(error));
+            showDialog(isRejectedModMode ? "Cancel Mod Error" : "Discard Draft Error", formatError(error));
         }
-    }, [activeModId, clearAuthorizationDetailCache, draftId, form.Id, hideBusy, history, isModDraftMode, refresh, returnTo, showBusy, showDialog, showSuccess]);
+    }, [activeModId, clearAuthorizationDetailCache, draftId, form.Id, hideBusy, history, isModDraftMode, isRejectedModMode, refresh, returnTo, showBusy, showDialog, showSuccess]);
 
     const handleViewDuplicate = React.useCallback(async (): Promise<void> => {
         if (!duplicateMatch) {
@@ -2461,10 +2465,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                     startIcon={<DeleteOutlineOutlinedIcon />}
                                     disabled={isSaving || isBootstrapping}
                                     onClick={() => setDiscardDraftDialogOpen(true)}
-                                    aria-label={isModDraftMode ? "Discard Mod" : "Discard Draft"}
-                                    title={isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                                    aria-label={isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                                    title={isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
                                 >
-                                    {isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                                    {isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
                                 </Button>
                             )}
                             {/* {draftId && <Chip label={`Draft Id: ${draftId}`} size="small" color="info" variant="outlined" />} */}
@@ -2681,10 +2685,12 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                 </Dialog>
 
                 <Dialog open={discardDraftDialogOpen} onClose={() => setDiscardDraftDialogOpen(false)} fullWidth maxWidth="sm">
-                    <DialogTitle>{isModDraftMode ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>
+                    <DialogTitle>{isRejectedModMode ? "Cancel Mod?" : isModDraftMode ? "Discard Mod?" : "Discard Draft?"}</DialogTitle>
                     <DialogContent>
                         <Typography color="text.secondary">
-                            {isModDraftMode
+                            {isRejectedModMode
+                                ? "This will permanently cancel this rejected Mod, remove its workflow and linked Mod data, and restore the IWA to its previously approved state."
+                                : isModDraftMode
                                 ? "This will permanently discard this modification draft and remove linked mod resources, labor, and travel."
                                 : "This will permanently discard this draft authorization and remove it from your draft list."}
                         </Typography>
@@ -2696,10 +2702,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                             color="error"
                             startIcon={<DeleteOutlineOutlinedIcon />}
                             onClick={handleDiscardDraft}
-                            aria-label={isModDraftMode ? "Discard Mod" : "Discard Draft"}
-                            title={isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                            aria-label={isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                            title={isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
                         >
-                            {isModDraftMode ? "Discard Mod" : "Discard Draft"}
+                            {isRejectedModMode ? "Cancel Mod" : isModDraftMode ? "Discard Mod" : "Discard Draft"}
                         </Button>
                     </DialogActions>
                 </Dialog>

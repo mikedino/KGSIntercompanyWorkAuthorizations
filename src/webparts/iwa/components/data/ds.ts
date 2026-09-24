@@ -35,7 +35,8 @@ export class DataSource {
                     this.getEntities(),
                     this.getLOBs(),
                     this.getOGs(),
-                    this.getContracts()
+                    this.getContracts(),
+                    //this.getAllJobs()
                 ])
                     .then(() => {
                         this.initialized = true;
@@ -667,6 +668,35 @@ export class DataSource {
                 );
         });
     }
+
+    //testing 
+    // private static _allJobs:IJobItem[] = [];
+    // static getAllJobs(): Promise<IJobItem[]> {
+    //     if (this._allJobs.length > 0) {
+    //         return Promise.resolve(this._allJobs);
+    //     }
+
+    //     return new Promise((resolve, reject) => {
+    //         Web(Strings.Sites.jamis.url)
+    //             .Lists(Strings.Sites.jamis.lists.JobEP)
+    //             .Items()
+    //             .query({
+    //                 GetAllItems: true,
+    //                 Select: ["Id", "field_13", "field_19", "field_74"]                    
+    //             })
+    //             .execute(
+    //                 (items) => {
+    //                     this._allJobs = (items?.results ?? []) as unknown as IJobItem[];
+    //                     console.log("ALL JOBS", this._allJobs);
+    //                     resolve(this._allJobs);
+    //                 },
+    //                 (error) => {
+    //                     console.error("ERROR FETCHING ALL JOBS", error);
+    //                     reject(error)
+    //                 }
+    //             );
+    //     });
+    // }
 
     static getJobsByContract(contractId: string, jobPrefixes?: string[]): Promise<IJobItem[]> {
         return new Promise<IJobItem[]>((resolve, reject) => {

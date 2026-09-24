@@ -40,6 +40,7 @@ export interface IIwaContext {
   lastRefreshed: string | undefined;
   fatalError?: string;
   patchAuthorization: (authorizationId: number, patch: Partial<IAuthorizationItem>) => boolean;
+  upsertDraftMod: (authorizationId: number, mod: IModItem) => boolean;
 
   modsByAuthorizationId: Map<number, IModItem[]>;
   runsByAuthorizationId: Map<number, IWorkflowRunItem[]>;
@@ -90,6 +91,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     lastRefreshed,
     fatalError,
     patchAuthorization,
+    upsertDraftMod,
     refresh
   } = useIwaData(onError, enabled);
 
@@ -653,6 +655,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
       lastRefreshed,
       fatalError,
       patchAuthorization,
+      upsertDraftMod,
 
       modsByAuthorizationId,
       runsByAuthorizationId,
@@ -706,6 +709,7 @@ export const IwaProvider: React.FC<IIwaProviderProps> = ({
     modsByAuthorizationId,
     myActions,
     patchAuthorization,
+    upsertDraftMod,
     refresh,
     refreshAppUsers,
     refreshCurrentUser,

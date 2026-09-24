@@ -33,6 +33,7 @@ import { canUserEditAuthorization } from "./authorizationEditAccess";
 import { canCancelMod, canDeleteAuthorization } from "./authorizationDeleteAccess";
 import { AuthorizationService } from "./iwaService";
 import { WorkflowDecisionService } from "../workflow/decisionService";
+import { WorkflowRunService } from "../workflow/runService";
 import { WorkflowService } from "../workflow/workflowService";
 import { getWorkflowActionPermission } from "../workflow/workflowAccess";
 import { formatIwaChangePayload } from "../workflow/changeFormatter";
@@ -90,6 +91,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         loadAuthorizationDetail,
         modsByAuthorizationId,
         patchAuthorization,
+        upsertDraftMod,
         reloadAuthorizationDetailSections,
         resourcesByAuthorizationId,
         refresh,
@@ -289,9 +291,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
     const draftMod = React.useMemo<IModItem | undefined>(() => {
         return mods.find((mod) => mod.modStatus === "draft") ?? draftModsByAuthorizationId.get(authorizationId);
     }, [authorizationId, draftModsByAuthorizationId, mods]);
-    const canEditAuthorizationByUser = React.useMemo((): boolean => {
-        return canUserEditAuthorization(authorization, currentUser, appUsers);
-    }, [appUsers, authorization, currentUser]);
     const currentRunMod = React.useMemo<IModItem | undefined>(() => {
         const modId = currentRun?.runType === "mod" ? currentRun.mod?.Id : undefined;
 
@@ -301,6 +300,31 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         return mods.find((mod) => mod.Id === modId);
     }, [currentRun, mods]);
+    const repairedRejectedModRunIdsRef = React.useRef<Set<number>>(new Set());
+    React.useEffect((): void => {
+        if (
+            !currentRun?.Id ||
+            currentRun.runType !== "mod" ||
+            currentRun.outcome !== "rejected" ||
+            currentRun.currentStepKey !== "submitter" ||
+            !currentRunMod?.Author?.Id ||
+            currentRun.pendingApprover?.Id === currentRunMod.Author.Id ||
+            repairedRejectedModRunIdsRef.current.has(currentRun.Id)
+        ) {
+            return;
+        }
+
+        repairedRejectedModRunIdsRef.current.add(currentRun.Id);
+        WorkflowRunService.updatePendingApprover(currentRun.Id, currentRunMod.Author.Id, currentRunMod.Author, false)
+            .then(() => reloadAuthorizationDetailSections(authorizationId, ["runs"]))
+            .catch((error: unknown) => {
+                repairedRejectedModRunIdsRef.current.delete(currentRun.Id);
+                showSnackbar(`Unable to repair the rejected MOD owner: ${formatError(error)}`, "error");
+            });
+    }, [authorizationId, currentRun, currentRunMod, reloadAuthorizationDetailSections, showSnackbar]);
+    const canEditAuthorizationByUser = React.useMemo((): boolean => {
+        return canUserEditAuthorization(authorization, currentUser, appUsers, draftMod ?? currentRunMod);
+    }, [appUsers, authorization, currentRunMod, currentUser, draftMod]);
     const canDeleteCurrentAuthorization = React.useMemo((): boolean => {
         return canDeleteAuthorization(authorization, currentUser, appUsers, currentRun);
     }, [appUsers, authorization, currentRun, currentUser]);
@@ -394,18 +418,28 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         return workflowRuns.some((run) => run.runStatus === "active");
     }, [workflowRuns]);
     const canInitiateMod = !!authorization && !!currentUserId && authorization.authorizationStatus === "approved" && !hasActiveWorkflowRun && !draftMod;
+    const excludedModIds = React.useMemo(() => {
+        return new Set(
+            mods
+                .filter((mod) => mod.modStatus === "rejected" || mod.modStatus === "canceled")
+                .map((mod) => mod.Id)
+        );
+    }, [mods]);
+    const effectiveLaborLines = React.useMemo(() => {
+        return laborLines.filter((line) => line.lineScope !== "mod" || !line.mod?.Id || !excludedModIds.has(line.mod.Id));
+    }, [excludedModIds, laborLines]);
     const laborTotals = React.useMemo(() => {
-        return laborLines.reduce((totals, line) => ({
+        return effectiveLaborLines.reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
             overtimeHours: totals.overtimeHours + Number(line.overtimeHours ?? 0),
             totalAmount: totals.totalAmount + Number(line.totalAmount ?? 0)
         }), { standardHours: 0, overtimeHours: 0, totalAmount: 0 });
-    }, [laborLines]);
+    }, [effectiveLaborLines]);
     const laborDeltaTotal = React.useMemo(() => {
-        return laborLines
+        return effectiveLaborLines
             .filter((line) => line.lineScope === "mod")
             .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
-    }, [laborLines]);
+    }, [effectiveLaborLines]);
     const resourceRosterRows = React.useMemo(() => {
         const employeeMap = new Map<string, {
             key: string | number;
@@ -450,14 +484,17 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
         return Array.from(employeeMap.values()).sort((left, right) => left.title.localeCompare(right.title));
     }, [resources]);
+    const effectiveTravelOdcs = React.useMemo(() => {
+        return travelOdcs.filter((line) => line.lineScope !== "mod" || !line.mod?.Id || !excludedModIds.has(line.mod.Id));
+    }, [excludedModIds, travelOdcs]);
     const travelTotal = React.useMemo(() => {
-        return travelOdcs.reduce((total, line) => total + Number(line.amount ?? 0), 0);
-    }, [travelOdcs]);
+        return effectiveTravelOdcs.reduce((total, line) => total + Number(line.amount ?? 0), 0);
+    }, [effectiveTravelOdcs]);
     const travelDeltaTotal = React.useMemo(() => {
-        return travelOdcs
+        return effectiveTravelOdcs
             .filter((line) => line.lineScope === "mod")
             .reduce((total, line) => total + Number(line.amount ?? 0), 0);
-    }, [travelOdcs]);
+    }, [effectiveTravelOdcs]);
     const formattedChangeSections = React.useMemo(() => {
         return formatIwaChangePayload(changeDialog?.changePayloadJson, changeDialog?.changeSummary);
     }, [changeDialog]);
@@ -545,7 +582,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         setDialogOpen(true);
     }, []);
 
-    const getFreshEditNavigationState = React.useCallback(async (): Promise<{ hasDecision: boolean; modId?: number; } | undefined> => {
+    const getFreshEditNavigationState = React.useCallback(async (): Promise<{ hasDecision: boolean; modId?: number; mod?: IModItem; } | undefined> => {
         if (!authorization?.Id) {
             return undefined;
         }
@@ -576,9 +613,26 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             return undefined;
         }
 
+        const mod = freshMods.find((candidate) => candidate.Id === modId);
+
+        if (!mod) {
+            showMissingModLinkDialog();
+            return undefined;
+        }
+
+        if (
+            latestRun.outcome === "rejected" &&
+            latestRun.currentStepKey === "submitter" &&
+            mod.Author?.Id &&
+            latestRun.pendingApprover?.Id !== mod.Author.Id
+        ) {
+            await WorkflowRunService.updatePendingApprover(latestRun.Id, mod.Author.Id, mod.Author, false);
+        }
+
         return {
             hasDecision: !!latestRun.hasDecision,
-            modId
+            modId,
+            mod
         };
     }, [authorization?.Id, showMissingModLinkDialog]);
 
@@ -607,7 +661,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
             history.push(`/authorizations/edit/${authorization.Id}`, {
                 returnTo: detailReturnTo,
-                modId: editState.modId
+                modId: editState.modId,
+                mod: editState.mod
             });
         } catch (error) {
             hideBusy();
@@ -625,7 +680,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
         sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(draftMod.Id));
         history.push(`/authorizations/edit/${authorization.Id}`, {
             returnTo: detailReturnTo,
-            modId: draftMod.Id
+            modId: draftMod.Id,
+            mod: draftMod
         });
     }, [authorization, canEditDraftMod, detailReturnTo, draftMod, history]);
 
@@ -707,7 +763,8 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
 
             history.push(`/authorizations/edit/${authorization.Id}`, {
                 returnTo: detailReturnTo,
-                modId: editState.modId
+                modId: editState.modId,
+                mod: editState.mod
             });
         } catch (error) {
             hideBusy();
@@ -748,14 +805,25 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             await AuthorizationService.updateModCount(authorization.Id, nextModNumber);
             patchAuthorization(authorization.Id, { modCount: nextModNumber });
 
-            showBusy("Refreshing authorization...");
-            await reloadAuthorizationDetailSections(authorization.Id, ["mods"]);
-
+            const navigationMod: IModItem = mod.Author?.Id || !currentUser?.user
+                ? mod
+                : { ...mod, Author: currentUser.user };
             sessionStorage.setItem(getActiveModDraftSessionKey(authorization.Id), String(mod.Id));
+
+            showBusy("Refreshing authorization...");
+            await Promise.all([
+                reloadAuthorizationDetailSections(authorization.Id, ["mods"]),
+                refresh(true)
+            ]);
+            // Keep the edit-route ownership cache deterministic even if SharePoint's
+            // filtered draft query has not indexed the newly created Mod yet.
+            upsertDraftMod(authorization.Id, navigationMod);
+
             hideBusy();
             history.push(`/authorizations/edit/${authorization.Id}`, {
                 returnTo: detailReturnTo,
-                modId: mod.Id
+                modId: mod.Id,
+                mod: navigationMod
             });
         } catch (error) {
             hideBusy();
@@ -763,7 +831,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
             setDialogMessage(formatError(error));
             setDialogOpen(true);
         }
-    }, [authorization, currentUserId, detailReturnTo, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, reloadAuthorizationDetailSections, showBusy]);
+    }, [authorization, currentUser, currentUserId, detailReturnTo, draftMod, hasActiveWorkflowRun, hideBusy, history, mods, patchAuthorization, refresh, reloadAuthorizationDetailSections, showBusy, upsertDraftMod]);
 
     const handleOpenWorkflowDecision = React.useCallback((decision: "approved" | "rejected"): void => {
         if (decision === "approved") {
@@ -1117,7 +1185,6 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                                 onClick={() => history.push(`/authorizations/export/${authorization.Id}`)}
                                 disabled={!canViewFinancials}
                                 aria-label="Open export preview"
-                                title={canViewFinancials ? "Open export preview" : "Export preview contains dollar amounts and is limited to workflow approvers, their backups, and the PM."}
                             >
                                 Export Preview
                             </Button>
@@ -1466,6 +1533,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                 )}
                 {selectedTab === "travel" && (
                     <IwaTravelOdcTab
+                        mods={mods}
                         travelDeltaTotal={travelDeltaTotal}
                         travelOdcs={travelOdcs}
                         travelTotal={travelTotal}
@@ -1477,6 +1545,7 @@ export const IwaDetailPage: React.FC = (): JSX.Element => {
                         authorization={authorization}
                         expandedRunId={expandedRunId}
                         isFfpAuthorization={isFfpAuthorization}
+                        mods={mods}
                         onExpandedRunChange={setExpandedRunId}
                         onOpenChangeDialog={setChangeDialog}
                         onOpenCommentDialog={setCommentDialog}

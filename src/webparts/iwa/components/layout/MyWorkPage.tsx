@@ -17,6 +17,7 @@ import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import { useIwa } from "../data/iwaContext";
 import { DataSource } from "../data/ds";
+import { IModItem } from "../data/props";
 import { consumeWorkflowListsStale, formatDate, formatError, formatRelationship, formatSinceDate, getFirstNameFromDisplayName } from "../common/utils";
 import { PageHeader } from "../ui/PageHeader";
 import { Link as RouterLink, useHistory, useParams } from "react-router-dom";
@@ -245,15 +246,18 @@ const getMyWorkStatusChipColor = (
 const MyWorkMobileCard: React.FC<{
     row: IMyWorkRow;
     canResumeDraft: boolean;
+    canEditActive: boolean;
     canDeleteIwa: boolean;
     canCancelModRequest: boolean;
     onResumeDraft: (id: number) => void;
+    onEditActive: (row: IMyWorkRow) => void;
     onDiscardDraft: (row: IMyWorkRow) => void;
     onDeleteIwa: (row: IMyWorkRow) => void;
     onCancelMod: (row: IMyWorkRow) => void;
-}> = ({ row, canResumeDraft, canDeleteIwa, canCancelModRequest, onResumeDraft, onDiscardDraft, onDeleteIwa, onCancelMod }): JSX.Element => {
+}> = ({ row, canResumeDraft, canEditActive, canDeleteIwa, canCancelModRequest, onResumeDraft, onEditActive, onDiscardDraft, onDeleteIwa, onCancelMod }): JSX.Element => {
     const resumeLabel = row.isModDraft ? "Resume Mod" : "Resume Draft";
     const discardLabel = row.isModDraft ? "Discard Mod" : "Discard Draft";
+    const editLabel = row.currentRun?.runType === "mod" ? "Edit Mod" : "Edit IWA";
 
     return (
         <Paper sx={{ p: 2.25, borderRadius: 3 }}>
@@ -352,6 +356,17 @@ const MyWorkMobileCard: React.FC<{
                         </Button>
                     </Stack>
                 )}
+                {!row.isDraft && canEditActive && (
+                    <Button
+                        variant="contained"
+                        color={row.currentRun?.runType === "mod" ? "secondary" : "primary"}
+                        onClick={() => onEditActive(row)}
+                        aria-label={editLabel}
+                        title={editLabel}
+                    >
+                        {editLabel}
+                    </Button>
+                )}
                 {canDeleteIwa && !row.isDraft && (
                     <Button
                         variant="outlined"
@@ -410,6 +425,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
     const [cancelModRow, setCancelModRow] = React.useState<IMyWorkRow | undefined>(undefined);
     const [cancelModError, setCancelModError] = React.useState<string>("");
     const [cancelModBusy, setCancelModBusy] = React.useState<boolean>(false);
+    const [modsById, setModsById] = React.useState<Map<number, IModItem>>(new Map());
     const selectedView = isPresetView(view) ? view : defaultPresetView;
 
     React.useEffect((): void => {
@@ -455,6 +471,24 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
         });
     }, [currentUserId, loadMyActions, refreshAppUsers]);
 
+    React.useEffect((): (() => void) => {
+        let isMounted = true;
+
+        ModService.getAll()
+            .then((mods) => {
+                if (isMounted) {
+                    setModsById(new Map(mods.map((mod) => [mod.Id, mod])));
+                }
+            })
+            .catch((error: unknown) => {
+                console.error("Error loading Mods for My Work edit access", error);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     const myWorkSummary = React.useMemo(() => {
         return buildMyWorkSummary(
             authorizations,
@@ -468,14 +502,37 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
     }, [authorizations, draftAuthorizations, draftModsByAuthorizationId, appUsers, currentUserId, myActions, runByAuthorizationId]);
 
     const handleResumeDraft = React.useCallback((authorizationId: number): void => {
+        const draftMod = draftModsByAuthorizationId.get(authorizationId);
+
         history.push(`/authorizations/edit/${authorizationId}`, {
-            returnTo: `/my-work/${selectedView}`
+            returnTo: `/my-work/${selectedView}`,
+            modId: draftMod?.Id
         });
-    }, [history, selectedView]);
+    }, [draftModsByAuthorizationId, history, selectedView]);
+
+    const getEditableMod = React.useCallback((row: IMyWorkRow): IModItem | undefined => {
+        const activeModId = row.currentRun?.runType === "mod" ? row.currentRun.mod?.Id : undefined;
+        return row.draftMod ?? (activeModId ? modsById.get(activeModId) : undefined);
+    }, [modsById]);
+
+    const handleEditActive = React.useCallback((row: IMyWorkRow): void => {
+        const mod = getEditableMod(row);
+        history.push(`/authorizations/edit/${row.authorization.Id}`, {
+            returnTo: `/my-work/${selectedView}`,
+            modId: mod?.Id,
+            mod
+        });
+    }, [getEditableMod, history, selectedView]);
 
     const canResumeDraft = React.useCallback((row: IMyWorkRow): boolean => {
-        return row.isDraft && canUserEditAuthorization(row.authorization, currentUser, appUsers);
+        return row.isDraft && canUserEditAuthorization(row.authorization, currentUser, appUsers, row.draftMod);
     }, [appUsers, currentUser]);
+
+    const canEditActive = React.useCallback((row: IMyWorkRow): boolean => {
+        return !row.isDraft &&
+            row.currentRun?.runStatus === "active" &&
+            canUserEditAuthorization(row.authorization, currentUser, appUsers, getEditableMod(row));
+    }, [appUsers, currentUser, getEditableMod]);
 
     const canDeleteIwa = React.useCallback((row: IMyWorkRow): boolean => {
         return canDeleteAuthorization(row.authorization, currentUser, appUsers, row.currentRun);
@@ -784,9 +841,11 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                             key={row.authorization.Id}
                                             row={row}
                                             canResumeDraft={canResumeDraft(row)}
+                                            canEditActive={canEditActive(row)}
                                             canDeleteIwa={!row.isDraft && canDeleteIwa(row)}
                                             canCancelModRequest={!row.isDraft && canCancelModRequest(row)}
                                             onResumeDraft={handleResumeDraft}
+                                            onEditActive={handleEditActive}
                                             onDiscardDraft={setDiscardDraftRow}
                                             onDeleteIwa={setDeleteIwaRow}
                                             onCancelMod={setCancelModRow}
@@ -928,7 +987,7 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                         </Stack>
                                                     </TableCell>
                                                     <TableCell sx={{ width: 120, verticalAlign: "top" }}>
-                                                        {canResumeDraft(row) || (!row.isDraft && (canDeleteIwa(row) || canCancelModRequest(row))) ? (
+                                                        {canResumeDraft(row) || canEditActive(row) || (!row.isDraft && (canDeleteIwa(row) || canCancelModRequest(row))) ? (
                                                             <Stack spacing={1} alignItems="flex-start">
                                                                 {canResumeDraft(row) && (
                                                                     <>
@@ -953,6 +1012,18 @@ export const MyWorkPage: React.FC = (): JSX.Element => {
                                                                             {row.isModDraft ? "Discard Mod" : "Discard Draft"}
                                                                         </Button>
                                                                     </>
+                                                                )}
+                                                                {!row.isDraft && canEditActive(row) && (
+                                                                    <Button
+                                                                        variant="contained"
+                                                                        color={row.currentRun?.runType === "mod" ? "secondary" : "primary"}
+                                                                        size="small"
+                                                                        onClick={() => handleEditActive(row)}
+                                                                        aria-label={row.currentRun?.runType === "mod" ? "Edit Mod" : "Edit IWA"}
+                                                                        title={row.currentRun?.runType === "mod" ? "Edit Mod" : "Edit IWA"}
+                                                                    >
+                                                                        {row.currentRun?.runType === "mod" ? "Edit Mod" : "Edit IWA"}
+                                                                    </Button>
                                                                 )}
                                                                 {!row.isDraft && canDeleteIwa(row) && (
                                                                     <Button

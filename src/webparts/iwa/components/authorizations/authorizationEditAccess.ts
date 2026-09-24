@@ -1,4 +1,4 @@
-import { IAppUserItem, IAuthorizationItem, IPeoplePicker } from "../data/props";
+import { IAppUserItem, IAuthorizationItem, IModItem, IPeoplePicker } from "../data/props";
 import { DataSource } from "../data/ds";
 
 const samePerson = (left?: IPeoplePicker, rightId?: number): boolean => {
@@ -8,7 +8,8 @@ const samePerson = (left?: IPeoplePicker, rightId?: number): boolean => {
 export const canUserEditAuthorization = (
     authorization: IAuthorizationItem | undefined,
     currentUser: IAppUserItem | undefined,
-    appUsers: IAppUserItem[]
+    appUsers: IAppUserItem[],
+    mod?: IModItem
 ): boolean => {
     const currentUserId = DataSource.CurrentUserId;
 
@@ -22,6 +23,7 @@ export const canUserEditAuthorization = (
 
     if (
         samePerson(authorization.Author, currentUserId) ||
+        samePerson(mod?.Author, currentUserId) ||
         samePerson(authorization.backupRequestor, currentUserId) ||
         samePerson(authorization.pm, currentUserId)
     ) {

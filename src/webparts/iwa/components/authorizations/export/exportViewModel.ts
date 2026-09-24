@@ -197,7 +197,16 @@ export const formatExportModLabel = (modNumber?: number): string => {
     return `MOD-${String(normalized).padStart(2, "0")}`;
 };
 
-const getExportOptionLabel = (mod: IModItem): string => `${formatExportModLabel(mod.modNumber)} ${mod.modStatus === "approved" ? "Approved" : "Current"}`;
+const exportModStatusLabels: Record<IModItem["modStatus"], string> = {
+    draft: "Draft",
+    submitted: "Submitted",
+    underReview: "Under Review",
+    approved: "Approved",
+    rejected: "Rejected",
+    canceled: "Canceled"
+};
+
+const getExportOptionLabel = (mod: IModItem): string => `${formatExportModLabel(mod.modNumber)} ${exportModStatusLabels[mod.modStatus]}`;
 
 const stepOrder: WorkflowStepKey[] = ["pm", "hr", "ogPresident", "cfo"];
 

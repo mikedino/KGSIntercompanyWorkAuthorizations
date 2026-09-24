@@ -2,6 +2,7 @@ import * as React from "react";
 import { Alert, Box, Button, Chip, Grid, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import CalculateOutlinedIcon from "@mui/icons-material/CalculateOutlined";
+import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
@@ -13,7 +14,6 @@ import { resolveLaborCompensation } from "../../resources/laborMath";
 import {
     compactCurrencyInputSx,
     formatModLabel,
-    getModScopeChipColor,
     getModScopeLabel,
     getResourceNamesForLabor,
     ICompDraft,
@@ -120,10 +120,43 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
             .map((mod) => ({
                 id: mod.Id,
                 label: formatModLabel(mod.modNumber),
+                mod,
                 value: `mod-${mod.Id}` as ResourceScopeFilter
             }));
     }, [mods]);
     const [resourceScope, setResourceScope] = React.useState<ResourceScopeFilter>("all");
+    const excludedModIds = React.useMemo(() => {
+        return new Set(
+            mods
+                .filter((mod) => mod.modStatus === "rejected" || mod.modStatus === "canceled")
+                .map((mod) => mod.Id)
+        );
+    }, [mods]);
+    const isExcludedLine = React.useCallback((line: ILaborLineItem): boolean => {
+        return line.lineScope === "mod" && !!line.mod?.Id && excludedModIds.has(line.mod.Id);
+    }, [excludedModIds]);
+    const getModStatusTooltip = React.useCallback((mod: IModItem | undefined, label: string): string => {
+        if (mod?.modStatus !== "rejected" && mod?.modStatus !== "canceled") {
+            return "";
+        }
+
+        return `${label} was ${mod.modStatus}. Its lines and resources are retained for historical reference and excluded from totals.`;
+    }, []);
+    const renderScopeChip = React.useCallback((label: string, mod: IModItem | undefined): React.ReactNode => {
+        const tooltip = getModStatusTooltip(mod, label);
+        const chip = (
+            <Chip
+                label={label}
+                size="small"
+                color={tooltip ? "error" : label === "BASE" ? "default" : "secondary"}
+                icon={tooltip ? <CancelOutlinedIcon /> : undefined}
+                variant="outlined"
+                aria-label={tooltip || label}
+            />
+        );
+
+        return tooltip ? <Tooltip title={tooltip}>{chip}</Tooltip> : chip;
+    }, [getModStatusTooltip]);
 
     React.useEffect(() => {
         if (resourceScope === "all" || resourceScope === "base") {
@@ -168,19 +201,22 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
             return laborTotals;
         }
 
-        return visibleLaborLines.reduce((totals, line) => ({
+        return visibleLaborLines.filter((line) => !isExcludedLine(line)).reduce((totals, line) => ({
             standardHours: totals.standardHours + Number(line.standardHours ?? 0),
             overtimeHours: totals.overtimeHours + Number(line.overtimeHours ?? 0),
             totalAmount: totals.totalAmount + Number(line.totalAmount ?? 0)
         }), { standardHours: 0, overtimeHours: 0, totalAmount: 0 });
-    }, [laborTotals, resourceScope, visibleLaborLines]);
+    }, [isExcludedLine, laborTotals, resourceScope, visibleLaborLines]);
     const visibleLaborDeltaTotal = React.useMemo(() => {
         if (resourceScope === "all") {
             return laborDeltaTotal;
         }
 
-        return visibleLaborLines.reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
-    }, [laborDeltaTotal, resourceScope, visibleLaborLines]);
+        return visibleLaborLines
+            .filter((line) => line.lineScope === "mod" && !isExcludedLine(line))
+            .reduce((total, line) => total + Number(line.totalAmount ?? 0), 0);
+    }, [isExcludedLine, laborDeltaTotal, resourceScope, visibleLaborLines]);
+    const hasVisibleExcludedLines = visibleLaborLines.some(isExcludedLine);
     const selectedScopeLabel = resourceScope === "all"
         ? "all resources for all Mods"
         : resourceScope === "base"
@@ -216,9 +252,34 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 >
                     <ToggleButton value="all">All</ToggleButton>
                     <ToggleButton value="base">BASE</ToggleButton>
-                    {modFilterOptions.map((option) => (
-                        <ToggleButton key={option.value} value={option.value}>{option.label}</ToggleButton>
-                    ))}
+                    {modFilterOptions.map((option) => {
+                        const tooltip = getModStatusTooltip(option.mod, option.label);
+
+                        return (
+                            <ToggleButton
+                                key={option.value}
+                                value={option.value}
+                                aria-label={tooltip || option.label}
+                                sx={tooltip ? {
+                                    color: "error.main",
+                                    borderColor: "error.main",
+                                    "&.Mui-selected, &.Mui-selected:hover": {
+                                        color: "error.contrastText",
+                                        bgcolor: "error.main"
+                                    }
+                                } : undefined}
+                            >
+                                {tooltip ? (
+                                    <Tooltip title={tooltip}>
+                                        <Stack component="span" direction="row" spacing={0.5} alignItems="center">
+                                            <CancelOutlinedIcon fontSize="small" />
+                                            <span>{option.label}</span>
+                                        </Stack>
+                                    </Tooltip>
+                                ) : option.label}
+                            </ToggleButton>
+                        );
+                    })}
                 </ToggleButtonGroup>
                 <Typography variant="caption" color="text.secondary">
                     Showing {selectedScopeLabel}.
@@ -264,22 +325,27 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                     ) : (
                         <>
                             {visibleLaborLines.map((line) => {
+                                const isExcluded = isExcludedLine(line);
+
                                 if (isFfpAuthorization) {
                                     return (
                                         <TableRow key={line.Id} hover>
                                             <TableCell>{line.jobId || "-"}</TableCell>
                                             <TableCell>
-                                                <Chip
-                                                    label={getModScopeLabel(line)}
-                                                    size="small"
-                                                    color={getModScopeChipColor(line)}
-                                                    variant="outlined"
-                                                />
+                                                {renderScopeChip(
+                                                    getModScopeLabel(line),
+                                                    mods.find((mod) => mod.Id === line.mod?.Id)
+                                                )}
                                             </TableCell>
                                             <TableCell>{line.chargingPeriod || "-"}</TableCell>
                                             <TableCell align="right">{line.periodQty ?? "-"}</TableCell>
                                             <TableCell>{getResourceNamesForLabor(line, resources)}</TableCell>
-                                            <TableCell align="right">{canViewFinancials ? formatCurrency(line.totalAmount) : maskedCurrencyText}</TableCell>
+                                            <TableCell align="right">
+                                                <Typography component="span" sx={isExcluded ? { textDecoration: "line-through", color: "error.main" } : undefined}>
+                                                    {canViewFinancials ? formatCurrency(line.totalAmount) : maskedCurrencyText}
+                                                </Typography>
+                                                {isExcluded && <Typography component="span" color="error.main"> *</Typography>}
+                                            </TableCell>
                                         </TableRow>
                                     );
                                 }
@@ -300,12 +366,10 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                 return (
                                     <TableRow key={line.Id} hover>
                                         <TableCell className="resourcesLaborScopeCell">
-                                            <Chip
-                                                label={getModScopeLabel(line)}
-                                                size="small"
-                                                color={getModScopeChipColor(line)}
-                                                variant="outlined"
-                                            />
+                                            {renderScopeChip(
+                                                getModScopeLabel(line),
+                                                mods.find((mod) => mod.Id === line.mod?.Id)
+                                            )}
                                         </TableCell>
                                         <TableCell className="resourcesLaborEmployeeCell">
                                             <Stack direction="row" spacing={0.5} alignItems="center">
@@ -316,7 +380,6 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                             size="small"
                                                             color="info"
                                                             aria-label={`View comments for ${getResourceNamesForLabor(line, resources)}`}
-                                                            title={`View comments for ${getResourceNamesForLabor(line, resources)}`}
                                                             onClick={() => onOpenCommentDialog({
                                                                 title: `${getResourceNamesForLabor(line, resources)} Comments`,
                                                                 comments: resourceComments
@@ -374,13 +437,18 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                                     />
                                             ) : canViewFinancials ? formatCurrency(line.overtimeRate) : maskedCurrencyText}
                                         </TableCell>
-                                        <TableCell className="resourcesLaborTotalCell" align="right">{canViewFinancials ? formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount) : maskedCurrencyText}</TableCell>
+                                        <TableCell className="resourcesLaborTotalCell" align="right">
+                                            <Typography component="span" sx={isExcluded ? { textDecoration: "line-through", color: "error.main" } : undefined}>
+                                                {canViewFinancials ? formatCurrency(isEditingComp ? preview.totalAmount : line.totalAmount) : maskedCurrencyText}
+                                            </Typography>
+                                            {isExcluded && <Typography component="span" color="error.main"> *</Typography>}
+                                        </TableCell>
                                         {canEditCompInHrReview && (
                                             <TableCell align="right">
                                                 {isEditingComp ? (
                                                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                                                         <Tooltip title="Recalculate rates from salary">
-                                                            <Button size="small" startIcon={<CalculateOutlinedIcon />} onClick={() => handleRecalculateCompRates(line.Id)} aria-label="Recalculate compensation rates" title="Recalculate compensation rates">
+                                                            <Button size="small" startIcon={<CalculateOutlinedIcon />} onClick={() => handleRecalculateCompRates(line.Id)} aria-label="Recalculate compensation rates">
                                                                 Recalc
                                                             </Button>
                                                         </Tooltip>
@@ -432,6 +500,11 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                 </TableBody>
             </Table>
         </TableContainer>
+        {hasVisibleExcludedLines && (
+            <Alert severity="warning">
+                * Rejected or canceled MOD lines are shown for historical reference but are not included in the totals.
+            </Alert>
+        )}
         <Box>
             <Typography variant="subtitle2" fontWeight={600}>Resource Roster</Typography>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -442,13 +515,12 @@ export const IwaResourcesLaborTab: React.FC<IIwaResourcesLaborTabProps> = ({
                                 <Typography fontWeight={600}>{resource.title}</Typography>
                                 <Stack direction="row" spacing={0.5}>
                                     {resource.labels.map((label) => (
-                                        <Chip
-                                            key={label}
-                                            label={label}
-                                            size="small"
-                                            color={label === "BASE" ? "default" : "secondary"}
-                                            variant="outlined"
-                                        />
+                                        <React.Fragment key={label}>
+                                            {renderScopeChip(
+                                                label,
+                                                mods.find((mod) => formatModLabel(mod.modNumber) === label)
+                                            )}
+                                        </React.Fragment>
                                     ))}
                                 </Stack>
                             </Stack>

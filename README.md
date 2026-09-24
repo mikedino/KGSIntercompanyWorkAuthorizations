@@ -27,6 +27,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 
 | Version | Date | Developer | Comments |
 | ------- | ------ | ------------- | ---------- |
+| 0.0.1 | April 28, 2026 | — | Active development baseline for IWA workflow, Mods, work queues, and PDF template design. |
 | 1.0.1.8 | June 15, 2026 | Landino | Initial production release |
 | 1.0.2.0 | June 16, 2026 | Landino | Adjust how we resolve auto-stamped users. Site collections don't share same userID's, so we must ensureUser before resolving. |
 | 1.0.3.1 | June 18, 2026 | Landino | Fix Mod edit/reject flow - add guard for missing Mod. Reset salary when employee changes. Add STO to displays. |
@@ -36,6 +37,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | 1.0.6.1 | June 30, 2026 | Landino | Implement DELETE and CANCEL processes |
 | 1.0.6.2 | July 8, 2026 | Landino | Add fake indirect Contract and Invoice. Add info/warning modals on Add Resource. Fix resource total hours helper box (add all rows) |
 | 1.0.7.0 | July 17, 2026 | Landino | Fetch latest Entity GM's on every new WF Run. Adjust user record fetch after AppUser initial creation. |
+| 1.0.8.3 | Sept 24, 2026 | Landino | Recognize Mod authors for edit/cancel access and rejection routing; add active IWA/Mod edit actions to My Work; improve rejected Mod cancellation, exclude rejected/canceled Mod lines from detail totals, and clarify export status and rejected proposal labels. |
 
 ---
 
@@ -52,7 +54,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 - Capture change summaries and payloads for workflow restarts and modifications.
 - Provide My Work and All Authorizations views for action queues and portfolio tracking.
 - Store current workflow run linkage on the IWA header.
-- Prepare finance-focused approved IWA PDF export templates.
+- Preview base IWA and Mod exports, print approved versions, and save approved PDFs to the IWAExports library.
 
 ## Workflow Notes
 
@@ -61,14 +63,19 @@ The workflow model is run-based. An IWA may have multiple workflow runs over its
 - A new submitted IWA starts Run 1.
 - If a workflow run has a decision and the IWA is edited after rejection, the existing run is completed/superseded and a new run is created on resubmission.
 - Approved IWAs may later start a Mod process, which creates a Mod record and a new workflow run.
+- Rejected Mod runs return to the Mod author. Mod authors are included in edit and active-Mod cancellation access, even when they did not create the base IWA.
+- The detail page repairs older rejected Mod runs assigned to the wrong submitter without resetting the step assignment date.
+- Cancel Mod on a rejected Mod removes its workflow and linked Mod data and restores the IWA to its previously approved state. Discard Mod removes an unsubmitted Mod draft and its linked data.
 - The IWA header stores the current workflow run so list views and detail pages can resolve pending approvers quickly.
 - HR review is required for T&M compensation entry and validation before approval.
+
+Labor hours, labor amounts, and travel/ODC totals on the detail page exclude lines linked to rejected or canceled Mods. When those records remain present, their lines and resource labels are shown with status warnings for historical reference; excluded amounts are struck through. These detail totals can still include pending Mods and should not be treated as approved-only totals.
 
 ## Primary App Areas
 
 - Dashboard: high-level entry point.
-- My Work: user-specific work queue for drafts, pending approvals, backup coverage, and prior activity.
-- All Authorizations: searchable/filterable portfolio view with export and row actions.
+- My Work: user-specific work queue for drafts, pending approvals, backup coverage, and prior activity, with Edit IWA / Edit Mod actions for active runs when the user has edit access.
+- All Authorizations: searchable/filterable portfolio view with export and row actions, including editing active runs and resuming Mod drafts when permitted.
 - IWA Form: guided creation/edit flow for header, resources/travel, attachments, and review/submit.
 - IWA Detail Page: summary, resources/labor, travel/ODC, workflow history, Mods, and history tabs.
 - Admin: configuration screens for users, entities, operating groups, LOBs, approvers, and company defaults.
@@ -94,9 +101,13 @@ Detail-page read models and PDF-oriented summary shapes live in:
 
 - `src/webparts/iwa/components/authorizations/viewModels.ts`
 
-## PDF Export Direction
+## PDF Export
 
-Approved IWA PDF export design artifacts are in:
+The export preview supports base IWA and Mod selection with explicit Mod status labels. Access requires financial-view permission. Printing and saving a PDF are available only after the selected base IWA or Mod is fully approved. Approved PDFs are saved to the IWAExports SharePoint library, and existing saved PDFs can be opened from the preview.
+
+Rejected Mod previews label amounts as rejected proposals and display a warning that they must not be used for billing or authorization. Print and Save PDF remain unavailable for rejected Mods.
+
+The implementation lives in `src/webparts/iwa/components/authorizations/export/`. Supporting PDF design artifacts are in:
 
 - `docs/pdf-templates/approved-iwa-finance-template.html`
 - `docs/pdf-templates/approved-iwa-finance-template.md`
@@ -104,7 +115,7 @@ Approved IWA PDF export design artifacts are in:
 - `docs/pdf-templates/approved-iwa-finance-example-preview.png`
 - `docs/pdf-templates/approved-iwa-finance-example-preview.pdf`
 
-The proposed PDF format is finance-first: transaction totals and coding summary appear at the top, followed by header details, labor detail, travel/ODC detail, scope/justification, and approval record.
+The export format is finance-first: transaction totals and coding summary appear at the top, followed by header details, labor detail, travel/ODC detail, scope/justification, and approval record.
 
 ## Prerequisites
 
@@ -153,12 +164,6 @@ gulp serve
 | `npm run clean` | Runs `gulp clean`. |
 | `npm run test` | Runs the SPFx test task. |
 | `npm run package` | Cleans, builds, bundles, and packages the solution for shipping. |
-
-## Version History
-
-| Version | Date | Comments |
-| ------- | ---- | -------- |
-| 0.0.1 | April 28, 2026 | Active development baseline for IWA workflow, Mods, work queues, and PDF template design. |
 
 ## Implementation Notes
 
