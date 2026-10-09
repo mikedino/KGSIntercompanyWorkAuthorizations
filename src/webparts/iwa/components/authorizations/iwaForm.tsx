@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import * as React from "react";
 import {
-    Autocomplete, Box, Breadcrumbs, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
+    Alert, Autocomplete, Box, Breadcrumbs, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Link, Paper, Stack, Step, StepButton, Stepper, TextField, Typography
 } from "@mui/material";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
@@ -158,7 +158,7 @@ const contractTypeOptions: Array<{ value: ContractType; label: string; helperTex
     {
         value: "tm",
         label: "Time & Materials",
-        helperText: "Use for employee/resource-based billing with hours and rates."
+        helperText: "Use for employee/resource-based billing with hours and rates.  T&M should be used for most use cases, regardless of prime contract type."
     },
     {
         value: "ffp",
@@ -2099,6 +2099,11 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                 );
                             })}
                         </Stack>
+                        {form.contractType === "ffp" && (
+                            <Alert severity="warning">
+                                Submitting an IWA as FFP must be confirmed with Jeannette Morris before submitting.
+                            </Alert>
+                        )}
                     </Stack>
                 </Grid>
 
@@ -2156,7 +2161,10 @@ export const IwaForm: React.FC<IIwaFormProps> = ({
                                         {option.field_20}
                                     </Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        {option.field_35 || "No customer contract code"}
+                                        {option.field_19 ? `ID: ${option.field_19}` : "No contract ID"}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {option.field_35 ? `Code: ${option.field_35}` : "No customer contract code"}
                                     </Typography>
                                 </Stack>
                             </li>
