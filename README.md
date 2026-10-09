@@ -38,6 +38,7 @@ The app is built as a SharePoint-hosted SPFx web part using React, Material UI, 
 | 1.0.6.2 | July 8, 2026 | Landino | Add fake indirect Contract and Invoice. Add info/warning modals on Add Resource. Fix resource total hours helper box (add all rows) |
 | 1.0.7.0 | July 17, 2026 | Landino | Fetch latest Entity GM's on every new WF Run. Adjust user record fetch after AppUser initial creation. |
 | 1.0.8.3 | Sept 24, 2026 | Landino | Recognize Mod authors for edit/cancel access and rejection routing; add active IWA/Mod edit actions to My Work; improve rejected Mod cancellation, exclude rejected/canceled Mod lines from detail totals, and clarify export status and rejected proposal labels. |
+| 1.0.8.4 | Oct 9, 2026 | Landino | Show Contract ID in Contract dropdown. Add verbiage to T&M vs FFP buttons and add warning for FFP. |
 
 ---
 
